@@ -13,12 +13,35 @@ export function extractDayOfMonthHints(text: string): number[] {
   return [...new Set(matches.map((m) => Number(m[1])))];
 }
 
-// ---------- Time-of-day hints (e.g. "18:00-19:00") ----------
+// ---------- Time-of-day hints (e.g. "18:00-19:00", "10時〜14時") ----------
 //
 // Pulled directly from desiredTime/ngTime whenever needed (not stored on
 // the Band) so edits to those free-text fields stay automatically in sync.
+// "終日" (all day) and similar free text with no parseable range simply
+// yield null, which callers already treat as "no time restriction".
 
-const TIME_RANGE_RE = /(\d{1,2}):(\d{2})\s*[-~〜ー]\s*(\d{1,2}):(\d{2})/;
+// A time token must carry an explicit hour marker (":"/"："/"時") so this
+// never matches an unrelated bare number like the "1" in a setlist line.
+const TIME_TOKEN_SRC = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分)?)`;
+const TIME_RANGE_RE = new RegExp(
+  `(${TIME_TOKEN_SRC})\\s*[-~〜ー]\\s*(${TIME_TOKEN_SRC})`,
+);
+
+function parseTimeToken(token: string): number | null {
+  const t = token.trim();
+  let m = /^(\d{1,2})[:：](\d{1,2})$/.exec(t);
+  if (m) return toMinutes(Number(m[1]), Number(m[2]));
+  m = /^(\d{1,2})時(\d{1,2})分$/.exec(t);
+  if (m) return toMinutes(Number(m[1]), Number(m[2]));
+  m = /^(\d{1,2})時$/.exec(t);
+  if (m) return toMinutes(Number(m[1]), 0);
+  return null;
+}
+
+function toMinutes(hour: number, minute: number): number | null {
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
 
 export type TimeRange = { startMinutes: number; endMinutes: number };
 
@@ -26,8 +49,9 @@ export function extractTimeRange(text: string): TimeRange | null {
   if (!text) return null;
   const m = TIME_RANGE_RE.exec(text);
   if (!m) return null;
-  const startMinutes = Number(m[1]) * 60 + Number(m[2]);
-  const endMinutes = Number(m[3]) * 60 + Number(m[4]);
+  const startMinutes = parseTimeToken(m[1]);
+  const endMinutes = parseTimeToken(m[2]);
+  if (startMinutes === null || endMinutes === null) return null;
   if (endMinutes <= startMinutes) return null;
   return { startMinutes, endMinutes };
 }
@@ -158,6 +182,22 @@ const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分
 // line), so it must be filtered out explicitly rather than assumed absent.
 const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$/;
 
+// Discord application posts often use a heading — either bracketed
+// ("【希望日程】") or colon-suffixed ("希望時間：") — for the desired
+// schedule/time, sometimes with the value on the same line and sometimes on
+// the next. Both variants feed into desiredTime, where the existing
+// day-of-month and time-range hint extractors already know how to read
+// them (including "終日" cleanly falling through as "no restriction").
+const SCHEDULE_HEADING_RE =
+  /^(?:【\s*(?:希望日程|希望日|出演希望日|参加可能日)\s*】|(?:希望日程|希望日|出演希望日|参加可能日)\s*[:：])\s*(.*)$/;
+const TIME_HEADING_RE =
+  /^(?:【\s*(?:希望時間|出演可能時間|時間帯|出演時間帯)\s*】|(?:希望時間|出演可能時間|時間帯|出演時間帯)\s*[:：])\s*(.*)$/;
+
+function matchHeadingValue(line: string, re: RegExp): string | null {
+  const m = re.exec(line);
+  return m ? m[1].trim() : null;
+}
+
 // A "part label" is the instrument abbreviation prefixed to a member's
 // name, e.g. "Gt.Vo.", "Ba.", "Key./Vo.". Members are always written as
 // "<grade> <part label><name>", so taking everything after the LAST
@@ -187,17 +227,38 @@ function parseChatLogBands(rawText: string): Band[] {
     const name = nameMatch?.[1]?.trim() ?? "";
 
     const members: string[] = [];
+    const scheduleTimeParts: string[] = [];
     let durationMinutes: number | undefined;
 
-    for (const line of blockLines.slice(1)) {
+    const rest = blockLines.slice(1);
+    for (let i = 0; i < rest.length; i++) {
+      const line = rest[i];
       if (SETLIST_LINE_RE.test(line)) continue;
       if (SYNC_LINE_RE.test(line)) continue;
       if (HEADER_LINE_RE.test(line)) continue;
+
       const durationMatch = DURATION_LINE_RE.exec(line);
       if (durationMatch) {
         durationMinutes = Number(durationMatch[1]);
         continue;
       }
+
+      // Bracketed/colon headings sometimes carry the value on the same
+      // line ("希望時間：10:00-14:00") and sometimes on their own line
+      // with the value below ("【希望日程】" then "7/13" next line).
+      const scheduleValue = matchHeadingValue(line, SCHEDULE_HEADING_RE);
+      const timeValue = matchHeadingValue(line, TIME_HEADING_RE);
+      if (scheduleValue !== null || timeValue !== null) {
+        const inlineValue = scheduleValue || timeValue;
+        if (inlineValue) {
+          scheduleTimeParts.push(inlineValue);
+        } else if (rest[i + 1]) {
+          scheduleTimeParts.push(rest[i + 1]);
+          i++;
+        }
+        continue;
+      }
+
       members.push(extractMemberName(line));
     }
 
@@ -212,7 +273,7 @@ function parseChatLogBands(rawText: string): Band[] {
       id: crypto.randomUUID(),
       name: name || "(バンド名未設定)",
       members,
-      desiredTime: "",
+      desiredTime: scheduleTimeParts.join(" / "),
       ngTime: "",
       durationMinutes,
       allowedDayIds: [],
