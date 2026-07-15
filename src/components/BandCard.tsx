@@ -7,6 +7,8 @@ type Props = { band: Band };
 export function BandCard({ band }: Props) {
   const updateBand = useAppStore((s) => s.updateBand);
   const deleteBand = useAppStore((s) => s.deleteBand);
+  const days = useAppStore((s) => s.days);
+  const toggleBandDay = useAppStore((s) => s.toggleBandDay);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: `band:${band.id}` });
 
@@ -82,6 +84,29 @@ export function BandCard({ band }: Props) {
               }
             />
           </div>
+          {days.length > 1 && (
+            <div className="flex flex-wrap gap-1">
+              {days.map((day) => {
+                const isAllowed =
+                  band.allowedDayIds.length === 0 ||
+                  band.allowedDayIds.includes(day.id);
+                return (
+                  <button
+                    key={day.id}
+                    onClick={() => toggleBandDay(band.id, day.id)}
+                    className={`rounded border px-1.5 py-0.5 text-xs ${
+                      isAllowed
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-slate-100 text-slate-400 line-through"
+                    }`}
+                    title="クリックして出演可能日を切り替え"
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {band.parseWarning && (
             <p className="text-xs text-amber-700">{band.parseWarning}</p>
           )}

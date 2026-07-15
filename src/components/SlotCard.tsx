@@ -1,7 +1,7 @@
 import { useDndContext, useDraggable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useAppStore } from "../store/useAppStore";
+import { canPlaceBandInSlot, useAppStore } from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
 
 type Props = {
@@ -17,6 +17,8 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
+  const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
+  const bands = useAppStore((s) => s.bands);
 
   const {
     setNodeRef,
@@ -35,11 +37,22 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   });
 
   const { active } = useDndContext();
-  const isDraggingBand =
-    typeof active?.id === "string" && active.id.startsWith("band:");
+  const draggedBandId =
+    typeof active?.id === "string" && active.id.startsWith("band:")
+      ? active.id.slice("band:".length)
+      : null;
+  const draggedBand = draggedBandId
+    ? bands.find((b) => b.id === draggedBandId)
+    : undefined;
+  const isDraggingBand = draggedBandId !== null;
+  const isBlockedForDraggedBand =
+    isDraggingBand && day && draggedBand
+      ? !canPlaceBandInSlot(draggedBand, day, slot)
+      : false;
 
   const isCustom = slot.customLabel !== null;
-  const showDropHighlight = isOver && !(isCustom && isDraggingBand);
+  const showBlockedHighlight = isOver && isBlockedForDraggedBand;
+  const showDropHighlight = isOver && !isBlockedForDraggedBand;
 
   const rowStyle = {
     transform: CSS.Transform.toString(transform),
@@ -52,7 +65,13 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
       style={rowStyle}
       className={`flex items-stretch gap-2 rounded-lg border p-2 ${
         isDragging ? "opacity-40" : ""
-      } ${showDropHighlight ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"}`}
+      } ${
+        showBlockedHighlight
+          ? "border-rose-400 bg-rose-50"
+          : showDropHighlight
+            ? "border-indigo-400 bg-indigo-50"
+            : "border-slate-200 bg-white"
+      }`}
     >
       <button
         ref={setActivatorNodeRef}

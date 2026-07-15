@@ -5,6 +5,12 @@ export type Band = {
   desiredTime: string;
   ngTime: string;
   durationMinutes?: number;
+  // Resolved set of day ids this band may be placed on. Empty = no
+  // restriction (any day). Derived from desiredTime/ngTime day-of-month
+  // hints (e.g. "13日") cross-referenced against each TimetableDay's actual
+  // calendar date via resolveAllowedDayIds — but always manually editable
+  // afterward via the per-band day toggles.
+  allowedDayIds: string[];
   raw: string;
   parseWarning?: string;
 };
@@ -29,6 +35,9 @@ export type TimetableSettings = {
 export type TimetableDay = {
   id: string;
   label: string;
+  // ISO yyyy-mm-dd, e.g. "2026-07-13". Optional — only needed to resolve
+  // bands' desiredDates/ngDates hints into day restrictions.
+  date: string | null;
   settings: TimetableSettings;
   slots: TimetableSlot[];
 };

@@ -6,7 +6,11 @@ import type {
   TimetableSettings,
   TimetableSlot,
 } from "../types";
-import { parseBands } from "../utils/parseBands";
+import {
+  extractDayOfMonthHints,
+  extractTimeRange,
+  parseBands,
+} from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 
 type AppState = {
@@ -19,10 +23,13 @@ type AppState = {
   parseFromRawText: () => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
+  toggleBandDay: (bandId: string, dayId: string) => void;
+  autoDetectDayRestrictions: () => void;
 
   addDay: () => void;
   removeDay: (dayId: string) => void;
   renameDay: (dayId: string, label: string) => void;
+  updateDayDate: (dayId: string, date: string | null) => void;
   setActiveDay: (dayId: string) => void;
 
   addSlot: (dayId: string) => void;
@@ -48,7 +55,13 @@ function defaultSettings(): TimetableSettings {
 }
 
 function makeDay(label: string): TimetableDay {
-  return { id: crypto.randomUUID(), label, settings: defaultSettings(), slots: [] };
+  return {
+    id: crypto.randomUUID(),
+    label,
+    date: null,
+    settings: defaultSettings(),
+    slots: [],
+  };
 }
 
 // A band's own durationMinutes (parsed from e.g. "演奏時間：10分") overrides
@@ -87,6 +100,91 @@ function updateDaySlots(
     const slots = recomputeTimes(updater(day.slots), day.settings, bands);
     return { ...day, slots };
   });
+}
+
+function rangesOverlap(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+// Combined date + time-of-day eligibility check, used both to guard
+// assignBandToSlot and to drive the "can't drop here" highlight while
+// dragging. desiredTime constrains to an inclusion window; ngTime
+// constrains to an exclusion window; allowedDayIds constrains which days.
+export function canPlaceBandInSlot(
+  band: Band,
+  day: TimetableDay,
+  slot: TimetableSlot,
+): boolean {
+  if (slot.customLabel !== null) return false;
+  if (band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
+    return false;
+  }
+  if (!slot.startTime || !slot.endTime) return true;
+  const slotStart = timeToMinutes(slot.startTime);
+  const slotEnd = timeToMinutes(slot.endTime);
+
+  const ngRange = extractTimeRange(band.ngTime);
+  if (
+    ngRange &&
+    rangesOverlap(slotStart, slotEnd, ngRange.startMinutes, ngRange.endMinutes)
+  ) {
+    return false;
+  }
+
+  const desiredRange = extractTimeRange(band.desiredTime);
+  if (
+    desiredRange &&
+    !rangesOverlap(slotStart, slotEnd, desiredRange.startMinutes, desiredRange.endMinutes)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+// Resolves a band's desiredTime/ngTime day-of-month hints ("13日") into
+// actual day ids by matching against each TimetableDay's calendar date.
+// Returns [] (unrestricted) when hints or day dates aren't available.
+export function resolveAllowedDayIds(band: Band, days: TimetableDay[]): string[] {
+  const dayNumberToIds = new Map<number, string[]>();
+  for (const day of days) {
+    if (!day.date) continue;
+    const dom = new Date(`${day.date}T00:00:00`).getDate();
+    const ids = dayNumberToIds.get(dom) ?? [];
+    ids.push(day.id);
+    dayNumberToIds.set(dom, ids);
+  }
+  if (dayNumberToIds.size === 0) return [];
+
+  const desiredDates = extractDayOfMonthHints(band.desiredTime);
+  const ngDates = extractDayOfMonthHints(band.ngTime);
+
+  let allowed: Set<string> | null = null;
+  if (desiredDates.length > 0) {
+    allowed = new Set();
+    for (const d of desiredDates) {
+      for (const id of dayNumberToIds.get(d) ?? []) allowed.add(id);
+    }
+  }
+  if (ngDates.length > 0) {
+    const disallowed = new Set<string>();
+    for (const d of ngDates) {
+      for (const id of dayNumberToIds.get(d) ?? []) disallowed.add(id);
+    }
+    if (allowed) {
+      for (const id of disallowed) allowed.delete(id);
+    } else {
+      allowed = new Set(days.map((d) => d.id));
+      for (const id of disallowed) allowed.delete(id);
+    }
+  }
+  if (!allowed) return [];
+  return [...allowed];
 }
 
 const initialDays = [makeDay("1日目"), makeDay("2日目")];
@@ -128,6 +226,56 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { bands, days };
     }),
 
+  toggleBandDay: (bandId, dayId) =>
+    set((state) => {
+      const allDayIds = state.days.map((d) => d.id);
+      const bands = state.bands.map((b) => {
+        if (b.id !== bandId) return b;
+        const current = b.allowedDayIds.length > 0 ? b.allowedDayIds : allDayIds;
+        const next = current.includes(dayId)
+          ? current.filter((id) => id !== dayId)
+          : [...current, dayId];
+        const allowedDayIds = next.length >= allDayIds.length ? [] : next;
+        return { ...b, allowedDayIds };
+      });
+
+      // If a band becomes disallowed on the day it's currently placed on,
+      // clear that placement so the board never shows an invalid state.
+      const band = bands.find((b) => b.id === bandId)!;
+      const days = state.days.map((day) => {
+        const isNowAllowed =
+          band.allowedDayIds.length === 0 || band.allowedDayIds.includes(day.id);
+        if (isNowAllowed) return day;
+        if (!day.slots.some((s) => s.bandId === bandId)) return day;
+        const slots = day.slots.map((s) =>
+          s.bandId === bandId ? { ...s, bandId: null } : s,
+        );
+        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+      });
+
+      return { bands, days };
+    }),
+
+  autoDetectDayRestrictions: () =>
+    set((state) => {
+      const bands = state.bands.map((b) => ({
+        ...b,
+        allowedDayIds: resolveAllowedDayIds(b, state.days),
+      }));
+      const days = state.days.map((day) => {
+        const slots = day.slots.map((s) => {
+          if (!s.bandId) return s;
+          const band = bands.find((b) => b.id === s.bandId);
+          if (!band) return s;
+          const isAllowed =
+            band.allowedDayIds.length === 0 || band.allowedDayIds.includes(day.id);
+          return isAllowed ? s : { ...s, bandId: null };
+        });
+        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+      });
+      return { bands, days };
+    }),
+
   addDay: () =>
     set((state) => {
       const day = makeDay(`${state.days.length + 1}日目`);
@@ -146,6 +294,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   renameDay: (dayId, label) =>
     set((state) => ({
       days: state.days.map((d) => (d.id === dayId ? { ...d, label } : d)),
+    })),
+
+  updateDayDate: (dayId, date) =>
+    set((state) => ({
+      days: state.days.map((d) => (d.id === dayId ? { ...d, date } : d)),
     })),
 
   setActiveDay: (dayId) => set({ activeDayId: dayId }),
@@ -200,7 +353,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         d.slots.some((s) => s.id === slotId),
       );
       const targetSlot = targetDay?.slots.find((s) => s.id === slotId);
-      if (!targetDay || !targetSlot || targetSlot.customLabel !== null) {
+      const band = state.bands.find((b) => b.id === bandId);
+      if (
+        !targetDay ||
+        !targetSlot ||
+        !band ||
+        !canPlaceBandInSlot(band, targetDay, targetSlot)
+      ) {
         return state;
       }
       const days = state.days.map((day) => {

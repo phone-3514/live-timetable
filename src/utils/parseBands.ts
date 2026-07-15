@@ -1,5 +1,37 @@
 import type { Band } from "../types";
 
+// ---------- Date hints (e.g. "13日", "14日のみ") ----------
+//
+// Multi-day events are often specified by organizers as concrete calendar
+// dates ("13日", "14日") rather than "1日目"/"2日目". These hints get
+// resolved into actual TimetableDay ids later (once the organizer has set
+// each day's calendar date) via resolveAllowedDayIds in the store.
+
+export function extractDayOfMonthHints(text: string): number[] {
+  if (!text) return [];
+  const matches = [...text.matchAll(/(\d{1,2})\s*日/g)];
+  return [...new Set(matches.map((m) => Number(m[1])))];
+}
+
+// ---------- Time-of-day hints (e.g. "18:00-19:00") ----------
+//
+// Pulled directly from desiredTime/ngTime whenever needed (not stored on
+// the Band) so edits to those free-text fields stay automatically in sync.
+
+const TIME_RANGE_RE = /(\d{1,2}):(\d{2})\s*[-~〜ー]\s*(\d{1,2}):(\d{2})/;
+
+export type TimeRange = { startMinutes: number; endMinutes: number };
+
+export function extractTimeRange(text: string): TimeRange | null {
+  if (!text) return null;
+  const m = TIME_RANGE_RE.exec(text);
+  if (!m) return null;
+  const startMinutes = Number(m[1]) * 60 + Number(m[2]);
+  const endMinutes = Number(m[3]) * 60 + Number(m[4]);
+  if (endMinutes <= startMinutes) return null;
+  return { startMinutes, endMinutes };
+}
+
 // ---------- Format detection ----------
 
 const CHAT_LOG_BAND_NAME_RE = /^バンド名\s*[:：]/m;
@@ -95,6 +127,7 @@ function parseTableBands(rawText: string): Band[] {
       members: splitMembers(membersCell),
       desiredTime,
       ngTime,
+      allowedDayIds: [],
       raw: line,
       parseWarning,
     };
@@ -182,6 +215,7 @@ function parseChatLogBands(rawText: string): Band[] {
       desiredTime: "",
       ngTime: "",
       durationMinutes,
+      allowedDayIds: [],
       raw: blockLines.join(" / "),
       parseWarning,
     };
