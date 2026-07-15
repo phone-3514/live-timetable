@@ -187,9 +187,33 @@ export function resolveAllowedDayIds(band: Band, days: TimetableDay[]): string[]
   return [...allowed];
 }
 
+function autoResolveBandDays(bands: Band[], days: TimetableDay[]): Band[] {
+  return bands.map((b) => ({ ...b, allowedDayIds: resolveAllowedDayIds(b, days) }));
+}
+
+// After (re-)resolving allowedDayIds, any band already placed on a day it's
+// no longer eligible for must be unassigned so the board never shows an
+// invalid state.
+function clearDisallowedPlacements(
+  days: TimetableDay[],
+  bands: Band[],
+): TimetableDay[] {
+  return days.map((day) => {
+    const slots = day.slots.map((s) => {
+      if (!s.bandId) return s;
+      const band = bands.find((b) => b.id === s.bandId);
+      if (!band) return s;
+      const isAllowed =
+        band.allowedDayIds.length === 0 || band.allowedDayIds.includes(day.id);
+      return isAllowed ? s : { ...s, bandId: null };
+    });
+    return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+  });
+}
+
 const initialDays = [makeDay("1日目"), makeDay("2日目")];
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set) => ({
   rawText: "",
   bands: [],
   days: initialDays,
@@ -197,20 +221,33 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setRawText: (text) => set({ rawText: text }),
 
-  parseFromRawText: () => {
-    const bands = parseBands(get().rawText);
-    set({ bands });
-  },
+  parseFromRawText: () =>
+    set((state) => {
+      const parsed = parseBands(state.rawText);
+      const bands = autoResolveBandDays(parsed, state.days);
+      return { bands };
+    }),
 
   updateBand: (id, partial) =>
     set((state) => {
-      const bands = state.bands.map((b) =>
-        b.id === id ? { ...b, ...partial } : b,
-      );
-      const days = state.days.map((day) => ({
-        ...day,
-        slots: recomputeTimes(day.slots, day.settings, bands),
-      }));
+      // Editing desiredTime/ngTime changes the day-of-month hints those
+      // fields encode, so the resolved day restriction is refreshed
+      // automatically — no manual "re-detect" step needed.
+      const touchesDateHints = "desiredTime" in partial || "ngTime" in partial;
+      const bands = state.bands.map((b) => {
+        if (b.id !== id) return b;
+        const next = { ...b, ...partial };
+        if (touchesDateHints) {
+          next.allowedDayIds = resolveAllowedDayIds(next, state.days);
+        }
+        return next;
+      });
+      const days = touchesDateHints
+        ? clearDisallowedPlacements(state.days, bands)
+        : state.days.map((day) => ({
+            ...day,
+            slots: recomputeTimes(day.slots, day.settings, bands),
+          }));
       return { bands, days };
     }),
 
@@ -256,23 +293,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { bands, days };
     }),
 
+  // Manual re-sync: recomputes every band's allowedDayIds from its current
+  // desiredTime/ngTime text (discarding any manual day-toggle overrides).
+  // Not needed in the normal flow — parsing, editing desired/NG time, and
+  // setting a day's date all auto-resolve already — but useful after bulk
+  // edits or to reset overrides back to what the text implies.
   autoDetectDayRestrictions: () =>
     set((state) => {
-      const bands = state.bands.map((b) => ({
-        ...b,
-        allowedDayIds: resolveAllowedDayIds(b, state.days),
-      }));
-      const days = state.days.map((day) => {
-        const slots = day.slots.map((s) => {
-          if (!s.bandId) return s;
-          const band = bands.find((b) => b.id === s.bandId);
-          if (!band) return s;
-          const isAllowed =
-            band.allowedDayIds.length === 0 || band.allowedDayIds.includes(day.id);
-          return isAllowed ? s : { ...s, bandId: null };
-        });
-        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
-      });
+      const bands = autoResolveBandDays(state.bands, state.days);
+      const days = clearDisallowedPlacements(state.days, bands);
       return { bands, days };
     }),
 
@@ -297,9 +326,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   updateDayDate: (dayId, date) =>
-    set((state) => ({
-      days: state.days.map((d) => (d.id === dayId ? { ...d, date } : d)),
-    })),
+    set((state) => {
+      const days = state.days.map((d) => (d.id === dayId ? { ...d, date } : d));
+      const bands = autoResolveBandDays(state.bands, days);
+      return { bands, days: clearDisallowedPlacements(days, bands) };
+    }),
 
   setActiveDay: (dayId) => set({ activeDayId: dayId }),
 

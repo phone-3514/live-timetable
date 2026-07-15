@@ -66,10 +66,10 @@ export function DayTabs() {
       </button>
       <button
         onClick={autoDetectDayRestrictions}
-        className="self-start rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-        title="バンドの希望/NG時間帯にある「13日」等の日付表記と、各日の日付を照合して出演可能日を自動判定します（手動設定は上書きされます）"
+        className="self-start rounded-lg border border-slate-300 px-3 py-1 text-xs text-slate-400 hover:bg-slate-50"
+        title="通常は不要です（貼り付け・希望/NG時間帯の編集・日付の設定のたびに自動で判定されます）。バンドカードで手動変更した出演可能日を、希望/NG時間帯のテキストが示す内容にリセットしたいときに使います"
       >
-        日程を自動判定
+        日程を再判定（リセット）
       </button>
     </div>
   );
