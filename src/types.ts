@@ -25,3 +25,10 @@ export type TimetableSettings = {
   performanceMinutes: number;
   transitionMinutes: number;
 };
+
+export type TimetableDay = {
+  id: string;
+  label: string;
+  settings: TimetableSettings;
+  slots: TimetableSlot[];
+};

@@ -1,11 +1,11 @@
 import { useDroppable } from "@dnd-kit/core";
-import { useAppStore } from "../store/useAppStore";
+import { getPlacedBandIds, useAppStore } from "../store/useAppStore";
 import { BandCard } from "./BandCard";
 
 export function BandListPanel() {
   const bands = useAppStore((s) => s.bands);
-  const slots = useAppStore((s) => s.slots);
-  const placedIds = new Set(slots.map((s) => s.bandId).filter(Boolean));
+  const days = useAppStore((s) => s.days);
+  const placedIds = getPlacedBandIds(days);
   const unplaced = bands.filter((b) => !placedIds.has(b.id));
 
   const { setNodeRef, isOver } = useDroppable({ id: "unplaced" });

@@ -3,6 +3,7 @@ import { toPng } from "html-to-image";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
+import { DayTabs } from "./DayTabs";
 
 const CUSTOM_PRESETS = [
   { label: "休憩", minutes: 10 },
@@ -11,12 +12,16 @@ const CUSTOM_PRESETS = [
 ];
 
 export function Timetable() {
-  const slots = useAppStore((s) => s.slots);
+  const days = useAppStore((s) => s.days);
+  const activeDayId = useAppStore((s) => s.activeDayId);
   const bands = useAppStore((s) => s.bands);
-  const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const addSlot = useAppStore((s) => s.addSlot);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
+
+  const activeDay = days.find((d) => d.id === activeDayId) ?? days[0];
+  const slots = activeDay.slots;
+  const settings = activeDay.settings;
 
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflicts = getMemberConflictSlotIds(slots, bands);
@@ -29,7 +34,7 @@ export function Timetable() {
       pixelRatio: 2,
     });
     const link = document.createElement("a");
-    link.download = "timetable.png";
+    link.download = `timetable-${activeDay.label}.png`;
     link.href = dataUrl;
     link.click();
   };
@@ -41,18 +46,24 @@ export function Timetable() {
         : (slot.customLabel ?? "(未定)");
       return `${slot.startTime}-${slot.endTime}  ${label}`;
     });
-    await navigator.clipboard.writeText(lines.join("\n"));
+    await navigator.clipboard.writeText(
+      [`${activeDay.label}`, ...lines].join("\n"),
+    );
   };
 
   return (
     <div className="flex flex-col gap-4">
+      <DayTabs />
+
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <label className="flex flex-col gap-1 text-sm text-slate-600">
           開始時刻
           <input
             type="time"
             value={settings.startTime}
-            onChange={(e) => updateSettings({ startTime: e.target.value })}
+            onChange={(e) =>
+              updateSettings(activeDay.id, { startTime: e.target.value })
+            }
             className="rounded border border-slate-300 px-2 py-1"
           />
         </label>
@@ -63,7 +74,9 @@ export function Timetable() {
             min={1}
             value={settings.performanceMinutes}
             onChange={(e) =>
-              updateSettings({ performanceMinutes: Number(e.target.value) })
+              updateSettings(activeDay.id, {
+                performanceMinutes: Number(e.target.value),
+              })
             }
             className="w-24 rounded border border-slate-300 px-2 py-1"
           />
@@ -75,7 +88,9 @@ export function Timetable() {
             min={0}
             value={settings.transitionMinutes}
             onChange={(e) =>
-              updateSettings({ transitionMinutes: Number(e.target.value) })
+              updateSettings(activeDay.id, {
+                transitionMinutes: Number(e.target.value),
+              })
             }
             className="w-24 rounded border border-slate-300 px-2 py-1"
           />
@@ -97,7 +112,7 @@ export function Timetable() {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-500">枠を追加：</span>
         <button
-          onClick={addSlot}
+          onClick={() => addSlot(activeDay.id)}
           className="rounded bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700"
         >
           + 演奏枠
@@ -105,7 +120,9 @@ export function Timetable() {
         {CUSTOM_PRESETS.map((preset) => (
           <button
             key={preset.label}
-            onClick={() => addCustomSlot(preset.label, preset.minutes)}
+            onClick={() =>
+              addCustomSlot(activeDay.id, preset.label, preset.minutes)
+            }
             className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-700 hover:bg-amber-100"
           >
             + {preset.label}
@@ -126,6 +143,7 @@ export function Timetable() {
           {slots.map((slot, i) => (
             <SlotCard
               key={slot.id}
+              dayId={activeDay.id}
               slot={slot}
               band={slot.bandId ? bandMap.get(slot.bandId) : undefined}
               index={i}

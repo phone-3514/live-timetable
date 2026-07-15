@@ -5,6 +5,7 @@ import { useAppStore } from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
 
 type Props = {
+  dayId: string;
   slot: TimetableSlot;
   band: Band | undefined;
   index: number;
@@ -12,10 +13,10 @@ type Props = {
   conflict: boolean;
 };
 
-export function SlotCard({ slot, band, index, total, conflict }: Props) {
+export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
-  const updateSlot = useAppStore((s) => s.updateSlot);
+  const updateSlotContent = useAppStore((s) => s.updateSlotContent);
 
   const {
     setNodeRef,
@@ -74,7 +75,7 @@ export function SlotCard({ slot, band, index, total, conflict }: Props) {
             className="flex-1 bg-transparent font-semibold text-amber-800 outline-none"
             value={slot.customLabel ?? ""}
             onChange={(e) =>
-              updateSlot(slot.id, { customLabel: e.target.value })
+              updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
             }
           />
           <input
@@ -83,7 +84,7 @@ export function SlotCard({ slot, band, index, total, conflict }: Props) {
             className="w-16 bg-transparent text-right text-sm text-amber-700 outline-none"
             value={slot.customDurationMinutes ?? ""}
             onChange={(e) =>
-              updateSlot(slot.id, {
+              updateSlotContent(dayId, slot.id, {
                 customDurationMinutes: e.target.value
                   ? Number(e.target.value)
                   : null,
@@ -141,7 +142,7 @@ export function SlotCard({ slot, band, index, total, conflict }: Props) {
 
       <div className="flex flex-col justify-center gap-1">
         <button
-          onClick={() => moveSlot(slot.id, "up")}
+          onClick={() => moveSlot(dayId, slot.id, "up")}
           disabled={index === 0}
           className="px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-20"
           title="上に移動"
@@ -149,7 +150,7 @@ export function SlotCard({ slot, band, index, total, conflict }: Props) {
           ▲
         </button>
         <button
-          onClick={() => moveSlot(slot.id, "down")}
+          onClick={() => moveSlot(dayId, slot.id, "down")}
           disabled={index === total - 1}
           className="px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-20"
           title="下に移動"
@@ -158,7 +159,7 @@ export function SlotCard({ slot, band, index, total, conflict }: Props) {
         </button>
       </div>
       <button
-        onClick={() => removeSlot(slot.id)}
+        onClick={() => removeSlot(dayId, slot.id)}
         className="self-center text-sm text-slate-300 hover:text-rose-500"
         title="枠を削除"
       >

@@ -6,7 +6,7 @@ import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 
 function App() {
-  const slots = useAppStore((s) => s.slots);
+  const days = useAppStore((s) => s.days);
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
   const reorderSlots = useAppStore((s) => s.reorderSlots);
@@ -20,7 +20,9 @@ function App() {
     if (activeId.startsWith("band:")) {
       const bandId = activeId.replace("band:", "");
       if (overId === "unplaced") {
-        const slot = slots.find((s) => s.bandId === bandId);
+        const slot = days
+          .flatMap((d) => d.slots)
+          .find((s) => s.bandId === bandId);
         if (slot) unassignSlot(slot.id);
       } else {
         assignBandToSlot(bandId, overId);
