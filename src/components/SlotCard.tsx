@@ -143,6 +143,22 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                     ({band.durationMinutes}分)
                   </span>
                 )}
+                {band.hasSync && (
+                  <span
+                    className="ml-2 rounded border border-violet-300 bg-violet-50 px-1 text-xs font-normal text-violet-700"
+                    title="同期演奏あり"
+                  >
+                    🔌 同期
+                  </span>
+                )}
+                {band.hasKeyboard && (
+                  <span
+                    className="ml-1 rounded border border-sky-300 bg-sky-50 px-1 text-xs font-normal text-sky-700"
+                    title="キーボードあり"
+                  >
+                    🎹 Key
+                  </span>
+                )}
               </p>
               <p className="text-xs text-slate-500">
                 {band.members.join(", ")}

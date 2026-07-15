@@ -11,6 +11,13 @@ export type Band = {
   // calendar date via resolveAllowedDayIds — but always manually editable
   // afterward via the per-band day toggles.
   allowedDayIds: string[];
+  // Equipment flags auto-detected from the application text (同期演奏 /
+  // Key./キーボード/鍵盤 mentions), manually correctable. Not yet used to
+  // change scheduling behavior, but kept as plain booleans so a future rule
+  // (e.g. "add extra transition time around sync/keyboard bands") can read
+  // them directly off the Band without another parsing pass.
+  hasSync: boolean;
+  hasKeyboard: boolean;
   raw: string;
   parseWarning?: string;
 };

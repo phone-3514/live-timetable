@@ -1,30 +1,59 @@
 import type { Band } from "../types";
 
-// ---------- Date hints (e.g. "13日", "14日のみ") ----------
+// A day-of-month must be a real calendar day (1-31). Listing the longer
+// alternatives first lets regex backtracking self-correct glued digit runs:
+// e.g. in "9/514:00" greedily reading "51" as the day fails this alternation
+// (no valid branch matches "51"), so the engine falls back to the 1-digit
+// "5" and leaves "14:00" for the time-token matcher to pick up — the date
+// and time separate themselves without any dedicated "de-glue" step.
+const DAY_NUM_SRC = String.raw`(?:3[01]|[12]\d|[1-9])`;
+
+// ---------- Date hints (e.g. "13日", "14日のみ", "7/13", "9/5") ----------
 //
 // Multi-day events are often specified by organizers as concrete calendar
-// dates ("13日", "14日") rather than "1日目"/"2日目". These hints get
-// resolved into actual TimetableDay ids later (once the organizer has set
-// each day's calendar date) via resolveAllowedDayIds in the store.
+// dates rather than "1日目"/"2日目". These hints get resolved into actual
+// TimetableDay ids later (once the organizer has set each day's calendar
+// date) via resolveAllowedDayIds in the store. Only the day-of-month is
+// kept (month is ignored) — see resolveAllowedDayIds for why that's safe
+// for short multi-day events.
+const DAY_SUFFIX_RE = new RegExp(`(${DAY_NUM_SRC})\\s*日`, "g");
+const SLASH_DATE_RE = new RegExp(`\\d{1,2}\\/(${DAY_NUM_SRC})`, "g");
 
 export function extractDayOfMonthHints(text: string): number[] {
   if (!text) return [];
-  const matches = [...text.matchAll(/(\d{1,2})\s*日/g)];
-  return [...new Set(matches.map((m) => Number(m[1])))];
+  const hits = new Set<number>();
+  for (const m of text.matchAll(DAY_SUFFIX_RE)) hits.add(Number(m[1]));
+  for (const m of text.matchAll(SLASH_DATE_RE)) hits.add(Number(m[1]));
+  return [...hits];
 }
 
-// ---------- Time-of-day hints (e.g. "18:00-19:00", "10時〜14時") ----------
+// ---------- Time-of-day hints (e.g. "18:00-19:00", "10時〜14時", -----------
+// ---------- "14時以降", "〜14:00", "14時まで") -----------------------------
 //
 // Pulled directly from desiredTime/ngTime whenever needed (not stored on
 // the Band) so edits to those free-text fields stay automatically in sync.
 // "終日" (all day) and similar free text with no parseable range simply
 // yield null, which callers already treat as "no time restriction".
+//
+// A range can be open-ended: startMinutes/endMinutes is null when the text
+// only bounds one side ("14時以降" = from 14:00 onward, "〜14:00"/"14時まで"
+// = up until 14:00).
 
 // A time token must carry an explicit hour marker (":"/"："/"時") so this
 // never matches an unrelated bare number like the "1" in a setlist line.
 const TIME_TOKEN_SRC = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分)?)`;
 const TIME_RANGE_RE = new RegExp(
   `(${TIME_TOKEN_SRC})\\s*[-~〜ー]\\s*(${TIME_TOKEN_SRC})`,
+);
+// Checked only once a closed range has failed to match, so any remaining
+// "token then separator/以降/以後/から" is unambiguously open-ended.
+const OPEN_AFTER_RE = new RegExp(
+  `(${TIME_TOKEN_SRC})\\s*(?:[-~〜ー]|以降|以後|から)`,
+);
+// Same reasoning in the other direction: "separator then token" with no
+// preceding token, or an explicit "まで" (until) suffix.
+const OPEN_BEFORE_RE = new RegExp(
+  `[-~〜ー]\\s*(${TIME_TOKEN_SRC})|(${TIME_TOKEN_SRC})\\s*まで`,
 );
 
 function parseTimeToken(token: string): number | null {
@@ -43,17 +72,56 @@ function toMinutes(hour: number, minute: number): number | null {
   return hour * 60 + minute;
 }
 
-export type TimeRange = { startMinutes: number; endMinutes: number };
+// null bound = unbounded on that side (from the beginning / until the end).
+export type TimeRange = { startMinutes: number | null; endMinutes: number | null };
 
 export function extractTimeRange(text: string): TimeRange | null {
   if (!text) return null;
-  const m = TIME_RANGE_RE.exec(text);
-  if (!m) return null;
-  const startMinutes = parseTimeToken(m[1]);
-  const endMinutes = parseTimeToken(m[2]);
-  if (startMinutes === null || endMinutes === null) return null;
-  if (endMinutes <= startMinutes) return null;
-  return { startMinutes, endMinutes };
+
+  const closed = TIME_RANGE_RE.exec(text);
+  if (closed) {
+    const startMinutes = parseTimeToken(closed[1]);
+    const endMinutes = parseTimeToken(closed[2]);
+    if (startMinutes !== null && endMinutes !== null && endMinutes > startMinutes) {
+      return { startMinutes, endMinutes };
+    }
+  }
+
+  const openAfter = OPEN_AFTER_RE.exec(text);
+  if (openAfter) {
+    const startMinutes = parseTimeToken(openAfter[1]);
+    if (startMinutes !== null) return { startMinutes, endMinutes: null };
+  }
+
+  const openBefore = OPEN_BEFORE_RE.exec(text);
+  if (openBefore) {
+    const endMinutes = parseTimeToken(openBefore[1] ?? openBefore[2]);
+    if (endMinutes !== null) return { startMinutes: null, endMinutes };
+  }
+
+  return null;
+}
+
+// ---------- Equipment hints (同期演奏 / キーボード) ----------
+//
+// An explicit "同期演奏：あり/なし" answer (common in the chat-log format)
+// is authoritative; otherwise fall back to scanning the band's whole text
+// for the keyword (covers the table-paste format, which has no such
+// heading, and free-text mentions like "オケ音源を使用").
+const SYNC_ANSWER_RE = /同期演奏\s*[:：]?\s*(あり|なし|有|無)/;
+const SYNC_KEYWORD_RE = /同期|オケ|PC/;
+const KEYBOARD_KEYWORD_RE = /key|キーボード|鍵盤/i;
+
+export function detectHasSync(text: string): boolean {
+  if (!text) return false;
+  const explicit = SYNC_ANSWER_RE.exec(text);
+  if (explicit) return explicit[1] === "あり" || explicit[1] === "有";
+  return SYNC_KEYWORD_RE.test(text);
+}
+
+export function detectHasKeyboard(text: string): boolean {
+  if (!text) return false;
+  return KEYBOARD_KEYWORD_RE.test(text);
 }
 
 // ---------- Format detection ----------
@@ -152,6 +220,8 @@ function parseTableBands(rawText: string): Band[] {
       desiredTime,
       ngTime,
       allowedDayIds: [],
+      hasSync: detectHasSync(line),
+      hasKeyboard: detectHasKeyboard(line),
       raw: line,
       parseWarning,
     };
@@ -269,6 +339,14 @@ function parseChatLogBands(rawText: string): Band[] {
       parseWarning = "メンバーを検出できませんでした。手動で確認・修正してください";
     }
 
+    // The next band's submitter/timestamp header line can land inside this
+    // block's raw range (see HEADER_LINE_RE above) — excluded here too so
+    // it can't leak into hasSync/hasKeyboard keyword scanning or the raw
+    // debug field, the same way it's already excluded from members.
+    const blockText = blockLines
+      .filter((l) => !HEADER_LINE_RE.test(l))
+      .join(" / ");
+
     return {
       id: crypto.randomUUID(),
       name: name || "(バンド名未設定)",
@@ -277,7 +355,9 @@ function parseChatLogBands(rawText: string): Band[] {
       ngTime: "",
       durationMinutes,
       allowedDayIds: [],
-      raw: blockLines.join(" / "),
+      hasSync: detectHasSync(blockText),
+      hasKeyboard: detectHasKeyboard(blockText),
+      raw: blockText,
       parseWarning,
     };
   });

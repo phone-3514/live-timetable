@@ -84,6 +84,32 @@ export function BandCard({ band }: Props) {
               }
             />
           </div>
+          <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => updateBand(band.id, { hasSync: !band.hasSync })}
+              className={`rounded border px-1.5 py-0.5 text-xs ${
+                band.hasSync
+                  ? "border-violet-300 bg-violet-50 text-violet-700"
+                  : "border-slate-200 bg-white text-slate-300"
+              }`}
+              title="クリックして同期演奏の有無を切り替え"
+            >
+              🔌 同期
+            </button>
+            <button
+              onClick={() =>
+                updateBand(band.id, { hasKeyboard: !band.hasKeyboard })
+              }
+              className={`rounded border px-1.5 py-0.5 text-xs ${
+                band.hasKeyboard
+                  ? "border-sky-300 bg-sky-50 text-sky-700"
+                  : "border-slate-200 bg-white text-slate-300"
+              }`}
+              title="クリックしてキーボードの有無を切り替え"
+            >
+              🎹 Key
+            </button>
+          </div>
           {days.length > 1 && (
             <div className="flex flex-wrap gap-1">
               {days.map((day) => {

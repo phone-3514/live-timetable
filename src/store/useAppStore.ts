@@ -10,6 +10,7 @@ import {
   extractDayOfMonthHints,
   extractTimeRange,
   parseBands,
+  type TimeRange,
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 
@@ -102,13 +103,17 @@ function updateDaySlots(
   });
 }
 
-function rangesOverlap(
-  aStart: number,
-  aEnd: number,
-  bStart: number,
-  bEnd: number,
+// A null bound in a TimeRange means "unbounded on that side" (e.g. "14時
+//以降" has no end). Treating null as ±Infinity lets the same overlap check
+// handle closed and open-ended ranges uniformly.
+function slotOverlapsRange(
+  slotStart: number,
+  slotEnd: number,
+  range: TimeRange,
 ): boolean {
-  return aStart < bEnd && bStart < aEnd;
+  const rangeStart = range.startMinutes ?? -Infinity;
+  const rangeEnd = range.endMinutes ?? Infinity;
+  return slotStart < rangeEnd && rangeStart < slotEnd;
 }
 
 // Combined date + time-of-day eligibility check, used both to guard
@@ -129,18 +134,12 @@ export function canPlaceBandInSlot(
   const slotEnd = timeToMinutes(slot.endTime);
 
   const ngRange = extractTimeRange(band.ngTime);
-  if (
-    ngRange &&
-    rangesOverlap(slotStart, slotEnd, ngRange.startMinutes, ngRange.endMinutes)
-  ) {
+  if (ngRange && slotOverlapsRange(slotStart, slotEnd, ngRange)) {
     return false;
   }
 
   const desiredRange = extractTimeRange(band.desiredTime);
-  if (
-    desiredRange &&
-    !rangesOverlap(slotStart, slotEnd, desiredRange.startMinutes, desiredRange.endMinutes)
-  ) {
+  if (desiredRange && !slotOverlapsRange(slotStart, slotEnd, desiredRange)) {
     return false;
   }
 
