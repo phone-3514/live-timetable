@@ -58,7 +58,7 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
         // above, otherwise clicking delete would also kick off a drag.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => deleteBand(band.id)}
-        className="shrink-0 text-slate-500 hover:text-rose-400"
+        className="-my-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70"
         title="削除"
       >
         ×

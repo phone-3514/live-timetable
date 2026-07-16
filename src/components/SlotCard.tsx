@@ -12,9 +12,18 @@ type Props = {
   index: number;
   total: number;
   conflict: boolean;
+  performanceOrder: number | null;
 };
 
-export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
+export function SlotCard({
+  dayId,
+  slot,
+  band,
+  index,
+  total,
+  conflict,
+  performanceOrder,
+}: Props) {
   const [showSetlist, setShowSetlist] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
@@ -93,6 +102,17 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
       >
         ⠿
       </button>
+
+      {performanceOrder !== null && (
+        <div className="flex w-5 shrink-0 items-center justify-center">
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold leading-none text-white"
+            title={`出演順 ${performanceOrder}番目`}
+          >
+            {performanceOrder}
+          </span>
+        </div>
+      )}
 
       <div className="flex w-16 shrink-0 flex-col justify-center font-mono text-xs text-slate-300">
         <span>{slot.startTime}</span>

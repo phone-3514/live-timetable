@@ -205,17 +205,30 @@ export function DayPanel({ day, daysCount }: Props) {
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-col gap-1.5">
-            {slots.map((slot, i) => (
-              <SlotCard
-                key={slot.id}
-                dayId={day.id}
-                slot={slot}
-                band={slot.bandId ? bandMap.get(slot.bandId) : undefined}
-                index={i}
-                total={slots.length}
-                conflict={conflicts.has(slot.id)}
-              />
-            ))}
+            {(() => {
+              // Performance order only counts slots that actually have a
+              // band (breaks/custom slots and empty slots don't get a
+              // number), recomputed fresh from the current slot order on
+              // every render, so reordering or dropping a band in always
+              // keeps the numbering correct automatically.
+              let order = 0;
+              return slots.map((slot, i) => {
+                const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
+                if (band) order++;
+                return (
+                  <SlotCard
+                    key={slot.id}
+                    dayId={day.id}
+                    slot={slot}
+                    band={band}
+                    index={i}
+                    total={slots.length}
+                    conflict={conflicts.has(slot.id)}
+                    performanceOrder={band ? order : null}
+                  />
+                );
+              });
+            })()}
           </div>
         </SortableContext>
       </div>
