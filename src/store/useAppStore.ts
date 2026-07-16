@@ -27,7 +27,6 @@ type AppState = {
   rawText: string;
   bands: Band[];
   days: TimetableDay[];
-  activeDayId: string;
   venueHours: VenueHours;
   lastDeleted: DeletedBandSnapshot | null;
 
@@ -45,7 +44,6 @@ type AppState = {
   removeDay: (dayId: string) => void;
   renameDay: (dayId: string, label: string) => void;
   updateDayDate: (dayId: string, date: string | null) => void;
-  setActiveDay: (dayId: string) => void;
 
   addSlot: (dayId: string) => void;
   addSlots: (dayId: string, count: number) => void;
@@ -64,7 +62,8 @@ type AppState = {
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
-  autoScheduleDay: (dayId: string) => void;
+  autoScheduleAllDays: () => void;
+  resetAllPlacements: () => void;
 };
 
 function defaultSettings(): TimetableSettings {
@@ -249,7 +248,6 @@ export const useAppStore = create<AppState>((set) => ({
   rawText: "",
   bands: [],
   days: initialDays,
-  activeDayId: initialDays[0].id,
   venueHours: DEFAULT_VENUE_HOURS,
   lastDeleted: null,
 
@@ -369,16 +367,13 @@ export const useAppStore = create<AppState>((set) => ({
   addDay: () =>
     set((state) => {
       const day = makeDay(`${state.days.length + 1}日目`);
-      return { days: [...state.days, day], activeDayId: day.id };
+      return { days: [...state.days, day] };
     }),
 
   removeDay: (dayId) =>
     set((state) => {
       if (state.days.length <= 1) return state;
-      const days = state.days.filter((d) => d.id !== dayId);
-      const activeDayId =
-        state.activeDayId === dayId ? days[0].id : state.activeDayId;
-      return { days, activeDayId };
+      return { days: state.days.filter((d) => d.id !== dayId) };
     }),
 
   renameDay: (dayId, label) =>
@@ -392,8 +387,6 @@ export const useAppStore = create<AppState>((set) => ({
       const bands = autoResolveBandDays(state.bands, days);
       return { bands, days: clearDisallowedPlacements(days, bands) };
     }),
-
-  setActiveDay: (dayId) => set({ activeDayId: dayId }),
 
   addSlot: (dayId) =>
     set((state) => ({
@@ -518,60 +511,132 @@ export const useAppStore = create<AppState>((set) => ({
       }),
     })),
 
-  // Greedy best-effort scheduler for one day's empty performance slots.
-  // Fills slots in order; each slot's own startTime/endTime is re-read
-  // fresh on every iteration since an earlier assignment in this same run
-  // can shift every later slot's time (bands' durations differ from the
-  // day's default, cascading through recomputeTimes) — a static
-  // pre-computed eligibility table would go stale mid-run otherwise.
-  // Slots this can't fill (no eligible band left) are simply skipped, and
-  // whatever remains in the pool stays in the unplaced list.
-  autoScheduleDay: (dayId) =>
+  // Greedy best-effort scheduler across ALL days at once. Two phases:
+  //
+  // 1. Balance: split the unplaced pool across days so each ends up with
+  //    as close to an equal band count as possible, without violating a
+  //    hard date restriction — a band greedily joins whichever of its
+  //    eligible days currently has the smaller running total (which
+  //    starts from that day's already-filled slot count, so pre-existing
+  //    manual placements count toward the balance too). Each day's empty
+  //    performance-slot count is then topped up or trimmed to match its
+  //    target, per the request to add/remove slots automatically.
+  //
+  // 2. Fill: same per-day greedy fill as before (eligibility +
+  //    neighbor-conflict avoidance), run once per day using only that
+  //    day's balanced target list. Re-reads each slot's time fresh every
+  //    iteration since an earlier assignment's duration can cascade and
+  //    shift later slots.
+  //
+  // Bands with no eligible day, or that don't fit any slot's time window
+  // on their assigned day, simply stay unplaced — this never forces a bad
+  // placement to hit a perfectly even split.
+  autoScheduleAllDays: () =>
     set((state) => {
-      const day = state.days.find((d) => d.id === dayId);
-      if (!day) return state;
-
+      if (state.days.length === 0) return state;
       const placedElsewhere = getPlacedBandIds(state.days);
-      let pool = state.bands.filter((b) => !placedElsewhere.has(b.id));
+      const pool = state.bands.filter((b) => !placedElsewhere.has(b.id));
+      if (pool.length === 0) return state;
+
+      const dayIds = state.days.map((d) => d.id);
+      const targetByDay = new Map<string, Band[]>(dayIds.map((id) => [id, []]));
+      const runningTotal = new Map<string, number>(
+        state.days.map((d) => [
+          d.id,
+          d.slots.filter((s) => s.bandId !== null).length,
+        ]),
+      );
+
+      for (const band of pool) {
+        const eligibleDayIds =
+          band.allowedDayIds.length > 0
+            ? dayIds.filter((id) => band.allowedDayIds.includes(id))
+            : dayIds;
+        if (eligibleDayIds.length === 0) continue;
+        let best = eligibleDayIds[0];
+        for (const id of eligibleDayIds) {
+          if ((runningTotal.get(id) ?? 0) < (runningTotal.get(best) ?? 0)) {
+            best = id;
+          }
+        }
+        targetByDay.get(best)!.push(band);
+        runningTotal.set(best, (runningTotal.get(best) ?? 0) + 1);
+      }
+
       let days = state.days;
+      for (const day of state.days) {
+        const target = targetByDay.get(day.id) ?? [];
+        const emptySlotCount = day.slots.filter(
+          (s) => s.bandId === null && s.customLabel === null,
+        ).length;
+        const diff = target.length - emptySlotCount;
+        if (diff > 0) {
+          days = updateDaySlots(days, day.id, state.bands, (slots) => [
+            ...slots,
+            ...Array.from({ length: diff }, () => makeBlankSlot()),
+          ]);
+        } else if (diff < 0) {
+          let toRemove = -diff;
+          days = updateDaySlots(days, day.id, state.bands, (slots) =>
+            slots.filter((s) => {
+              if (toRemove > 0 && s.bandId === null && s.customLabel === null) {
+                toRemove--;
+                return false;
+              }
+              return true;
+            }),
+          );
+        }
+      }
 
-      for (let i = 0; i < day.slots.length; i++) {
-        const currentDay = days.find((d) => d.id === dayId)!;
-        const slot = currentDay.slots[i];
-        if (slot.bandId !== null || slot.customLabel !== null) continue;
+      for (const dayId of dayIds) {
+        let dayPool = targetByDay.get(dayId) ?? [];
+        const slotCount = days.find((d) => d.id === dayId)!.slots.length;
+        for (let i = 0; i < slotCount; i++) {
+          const currentDay = days.find((d) => d.id === dayId)!;
+          const slot = currentDay.slots[i];
+          if (slot.bandId !== null || slot.customLabel !== null) continue;
 
-        const eligible = pool.filter((b) =>
-          canPlaceBandInSlot(b, currentDay, slot, state.venueHours),
-        );
-        if (eligible.length === 0) continue;
+          const eligible = dayPool.filter((b) =>
+            canPlaceBandInSlot(b, currentDay, slot, state.venueHours),
+          );
+          if (eligible.length === 0) continue;
 
-        // Prefer a candidate that doesn't share a member with whichever
-        // band is in the immediately adjacent slot(s), to avoid the same
-        // person performing back-to-back.
-        const prevBand = bandInSlot(currentDay.slots[i - 1], state.bands);
-        const nextBand = bandInSlot(currentDay.slots[i + 1], state.bands);
-        const neighborMembers = new Set([
-          ...(prevBand?.members ?? []),
-          ...(nextBand?.members ?? []),
-        ]);
-        const nonConflicting = eligible.filter(
-          (b) => !b.members.some((m) => neighborMembers.has(m)),
-        );
-        const chosen = (nonConflicting.length > 0 ? nonConflicting : eligible)[0];
+          const prevBand = bandInSlot(currentDay.slots[i - 1], state.bands);
+          const nextBand = bandInSlot(currentDay.slots[i + 1], state.bands);
+          const neighborMembers = new Set([
+            ...(prevBand?.members ?? []),
+            ...(nextBand?.members ?? []),
+          ]);
+          const nonConflicting = eligible.filter(
+            (b) => !b.members.some((m) => neighborMembers.has(m)),
+          );
+          const chosen = (nonConflicting.length > 0 ? nonConflicting : eligible)[0];
 
-        days = days.map((d) => {
-          const slots = d.slots.map((s) => {
-            if (d.id === dayId && s.id === slot.id) return { ...s, bandId: chosen.id };
-            if (s.bandId === chosen.id) return { ...s, bandId: null };
-            return s;
+          days = days.map((d) => {
+            const slots = d.slots.map((s) => {
+              if (d.id === dayId && s.id === slot.id) return { ...s, bandId: chosen.id };
+              if (s.bandId === chosen.id) return { ...s, bandId: null };
+              return s;
+            });
+            return { ...d, slots: recomputeTimes(slots, d.settings, state.bands) };
           });
-          return { ...d, slots: recomputeTimes(slots, d.settings, state.bands) };
-        });
-        pool = pool.filter((b) => b.id !== chosen.id);
+          dayPool = dayPool.filter((b) => b.id !== chosen.id);
+        }
       }
 
       return { days };
     }),
+
+  resetAllPlacements: () =>
+    set((state) => ({
+      days: state.days.map((day) => {
+        const slots = day.slots.map((s) =>
+          s.bandId !== null ? { ...s, bandId: null } : s,
+        );
+        return { ...day, slots: recomputeTimes(slots, day.settings, state.bands) };
+      }),
+    })),
 }));
 
 function bandInSlot(

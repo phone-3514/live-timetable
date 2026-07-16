@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useDndContext, useDraggable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
+  const [showSetlist, setShowSetlist] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
@@ -164,11 +166,36 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                   </span>
                 )}
                 {band.setlist.length > 0 && (
-                  <span
-                    className="ml-1 rounded border border-emerald-500 bg-emerald-950/50 px-1 text-xs font-normal text-emerald-300"
-                    title={`セットリスト:\n${band.setlist.join("\n")}`}
-                  >
-                    🎵
+                  <span className="relative ml-1 inline-block">
+                    <button
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => setShowSetlist((v) => !v)}
+                      onMouseEnter={() => setShowSetlist(true)}
+                      onMouseLeave={() => setShowSetlist(false)}
+                      className="rounded border border-emerald-500 bg-emerald-950/50 px-1 text-xs font-normal text-emerald-300"
+                      title="演奏予定曲（クリックまたはホバーで表示）"
+                    >
+                      🎵
+                    </button>
+                    {showSetlist && (
+                      // pointer-events-none so this read-only popup can
+                      // never intercept clicks/hover on neighboring slots
+                      // or drag targets underneath it — it's purely a
+                      // glance-and-go tooltip, nothing inside needs to be
+                      // clickable.
+                      <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-slate-700 bg-slate-800 p-2 text-left shadow-lg shadow-black/50">
+                        <p className="mb-0.5 text-xs font-semibold text-slate-400">
+                          🎵 セットリスト
+                        </p>
+                        <ul className="space-y-0.5 text-xs font-normal text-slate-200">
+                          {band.setlist.map((song, i) => (
+                            <li key={i} className="truncate">
+                              {song}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </span>
                 )}
                 {band.customTransitionMinutes != null && (
