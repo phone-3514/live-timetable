@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useLayoutEffect, useRef, useState } from "react";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
@@ -11,11 +11,25 @@ const CUSTOM_PRESETS = [
   { label: "リハーサル", minutes: 20 },
 ];
 
+// Rough measured height of one SlotCard row including its gap, used to
+// figure out how many rows fit in the available height without scrolling.
+// An estimate rather than a per-row measurement — rows are fairly uniform
+// height in the live UI (band names truncate to one line here, unlike the
+// share image), so this stays close enough in practice.
+// Measured empirically at ~59-60px content height + 6px gap; rounded up a
+// bit further as a safety margin so the estimate errs toward wrapping one
+// column early rather than slightly overflowing a nearly-full one.
+const ROW_HEIGHT_PX = 70;
+const MIN_COLUMN_WIDTH_PX = 300;
+
 type Props = { day: TimetableDay; daysCount: number };
 
 // One day's whole timetable UI — label/date, settings, slot-add controls,
-// and the slot list itself. Rendered side by side per day (see Timetable),
-// each internally scrollable so N days can share one 100vh screen.
+// and the slot list itself. Rendered side by side per day (see Timetable).
+// The slot list no longer scrolls vertically: it wraps into as many
+// columns as fit the day panel's available height, growing sideways
+// (with its own horizontal scroll as a last resort) instead of forcing
+// everything into one long scrolling strip.
 export function DayPanel({ day, daysCount }: Props) {
   const bands = useAppStore((s) => s.bands);
   const renameDay = useAppStore((s) => s.renameDay);
@@ -27,6 +41,20 @@ export function DayPanel({ day, daysCount }: Props) {
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const [rowsPerColumn, setRowsPerColumn] = useState(8);
+
+  useLayoutEffect(() => {
+    const el = listContainerRef.current;
+    if (!el) return;
+    const update = () => {
+      setRowsPerColumn(Math.max(1, Math.floor(el.clientHeight / ROW_HEIGHT_PX)));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const slots = day.slots;
   const settings = day.settings;
@@ -166,47 +194,70 @@ export function DayPanel({ day, daysCount }: Props) {
       </div>
 
       <div
-        // Extra right padding keeps the slot-delete "×" button clear of the
-        // scrollbar that overlays this edge whenever the list overflows —
-        // without it the scrollbar sits right on top of the button.
-        className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-slate-900 py-1.5 pl-1.5 pr-3"
+        ref={listContainerRef}
+        // No vertical scroll — the list wraps into columns (below) that
+        // fill this container's height instead. Horizontal scroll is the
+        // fallback once there are more bands than fit in that many
+        // columns at a readable width, rather than shrinking anything.
+        className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-lg bg-slate-900 p-1.5"
       >
-        {slots.length === 0 && (
+        {slots.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-700 p-3 text-center text-xs text-slate-500">
             上のボタンで枠を作成してください
           </p>
+        ) : (
+          <SortableContext items={slots.map((s) => s.id)} strategy={rectSortingStrategy}>
+            <div className="flex h-full gap-1.5">
+              {(() => {
+                // Performance order only counts slots that actually have a
+                // band (breaks/custom slots and empty slots don't get a
+                // number), computed once over the full original order so
+                // it stays correct regardless of which column a slot lands
+                // in visually.
+                const orderById = new Map<string, number>();
+                let order = 0;
+                for (const slot of slots) {
+                  const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
+                  if (band) orderById.set(slot.id, ++order);
+                }
+
+                // Column-major chunking: column 0 gets the first
+                // rowsPerColumn slots (top to bottom), column 1 the next
+                // batch, and so on — new columns appear as needed instead
+                // of the list growing (and scrolling) downward.
+                const columns: typeof slots[] = [];
+                for (let i = 0; i < slots.length; i += rowsPerColumn) {
+                  columns.push(slots.slice(i, i + rowsPerColumn));
+                }
+
+                return columns.map((column, colIndex) => (
+                  <div
+                    key={colIndex}
+                    className="flex shrink-0 flex-col gap-1.5"
+                    style={{ width: MIN_COLUMN_WIDTH_PX }}
+                  >
+                    {column.map((slot, rowIndex) => {
+                      const globalIndex = colIndex * rowsPerColumn + rowIndex;
+                      const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
+                      return (
+                        <SlotCard
+                          key={slot.id}
+                          dayId={day.id}
+                          slot={slot}
+                          band={band}
+                          index={globalIndex}
+                          total={slots.length}
+                          conflict={conflicts.has(slot.id)}
+                          performanceOrder={orderById.get(slot.id) ?? null}
+                        />
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+          </SortableContext>
         )}
-        <SortableContext
-          items={slots.map((s) => s.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="flex flex-col gap-1.5">
-            {(() => {
-              // Performance order only counts slots that actually have a
-              // band (breaks/custom slots and empty slots don't get a
-              // number), recomputed fresh from the current slot order on
-              // every render, so reordering or dropping a band in always
-              // keeps the numbering correct automatically.
-              let order = 0;
-              return slots.map((slot, i) => {
-                const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
-                if (band) order++;
-                return (
-                  <SlotCard
-                    key={slot.id}
-                    dayId={day.id}
-                    slot={slot}
-                    band={band}
-                    index={i}
-                    total={slots.length}
-                    conflict={conflicts.has(slot.id)}
-                    performanceOrder={band ? order : null}
-                  />
-                );
-              });
-            })()}
-          </div>
-        </SortableContext>
       </div>
 
       {showSharePreview && (

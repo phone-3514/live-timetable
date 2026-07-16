@@ -1,12 +1,17 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { ShareTimetableTemplate, CANVAS_WIDTH } from "./ShareTimetableTemplate";
+import { ShareTimetableTemplate } from "./ShareTimetableTemplate";
 import { THEMES } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import type { TimetableDay } from "../types";
 
-const PREVIEW_WIDTH = 380;
+// The canvas is no longer a fixed size — it's however wide the day's
+// column count makes it (see ShareTimetableTemplate) — so the preview
+// scale is derived from the node's actual measured size rather than a
+// constant ratio, and only shrinks it down (never enlarges a narrow day
+// past 1:1).
+const PREVIEW_MAX_WIDTH = 860;
 
 type Props = { day: TimetableDay; onClose: () => void };
 
@@ -15,19 +20,23 @@ export function SharePreviewModal({ day, onClose }: Props) {
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const [themeId, setThemeId] = useState<ThemeId>("hype");
-  const [naturalHeight, setNaturalHeight] = useState<number | null>(null);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const previewScale = PREVIEW_WIDTH / CANVAS_WIDTH;
 
-  // The preview box needs its own explicit height (from the unscaled
-  // node's real height) because a CSS transform:scale doesn't shrink the
+  // The preview box needs its own explicit size (from the unscaled node's
+  // real dimensions) because a CSS transform:scale doesn't shrink the
   // space an element reserves in normal layout flow — without this the
-  // surrounding modal would size itself for the full-width original.
+  // surrounding modal would size itself for the full-resolution original.
   useLayoutEffect(() => {
     if (previewRef.current) {
-      setNaturalHeight(previewRef.current.offsetHeight);
+      setNaturalSize({
+        width: previewRef.current.offsetWidth,
+        height: previewRef.current.offsetHeight,
+      });
     }
   }, [day, bands, themeId]);
+
+  const previewScale = naturalSize ? Math.min(1, PREVIEW_MAX_WIDTH / naturalSize.width) : 1;
 
   const handleDownload = async () => {
     const el = captureRef.current;
@@ -50,7 +59,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-3">
@@ -93,11 +102,11 @@ export function SharePreviewModal({ day, onClose }: Props) {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-slate-950 p-4">
+        <div className="flex-1 overflow-auto bg-slate-950 p-4">
           <div
             style={{
-              width: PREVIEW_WIDTH,
-              height: naturalHeight ? naturalHeight * previewScale : undefined,
+              width: naturalSize ? naturalSize.width * previewScale : undefined,
+              height: naturalSize ? naturalSize.height * previewScale : undefined,
             }}
             className="mx-auto overflow-hidden rounded-xl shadow-lg"
           >
