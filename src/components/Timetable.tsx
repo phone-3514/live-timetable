@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
 import { DayTabs } from "./DayTabs";
@@ -17,7 +17,9 @@ export function Timetable() {
   const bands = useAppStore((s) => s.bands);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const addSlot = useAppStore((s) => s.addSlot);
+  const addSlots = useAppStore((s) => s.addSlots);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
+  const [bulkCount, setBulkCount] = useState(5);
 
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0];
   const slots = activeDay.slots;
@@ -137,6 +139,23 @@ export function Timetable() {
           >
             + 演奏枠
           </button>
+          <div className="flex items-center rounded border border-indigo-600 overflow-hidden">
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={bulkCount}
+              onChange={(e) => setBulkCount(Number(e.target.value))}
+              aria-label="一括追加する演奏枠数"
+              className="w-12 bg-slate-800 px-2 py-1.5 text-center text-slate-100 outline-none"
+            />
+            <button
+              onClick={() => addSlots(activeDay.id, bulkCount)}
+              className="bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-500"
+            >
+              枠を一括追加
+            </button>
+          </div>
           {CUSTOM_PRESETS.map((preset) => (
             <button
               key={preset.label}
@@ -153,28 +172,55 @@ export function Timetable() {
 
       <div
         ref={exportRef}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg bg-slate-900 p-2"
+        className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-slate-900 p-2"
       >
         {slots.length === 0 && (
           <p className="rounded-lg border border-dashed border-slate-700 p-4 text-center text-sm text-slate-500">
             上のボタンでタイムテーブルの枠を作成してください
           </p>
         )}
+        {/* Two columns so a full day's schedule fits on one screen: the
+            first half of slots (by array order) renders in the left
+            column, the second half in the right, while a single
+            SortableContext spanning both keeps drag-reordering working
+            across the whole list — rectSortingStrategy resolves "closest
+            slot" from actual on-screen position rather than assuming one
+            visual column, so it still works split like this. */}
         <SortableContext
           items={slots.map((s) => s.id)}
-          strategy={verticalListSortingStrategy}
+          strategy={rectSortingStrategy}
         >
-          {slots.map((slot, i) => (
-            <SlotCard
-              key={slot.id}
-              dayId={activeDay.id}
-              slot={slot}
-              band={slot.bandId ? bandMap.get(slot.bandId) : undefined}
-              index={i}
-              total={slots.length}
-              conflict={conflicts.has(slot.id)}
-            />
-          ))}
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              {slots.slice(0, Math.ceil(slots.length / 2)).map((slot, i) => (
+                <SlotCard
+                  key={slot.id}
+                  dayId={activeDay.id}
+                  slot={slot}
+                  band={slot.bandId ? bandMap.get(slot.bandId) : undefined}
+                  index={i}
+                  total={slots.length}
+                  conflict={conflicts.has(slot.id)}
+                />
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              {slots.slice(Math.ceil(slots.length / 2)).map((slot, i) => {
+                const index = Math.ceil(slots.length / 2) + i;
+                return (
+                  <SlotCard
+                    key={slot.id}
+                    dayId={activeDay.id}
+                    slot={slot}
+                    band={slot.bandId ? bandMap.get(slot.bandId) : undefined}
+                    index={index}
+                    total={slots.length}
+                    conflict={conflicts.has(slot.id)}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </SortableContext>
       </div>
     </div>

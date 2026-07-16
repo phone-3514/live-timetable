@@ -18,6 +18,10 @@ export type Band = {
   // them directly off the Band without another parsing pass.
   hasSync: boolean;
   hasKeyboard: boolean;
+  // Per-band override for the transition time that follows this band's
+  // slot (e.g. keyboard/sync bands often need longer changeover). Manually
+  // set only — undefined falls back to the day's default transitionMinutes.
+  customTransitionMinutes?: number;
   raw: string;
   parseWarning?: string;
 };

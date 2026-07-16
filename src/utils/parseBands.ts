@@ -152,21 +152,38 @@ export function extractTimeRange(
 // An explicit "同期演奏：あり/なし" answer (common in the chat-log format)
 // is authoritative; otherwise fall back to scanning the band's whole text
 // for the keyword (covers the table-paste format, which has no such
-// heading, and free-text mentions like "オケ音源を使用").
+// heading, and free-text mentions like "オケ音源を使用"). Either way, a
+// keyword immediately followed by a negation ("オケ無し", "Key不要") must
+// not flag the band as having that equipment — see hasUnnegatedMatch.
 const SYNC_ANSWER_RE = /同期演奏\s*[:：]?\s*(あり|なし|有|無)/;
-const SYNC_KEYWORD_RE = /同期|オケ|PC/;
-const KEYBOARD_KEYWORD_RE = /key|キーボード|鍵盤/i;
+const SYNC_KEYWORD_RE = /同期|オケ|PC/g;
+const KEYBOARD_KEYWORD_RE = /key|キーボード|鍵盤/gi;
+
+// Checked against the text immediately following a keyword match. Allows an
+// optional topic particle ("は"/"も") and/or punctuation between the
+// keyword and the negation word, so both "オケ無し" (glued) and "オケは
+// 使わない" (particle in between) are caught.
+const NEGATION_RE =
+  /^[はも]?\s*[:：、,]?\s*(なし|無し|不要|使わない|使用しない|ありません|無い|いらない)/;
+
+function hasUnnegatedMatch(text: string, keywordRe: RegExp): boolean {
+  for (const m of text.matchAll(keywordRe)) {
+    const after = text.slice(m.index + m[0].length);
+    if (!NEGATION_RE.test(after)) return true;
+  }
+  return false;
+}
 
 export function detectHasSync(text: string): boolean {
   if (!text) return false;
   const explicit = SYNC_ANSWER_RE.exec(text);
   if (explicit) return explicit[1] === "あり" || explicit[1] === "有";
-  return SYNC_KEYWORD_RE.test(text);
+  return hasUnnegatedMatch(text, SYNC_KEYWORD_RE);
 }
 
 export function detectHasKeyboard(text: string): boolean {
   if (!text) return false;
-  return KEYBOARD_KEYWORD_RE.test(text);
+  return hasUnnegatedMatch(text, KEYBOARD_KEYWORD_RE);
 }
 
 // ---------- Format detection ----------

@@ -55,18 +55,35 @@ export function BandDetailsForm({ band }: Props) {
           onChange={(e) => updateBand(band.id, { ngTime: e.target.value })}
         />
       </div>
-      <input
-        type="number"
-        min={1}
-        className="w-24 border-b border-transparent bg-transparent text-xs text-indigo-400 outline-none focus:border-slate-500"
-        value={band.durationMinutes ?? ""}
-        placeholder="演奏時間(分)"
-        onChange={(e) =>
-          updateBand(band.id, {
-            durationMinutes: e.target.value ? Number(e.target.value) : undefined,
-          })
-        }
-      />
+      <div className="flex gap-2 text-xs">
+        <input
+          type="number"
+          min={1}
+          className="w-20 border-b border-transparent bg-transparent text-indigo-400 outline-none focus:border-slate-500"
+          value={band.durationMinutes ?? ""}
+          placeholder="演奏時間(分)"
+          onChange={(e) =>
+            updateBand(band.id, {
+              durationMinutes: e.target.value ? Number(e.target.value) : undefined,
+            })
+          }
+        />
+        <input
+          type="number"
+          min={0}
+          className="w-24 border-b border-transparent bg-transparent text-cyan-400 outline-none focus:border-slate-500"
+          value={band.customTransitionMinutes ?? ""}
+          placeholder="転換時間(分)"
+          title="この後の転換時間を個別に上書きします（未入力なら全体設定を使用）"
+          onChange={(e) =>
+            updateBand(band.id, {
+              customTransitionMinutes: e.target.value
+                ? Number(e.target.value)
+                : undefined,
+            })
+          }
+        />
+      </div>
       <div className="flex flex-wrap gap-1">
         <button
           onClick={() => updateBand(band.id, { hasSync: !band.hasSync })}

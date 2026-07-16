@@ -160,6 +160,14 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                     🎹 Key
                   </span>
                 )}
+                {band.customTransitionMinutes != null && (
+                  <span
+                    className="ml-1 rounded border border-cyan-500 bg-cyan-950/50 px-1 text-xs font-normal text-cyan-300"
+                    title="この後の転換時間（個別設定）"
+                  >
+                    ⏱ +{band.customTransitionMinutes}分
+                  </span>
+                )}
               </p>
               <p className="text-xs text-slate-400">
                 {band.members.join(", ")}
