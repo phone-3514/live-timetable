@@ -94,8 +94,11 @@ function makeBlankSlot(): TimetableSlot {
 // A band's own durationMinutes (parsed from e.g. "演奏時間：10分") overrides
 // the timetable's default performance duration for its slot. Custom rows
 // (休憩・集合・リハーサル) use their own customDurationMinutes instead. The
-// transition AFTER a band's slot similarly falls back to the day's default
-// unless that band has its own customTransitionMinutes (e.g. a keyboard or
+// transition AFTER a slot only applies when that slot is an actual band
+// performance — a transition exists to cover equipment strike/setup between
+// bands, so a break/gathering/rehearsal row (or an empty unplaced slot)
+// shouldn't add one after it. A band's transition falls back to the day's
+// default unless it has its own customTransitionMinutes (e.g. a keyboard or
 // sync-track band that needs longer to strike/set up gear).
 function recomputeTimes(
   slots: TimetableSlot[],
@@ -106,7 +109,7 @@ function recomputeTimes(
   let cursor = timeToMinutes(settings.startTime);
   return slots.map((slot) => {
     let duration = settings.performanceMinutes;
-    let transitionAfter = settings.transitionMinutes;
+    let transitionAfter = 0;
     if (slot.bandId) {
       const band = bandMap.get(slot.bandId);
       duration = band?.durationMinutes ?? settings.performanceMinutes;
