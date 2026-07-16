@@ -1,14 +1,12 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { ShareTimetableTemplate } from "./ShareTimetableTemplate";
+import { ShareTimetableTemplate, CANVAS_WIDTH } from "./ShareTimetableTemplate";
+import { THEMES } from "../utils/shareThemes";
+import type { ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import type { TimetableDay } from "../types";
 
 const PREVIEW_WIDTH = 380;
-// Must match ShareTimetableTemplate's own fixed canvas width — the preview
-// is a CSS-scaled-down view of the same content that gets captured, not a
-// separate mockup, so what you see here is what downloads.
-const CANVAS_WIDTH = 1080;
 
 type Props = { day: TimetableDay; onClose: () => void };
 
@@ -16,6 +14,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
+  const [themeId, setThemeId] = useState<ThemeId>("hype");
   const [naturalHeight, setNaturalHeight] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const previewScale = PREVIEW_WIDTH / CANVAS_WIDTH;
@@ -23,12 +22,12 @@ export function SharePreviewModal({ day, onClose }: Props) {
   // The preview box needs its own explicit height (from the unscaled
   // node's real height) because a CSS transform:scale doesn't shrink the
   // space an element reserves in normal layout flow — without this the
-  // surrounding modal would size itself for the full 1080-wide original.
+  // surrounding modal would size itself for the full-width original.
   useLayoutEffect(() => {
     if (previewRef.current) {
       setNaturalHeight(previewRef.current.offsetHeight);
     }
-  }, [day, bands]);
+  }, [day, bands, themeId]);
 
   const handleDownload = async () => {
     const el = captureRef.current;
@@ -37,7 +36,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
     try {
       const dataUrl = await toPng(el, { pixelRatio: 2 });
       const link = document.createElement("a");
-      link.download = `share-timetable-${day.label}.png`;
+      link.download = `share-timetable-${day.label}-${themeId}.png`;
       link.href = dataUrl;
       link.click();
     } finally {
@@ -67,6 +66,33 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </button>
         </div>
 
+        <div className="flex shrink-0 gap-2 border-b border-slate-800 px-4 py-3">
+          {(Object.values(THEMES)).map((theme) => (
+            <button
+              key={theme.id}
+              onClick={() => setThemeId(theme.id)}
+              title={theme.subtitle}
+              className={`flex-1 rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                themeId === theme.id
+                  ? "border-indigo-400 bg-indigo-950/40"
+                  : "border-slate-700 bg-slate-800 hover:border-slate-500"
+              }`}
+            >
+              <span
+                className="mb-1 block h-3 w-full rounded-full"
+                style={{ background: theme.pageBackground }}
+              />
+              <span
+                className={`block text-xs font-semibold ${
+                  themeId === theme.id ? "text-indigo-200" : "text-slate-300"
+                }`}
+              >
+                {theme.name}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto bg-slate-950 p-4">
           <div
             style={{
@@ -78,14 +104,14 @@ export function SharePreviewModal({ day, onClose }: Props) {
             {/* Scaled-down view for on-screen preview only — never
                 captured. html-to-image sizes its output from the target
                 node's rendered bounding box, which an ancestor's CSS
-                transform DOES affect, so this can't double as the capture
+                transform affects, so this can't double as the capture
                 source (a separate off-screen, always-natural-size copy
                 below is what actually gets downloaded). */}
             <div
               ref={previewRef}
               style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}
             >
-              <ShareTimetableTemplate day={day} bands={bands} />
+              <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} />
             </div>
           </div>
         </div>
@@ -107,16 +133,14 @@ export function SharePreviewModal({ day, onClose }: Props) {
         </div>
       </div>
 
-      {/* Off-screen, always at natural 1080px size and never transformed —
-          the actual source for the downloaded PNG. Positioned off-viewport
-          rather than display:none so it still renders/lays out normally
-          and toPng can capture it. */}
+      {/* Off-screen, always at natural full-resolution size and never
+          transformed — the actual source for the downloaded PNG. */}
       <div
         style={{ position: "fixed", top: 0, left: -10000, pointerEvents: "none" }}
         aria-hidden="true"
       >
         <div ref={captureRef}>
-          <ShareTimetableTemplate day={day} bands={bands} />
+          <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} />
         </div>
       </div>
     </div>

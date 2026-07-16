@@ -1,20 +1,28 @@
 import type { Band, TimetableDay } from "../types";
+import { THEMES } from "../utils/shareThemes";
+import type { ThemeId } from "../utils/shareThemes";
 
 // A purely presentational, non-interactive render of a day's timetable,
 // designed to be captured as a single shareable PNG (Discord/LINE/print) —
 // completely separate from the editing UI in DayPanel/SlotCard, which has
 // scrollbars, drag handles, and buttons that have no place in a shared
-// image. Width is fixed at a mobile-friendly 1080px; height grows with
-// content but the font/spacing scale shrinks as the band count climbs past
-// what comfortably fits a single portrait screen, so a packed day still
-// renders as one clean image instead of endlessly stretching.
-const CANVAS_WIDTH = 1080;
-// Rough pivot point: at this many visible rows (bands + breaks), scale is
-// 1 and the image lands close to a 9:16 (1080x1920) portrait canvas. Fewer
-// rows just leave more breathing room; more rows shrink everything down
-// together, floored at MIN_SCALE so text never gets crushed illegibly.
-const BASE_ROWS_AT_SCALE_1 = 11;
-const MIN_SCALE = 0.55;
+// image.
+//
+// Readability comes first: text wraps instead of being forced onto one
+// line and shrunk to fit, so the canvas is wide enough to give long song
+// titles room, and height simply grows with content rather than being
+// squeezed into a fixed target. The row-count scale below only kicks in
+// for genuinely packed days, and even then stops well short of crushing
+// text illegibly.
+export const CANVAS_WIDTH = 1200;
+// Row count beyond which the scale starts easing down — raised well past
+// a typical day's band count (previously 11) so shrinking is the
+// exception, not the default behavior.
+const BASE_ROWS_AT_SCALE_1 = 16;
+// Floor is much higher than before (was 0.55) — text should never get
+// crushed, so a very packed day grows taller instead of shrinking further.
+const MIN_SCALE = 0.8;
+const MAX_SETLIST_SONGS = 6;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -32,9 +40,10 @@ function formatDate(iso: string | null): string | null {
   }).format(d);
 }
 
-type Props = { day: TimetableDay; bands: Band[] };
+type Props = { day: TimetableDay; bands: Band[]; themeId: ThemeId };
 
-export function ShareTimetableTemplate({ day, bands }: Props) {
+export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
+  const theme = THEMES[themeId];
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   // Fully-empty "still to be filled" slots are a working-draft artifact —
   // they carry no information for an audience, so the shared image only
@@ -53,88 +62,118 @@ export function ShareTimetableTemplate({ day, bands }: Props) {
 
   return (
     <div
-      style={{ width: CANVAS_WIDTH }}
-      className="relative overflow-hidden bg-gradient-to-b from-[#0b0a1f] via-[#161334] to-[#0a0912] p-12 text-white"
+      style={{ width: CANVAS_WIDTH, background: theme.pageBackground }}
+      className="relative overflow-hidden p-14"
     >
-      {/* Ambient glow accents — purely decorative, evoke a live-venue lighting rig */}
-      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-indigo-600/25 blur-3xl" />
-      <div className="pointer-events-none absolute -right-24 top-64 h-80 w-80 rounded-full bg-fuchsia-600/20 blur-3xl" />
+      {theme.glowSpots.map((spot, i) => (
+        <div
+          key={i}
+          className="pointer-events-none absolute rounded-full blur-3xl"
+          style={{
+            background: spot.background,
+            top: spot.top,
+            bottom: spot.bottom,
+            left: spot.left,
+            right: spot.right,
+            width: spot.size,
+            height: spot.size,
+          }}
+        />
+      ))}
 
-      <div className="relative flex flex-col" style={{ gap: 40 * scale }}>
+      <div className="relative flex flex-col" style={{ gap: 44 * scale }}>
         <header className="flex flex-col items-center text-center">
           <span
-            className="font-semibold tracking-[0.35em] text-indigo-300/80"
-            style={{ fontSize: 22 * scale }}
+            className="font-semibold tracking-[0.35em]"
+            style={{ fontSize: 24 * scale, color: theme.kickerColor }}
           >
             LIVE TIMETABLE
           </span>
           <h1
-            className="mt-2 bg-gradient-to-r from-indigo-300 via-white to-fuchsia-300 bg-clip-text font-black leading-none text-transparent"
-            style={{ fontSize: 96 * scale }}
+            className="mt-2 font-black leading-none"
+            style={{
+              fontSize: 108 * scale,
+              ...(theme.dayTitleGradient
+                ? {
+                    backgroundImage: theme.dayTitleGradient,
+                    backgroundClip: "text",
+                    WebkitBackgroundClip: "text",
+                    color: "transparent",
+                  }
+                : { color: theme.dayTitleColor }),
+            }}
           >
             {day.label}
           </h1>
           {dateLabel && (
             <p
-              className="mt-3 font-medium text-slate-300"
-              style={{ fontSize: 30 * scale }}
+              className="mt-3 font-medium"
+              style={{ fontSize: 32 * scale, color: theme.dateColor }}
             >
               {dateLabel}
             </p>
           )}
           <div
-            className="mt-6 rounded-full bg-gradient-to-r from-transparent via-indigo-400/70 to-transparent"
-            style={{ height: 2, width: 320 * scale }}
+            className="mt-6 rounded-full"
+            style={{ height: 2, width: 360 * scale, background: theme.dividerBackground }}
           />
         </header>
 
-        <div className="flex flex-col" style={{ gap: 14 * scale }}>
+        <div className="flex flex-col" style={{ gap: 18 * scale }}>
           {visibleSlots.map((slot) => {
             const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
             if (band) {
               order++;
-              const shownSetlist = band.setlist.slice(0, 3);
+              const shownSetlist = band.setlist.slice(0, MAX_SETLIST_SONGS);
               const extraSongs = band.setlist.length - shownSetlist.length;
               return (
                 <div
                   key={slot.id}
-                  className="flex items-center rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-sm"
-                  style={{ gap: 20 * scale, padding: 22 * scale }}
+                  className="flex items-start rounded-2xl border"
+                  style={{
+                    gap: 24 * scale,
+                    padding: 26 * scale,
+                    background: theme.cardBg,
+                    borderColor: theme.cardBorder,
+                    boxShadow: theme.cardShadow,
+                  }}
                 >
                   <div
-                    className="flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-fuchsia-500 font-bold text-white shadow-lg shadow-indigo-950/40"
+                    className="flex shrink-0 items-center justify-center rounded-full font-bold"
                     style={{
-                      width: 52 * scale,
-                      height: 52 * scale,
-                      fontSize: 22 * scale,
+                      width: 58 * scale,
+                      height: 58 * scale,
+                      fontSize: 24 * scale,
+                      background: theme.numberBadgeBackground,
+                      color: theme.numberBadgeText,
                     }}
                   >
                     {order}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="flex items-baseline"
-                      style={{ gap: 12 * scale }}
-                    >
+                    <div className="flex flex-wrap items-baseline" style={{ gap: 14 * scale }}>
                       <span
-                        className="shrink-0 font-mono font-semibold text-indigo-300"
-                        style={{ fontSize: 22 * scale }}
+                        className="shrink-0 font-mono font-semibold"
+                        style={{ fontSize: 24 * scale, color: theme.timeColor }}
                       >
                         {slot.startTime}-{slot.endTime}
                       </span>
                       <span
-                        className="truncate font-bold text-white"
-                        style={{ fontSize: 30 * scale }}
+                        className="break-words font-bold"
+                        style={{ fontSize: 34 * scale, color: theme.bandNameColor }}
                       >
                         {band.name}
                       </span>
                       {band.hasSync && (
                         <span
-                          className="shrink-0 rounded-full border border-violet-400/40 bg-violet-500/15 font-semibold tracking-wide text-violet-200"
+                          className="shrink-0 rounded-full border font-semibold tracking-wide"
                           style={{
-                            fontSize: 14 * scale,
-                            padding: `${3 * scale}px ${10 * scale}px`,
+                            fontSize: 15 * scale,
+                            padding: `${4 * scale}px ${12 * scale}px`,
+                            background: theme.syncBadge.bg,
+                            borderColor: theme.syncBadge.border,
+                            color: theme.syncBadge.text,
                           }}
                         >
                           ⚡ SYNC
@@ -142,10 +181,13 @@ export function ShareTimetableTemplate({ day, bands }: Props) {
                       )}
                       {band.hasKeyboard && (
                         <span
-                          className="shrink-0 rounded-full border border-sky-400/40 bg-sky-500/15 font-semibold tracking-wide text-sky-200"
+                          className="shrink-0 rounded-full border font-semibold tracking-wide"
                           style={{
-                            fontSize: 14 * scale,
-                            padding: `${3 * scale}px ${10 * scale}px`,
+                            fontSize: 15 * scale,
+                            padding: `${4 * scale}px ${12 * scale}px`,
+                            background: theme.keyBadge.bg,
+                            borderColor: theme.keyBadge.border,
+                            color: theme.keyBadge.text,
                           }}
                         >
                           🎹 KEY
@@ -154,11 +196,21 @@ export function ShareTimetableTemplate({ day, bands }: Props) {
                     </div>
                     {shownSetlist.length > 0 && (
                       <p
-                        className="mt-1 truncate font-light italic text-slate-400"
-                        style={{ fontSize: 17 * scale }}
+                        className="font-light"
+                        style={{
+                          marginTop: 6 * scale,
+                          fontSize: 19 * scale,
+                          lineHeight: 1.6,
+                          color: theme.setlistColor,
+                          fontStyle: theme.setlistItalic ? "italic" : "normal",
+                          // Word-wrap naturally instead of being forced onto
+                          // one line and truncated — long setlists now flow
+                          // onto multiple lines at full readable size.
+                          overflowWrap: "break-word",
+                        }}
                       >
                         ♪ {shownSetlist.join(" / ")}
-                        {extraSongs > 0 ? ` +${extraSongs}` : ""}
+                        {extraSongs > 0 ? ` 他${extraSongs}曲` : ""}
                       </p>
                     )}
                   </div>
@@ -171,19 +223,19 @@ export function ShareTimetableTemplate({ day, bands }: Props) {
             return (
               <div
                 key={slot.id}
-                className="flex items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.015] text-slate-400"
-                style={{ gap: 14 * scale, padding: 14 * scale }}
+                className="flex items-center justify-center rounded-2xl border border-dashed"
+                style={{
+                  gap: 16 * scale,
+                  padding: 16 * scale,
+                  borderColor: theme.breakBorder,
+                  background: theme.breakBg,
+                  color: theme.breakText,
+                }}
               >
-                <span
-                  className="font-mono"
-                  style={{ fontSize: 16 * scale }}
-                >
+                <span className="font-mono" style={{ fontSize: 17 * scale }}>
                   {slot.startTime}-{slot.endTime}
                 </span>
-                <span
-                  className="tracking-wide"
-                  style={{ fontSize: 16 * scale }}
-                >
+                <span className="tracking-wide" style={{ fontSize: 17 * scale }}>
                   {slot.customLabel}
                 </span>
               </div>
@@ -192,8 +244,8 @@ export function ShareTimetableTemplate({ day, bands }: Props) {
         </div>
 
         <footer
-          className="text-center text-slate-500"
-          style={{ fontSize: 15 * scale, marginTop: 8 * scale }}
+          className="text-center"
+          style={{ fontSize: 16 * scale, marginTop: 8 * scale, color: theme.footerColor }}
         >
           軽音ライブ タイムテーブル作成
         </footer>
