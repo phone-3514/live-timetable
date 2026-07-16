@@ -298,7 +298,7 @@ function splitColumns(line: string): string[] {
 function splitMembers(cell: string): string[] {
   return cell
     .split(/[、,・\/\n]+/)
-    .map((m) => m.trim())
+    .map((m) => m.replace(SLOT_RANK_PAREN_RE, "").trim())
     .filter(Boolean);
 }
 
@@ -425,12 +425,22 @@ const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$/;
 // such label on the line isolates the name regardless of spacing style.
 const PART_LABEL_RE = /[A-Za-z]+(?:[.\/][A-Za-z]+)*\.?/g;
 
+// A slot-preference note is sometimes appended to a member's own name in
+// parentheses instead of sitting on its own line ("篠原麟一(3枠目)",
+// "田中（第2希望）") — half-width and full-width parens both occur. This
+// strips it so only the bare name is stored.
+const SLOT_RANK_PAREN_RE = /[（(]\s*(?:\d+\s*枠目|第\s*\d+\s*希望)\s*[）)]\s*$/;
+
 function extractMemberName(line: string): string {
   const matches = [...line.matchAll(PART_LABEL_RE)];
-  if (matches.length === 0) return line.trim();
-  const last = matches[matches.length - 1];
-  const rest = line.slice((last.index ?? 0) + last[0].length).trim();
-  return rest || line.trim();
+  const name =
+    matches.length === 0
+      ? line.trim()
+      : line.slice(
+          (matches[matches.length - 1].index ?? 0) +
+            matches[matches.length - 1][0].length,
+        ).trim() || line.trim();
+  return name.replace(SLOT_RANK_PAREN_RE, "").trim();
 }
 
 // Setlist entries aren't always numbered ("桜の時/aiko" or "SUMMER SONG /
