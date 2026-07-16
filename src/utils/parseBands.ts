@@ -1,6 +1,95 @@
 import type { Band } from "../types";
 import { timeToMinutes } from "./time";
 
+// ---------- Typo/synonym normalization ----------
+//
+// A small dictionary of misspellings and club-specific shorthand, applied
+// to the whole pasted text before any parsing. Longer/more-specific
+// patterns are listed before shorter ones they contain (カラオケ before
+// オケ) so replacing the short form second can't mangle the long one.
+// Some entries below are redundant with keywords the sync/keyboard
+// detectors already recognize on their own (オケ, 鍵盤) — kept anyway per
+// the request for an explicit dictionary, and harmless since normalizing
+// to another already-recognized keyword doesn't change detection results.
+const NORMALIZATION_DICT: Array<[RegExp, string]> = [
+  [/バイト名/g, "バンド名"],
+  [/カラオケ/g, "同期"],
+  [/オケ/g, "同期"],
+  [/キーボ(?!ード)/g, "キーボード"],
+  [/鍵盤/g, "Key"],
+];
+
+export function normalizeApplicationText(text: string): string {
+  return NORMALIZATION_DICT.reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    text,
+  );
+}
+
+// ---------- Fuzzy heading matching (Levenshtein distance) ----------
+//
+// Bracketed headings ("【バンド名】") are common Discord-form typo targets
+// ("【バイト名】", "【出演可農時間】"). A small edit-distance check lets a
+// label with 1-2 character mistakes still resolve to its intended field
+// without a dedicated regex per typo. Colon headings ("バンド名：...") stay
+// exact-match only — without the bracket delimiters there's no safe way to
+// isolate "the label" from ordinary prose that happens to contain a colon,
+// so fuzzy-matching there risks misreading unrelated text as a heading.
+function levenshtein(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0),
+  );
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+const FUZZY_MAX_DISTANCE = 2;
+
+function fuzzyIncludes(label: string, keywords: string[]): boolean {
+  return keywords.some((kw) => {
+    if (label === kw) return true;
+    if (Math.abs(label.length - kw.length) > FUZZY_MAX_DISTANCE) return false;
+    return levenshtein(label, kw) <= FUZZY_MAX_DISTANCE;
+  });
+}
+
+// Extracts {label, value} from a bracket ("【label】value") or colon
+// ("label：value") heading line. Returns null for lines that don't look
+// like a heading (label must be short and contain no spaces of its own —
+// ordinary sentences rarely start that way).
+function splitHeadingLine(
+  line: string,
+): { label: string; value: string; isBracket: boolean } | null {
+  const bracket = /^【\s*([^【】]{1,10})\s*】\s*(.*)$/.exec(line);
+  if (bracket) {
+    return { label: bracket[1].trim(), value: bracket[2].trim(), isBracket: true };
+  }
+  const colon = /^([^\s:：【]{1,10})\s*[:：]\s*(.*)$/.exec(line);
+  if (colon) {
+    return { label: colon[1].trim(), value: colon[2].trim(), isBracket: false };
+  }
+  return null;
+}
+
+// Bracketed headings get typo tolerance; colon headings require an exact
+// keyword match (see the module comment above for why).
+function matchHeadingField(line: string, keywords: string[]): string | null {
+  const split = splitHeadingLine(line);
+  if (!split) return null;
+  const exact = keywords.some((kw) => split.label === kw);
+  const matched = exact || (split.isBracket && fuzzyIncludes(split.label, keywords));
+  return matched ? split.value : null;
+}
+
 // A day-of-month must be a real calendar day (1-31). Listing the longer
 // alternatives first lets regex backtracking self-correct glued digit runs:
 // e.g. in "9/514:00" greedily reading "51" as the day fails this alternation
@@ -188,7 +277,7 @@ export function detectHasKeyboard(text: string): boolean {
 
 // ---------- Format detection ----------
 
-const CHAT_LOG_BAND_NAME_RE = /^バンド名\s*[:：]/m;
+const CHAT_LOG_BAND_NAME_RE = /^(?:バンド名\s*[:：]|【\s*バンド名\s*】)/m;
 
 export function detectFormat(rawText: string): "chatlog" | "table" {
   return CHAT_LOG_BAND_NAME_RE.test(rawText) ? "chatlog" : "table";
@@ -305,7 +394,14 @@ function parseTableBands(rawText: string): Band[] {
 // Blocks are anchored on "バンド名：" lines so the submitter/timestamp
 // header line is never mistaken for a band.
 
-const BAND_NAME_LINE_RE = /^バンド名\s*[:：]\s*(.*)$/;
+const BAND_NAME_KEYWORDS = ["バンド名"];
+const SCHEDULE_HEADING_KEYWORDS = ["希望日程", "希望日", "出演希望日", "参加可能日"];
+const TIME_HEADING_KEYWORDS = ["希望時間", "出演可能時間", "時間帯", "出演時間帯"];
+
+function matchBandNameLine(line: string): string | null {
+  return matchHeadingField(line, BAND_NAME_KEYWORDS);
+}
+
 const SETLIST_LINE_RE = /^\d+[.．]/;
 const SYNC_LINE_RE = /^同期演奏/;
 const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分/;
@@ -313,22 +409,6 @@ const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分
 // current band's block range (it appears right before the next バンド名
 // line), so it must be filtered out explicitly rather than assumed absent.
 const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$/;
-
-// Discord application posts often use a heading — either bracketed
-// ("【希望日程】") or colon-suffixed ("希望時間：") — for the desired
-// schedule/time, sometimes with the value on the same line and sometimes on
-// the next. Both variants feed into desiredTime, where the existing
-// day-of-month and time-range hint extractors already know how to read
-// them (including "終日" cleanly falling through as "no restriction").
-const SCHEDULE_HEADING_RE =
-  /^(?:【\s*(?:希望日程|希望日|出演希望日|参加可能日)\s*】|(?:希望日程|希望日|出演希望日|参加可能日)\s*[:：])\s*(.*)$/;
-const TIME_HEADING_RE =
-  /^(?:【\s*(?:希望時間|出演可能時間|時間帯|出演時間帯)\s*】|(?:希望時間|出演可能時間|時間帯|出演時間帯)\s*[:：])\s*(.*)$/;
-
-function matchHeadingValue(line: string, re: RegExp): string | null {
-  const m = re.exec(line);
-  return m ? m[1].trim() : null;
-}
 
 // A "part label" is the instrument abbreviation prefixed to a member's
 // name, e.g. "Gt.Vo.", "Ba.", "Key./Vo.". Members are always written as
@@ -348,15 +428,14 @@ function parseChatLogBands(rawText: string): Band[] {
   const lines = rawText.split("\n").map((l) => l.trim());
   const anchors: number[] = [];
   lines.forEach((line, i) => {
-    if (BAND_NAME_LINE_RE.test(line)) anchors.push(i);
+    if (matchBandNameLine(line) !== null) anchors.push(i);
   });
 
   return anchors.map((start, idx) => {
     const end = idx + 1 < anchors.length ? anchors[idx + 1] : lines.length;
     const blockLines = lines.slice(start, end).filter((l) => l.length > 0);
 
-    const nameMatch = BAND_NAME_LINE_RE.exec(blockLines[0]);
-    const name = nameMatch?.[1]?.trim() ?? "";
+    const name = matchBandNameLine(blockLines[0])?.trim() ?? "";
 
     const members: string[] = [];
     const scheduleTimeParts: string[] = [];
@@ -378,8 +457,8 @@ function parseChatLogBands(rawText: string): Band[] {
       // Bracketed/colon headings sometimes carry the value on the same
       // line ("希望時間：10:00-14:00") and sometimes on their own line
       // with the value below ("【希望日程】" then "7/13" next line).
-      const scheduleValue = matchHeadingValue(line, SCHEDULE_HEADING_RE);
-      const timeValue = matchHeadingValue(line, TIME_HEADING_RE);
+      const scheduleValue = matchHeadingField(line, SCHEDULE_HEADING_KEYWORDS);
+      const timeValue = matchHeadingField(line, TIME_HEADING_KEYWORDS);
       if (scheduleValue !== null || timeValue !== null) {
         const inlineValue = scheduleValue || timeValue;
         if (inlineValue) {
@@ -428,7 +507,8 @@ function parseChatLogBands(rawText: string): Band[] {
 // ---------- Entry point ----------
 
 export function parseBands(rawText: string): Band[] {
-  return detectFormat(rawText) === "chatlog"
-    ? parseChatLogBands(rawText)
-    : parseTableBands(rawText);
+  const normalized = normalizeApplicationText(rawText);
+  return detectFormat(normalized) === "chatlog"
+    ? parseChatLogBands(normalized)
+    : parseTableBands(normalized);
 }

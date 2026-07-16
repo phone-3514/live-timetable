@@ -16,18 +16,28 @@ import {
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 
+// Snapshot kept for one undo step after deleteBand — restores both the
+// band data and (if it was placed) the exact slot it occupied.
+type DeletedBandSnapshot = {
+  band: Band;
+  placement: { dayId: string; slotId: string } | null;
+};
+
 type AppState = {
   rawText: string;
   bands: Band[];
   days: TimetableDay[];
   activeDayId: string;
   venueHours: VenueHours;
+  lastDeleted: DeletedBandSnapshot | null;
 
   setRawText: (text: string) => void;
   updateVenueHours: (partial: Partial<VenueHours>) => void;
   parseFromRawText: () => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
+  undoDeleteBand: () => void;
+  clearLastDeleted: () => void;
   toggleBandDay: (bandId: string, dayId: string) => void;
   autoDetectDayRestrictions: () => void;
 
@@ -240,6 +250,7 @@ export const useAppStore = create<AppState>((set) => ({
   days: initialDays,
   activeDayId: initialDays[0].id,
   venueHours: DEFAULT_VENUE_HOURS,
+  lastDeleted: null,
 
   setRawText: (text) => set({ rawText: text }),
   updateVenueHours: (partial) =>
@@ -277,15 +288,40 @@ export const useAppStore = create<AppState>((set) => ({
 
   deleteBand: (id) =>
     set((state) => {
+      const band = state.bands.find((b) => b.id === id);
+      if (!band) return state;
+
+      let placement: { dayId: string; slotId: string } | null = null;
       const bands = state.bands.filter((b) => b.id !== id);
       const days = state.days.map((day) => {
+        const slot = day.slots.find((s) => s.bandId === id);
+        if (slot) placement = { dayId: day.id, slotId: slot.id };
         const slots = day.slots.map((s) =>
           s.bandId === id ? { ...s, bandId: null } : s,
         );
         return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
       });
-      return { bands, days };
+      return { bands, days, lastDeleted: { band, placement } };
     }),
+
+  undoDeleteBand: () =>
+    set((state) => {
+      if (!state.lastDeleted) return state;
+      const { band, placement } = state.lastDeleted;
+      const bands = [...state.bands, band];
+      const days = state.days.map((day) => {
+        if (!placement || day.id !== placement.dayId) {
+          return { ...day, slots: recomputeTimes(day.slots, day.settings, bands) };
+        }
+        const slots = day.slots.map((s) =>
+          s.id === placement.slotId ? { ...s, bandId: band.id } : s,
+        );
+        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+      });
+      return { bands, days, lastDeleted: null };
+    }),
+
+  clearLastDeleted: () => set({ lastDeleted: null }),
 
   toggleBandDay: (bandId, dayId) =>
     set((state) => {

@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Band } from "../types";
+import { useAppStore } from "../store/useAppStore";
 
 type Props = {
   band: Band;
@@ -12,6 +13,7 @@ type Props = {
 // a single shared flyout owned by BandListPanel (see there for why) — this
 // component only reports hover in/out plus its own DOM node.
 export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
+  const deleteBand = useAppStore((s) => s.deleteBand);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: `band:${band.id}` });
   const elRef = useRef<HTMLDivElement | null>(null);
@@ -45,6 +47,16 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       {band.hasSync && <span title="同期演奏あり">🔌</span>}
       {band.hasKeyboard && <span title="キーボードあり">🎹</span>}
       {band.parseWarning && <span title={band.parseWarning}>⚠️</span>}
+      <button
+        // Stop the pointerdown from bubbling to the chip's drag listeners
+        // above, otherwise clicking delete would also kick off a drag.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => deleteBand(band.id)}
+        className="shrink-0 text-slate-500 hover:text-rose-400"
+        title="削除"
+      >
+        ×
+      </button>
     </div>
   );
 }

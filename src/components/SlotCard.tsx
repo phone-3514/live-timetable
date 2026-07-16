@@ -54,6 +54,11 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   const isCustom = slot.customLabel !== null;
   const showBlockedHighlight = isOver && isBlockedForDraggedBand;
   const showDropHighlight = isOver && !isBlockedForDraggedBand;
+  // While a band is being dragged, every OTHER eligible slot gets a subtle
+  // tint too (not just the one directly under the cursor) so the whole set
+  // of placeable options is visible at a glance, not just discovered one
+  // hover at a time.
+  const showAmbientEligible = isDraggingBand && !isBlockedForDraggedBand && !isOver;
 
   const rowStyle = {
     transform: CSS.Transform.toString(transform),
@@ -71,7 +76,9 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
           ? "border-rose-500 bg-rose-950/40"
           : showDropHighlight
             ? "border-indigo-400 bg-indigo-950/40"
-            : "border-slate-700 bg-slate-800"
+            : showAmbientEligible
+              ? "border-indigo-700 bg-indigo-950/10"
+              : "border-slate-700 bg-slate-800"
       }`}
     >
       <button
@@ -126,7 +133,9 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
           className={`flex min-h-[56px] flex-1 items-center rounded-md border p-2 ${
             band
               ? "border-slate-700 bg-slate-900"
-              : "border-dashed border-slate-700 text-sm text-slate-500"
+              : showAmbientEligible || showDropHighlight
+                ? "border-dashed border-indigo-500 text-sm text-indigo-300"
+                : "border-dashed border-slate-700 text-sm text-slate-500"
           } ${conflict ? "border-rose-500 bg-rose-950/40" : ""} ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
@@ -179,7 +188,11 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
               )}
             </div>
           ) : (
-            <span>ここにバンドをドラッグ</span>
+            <span>
+              {isDraggingBand && !isBlockedForDraggedBand
+                ? "ここにドロップ"
+                : "ここにバンドをドラッグ"}
+            </span>
           )}
         </div>
       )}

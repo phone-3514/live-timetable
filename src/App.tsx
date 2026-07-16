@@ -4,6 +4,7 @@ import { useAppStore } from "./store/useAppStore";
 import { TextImportPanel } from "./components/TextImportPanel";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
+import { DeleteUndoToast } from "./components/DeleteUndoToast";
 
 function App() {
   const days = useAppStore((s) => s.days);
@@ -53,6 +54,7 @@ function App() {
             <Timetable />
           </div>
         </main>
+        <DeleteUndoToast />
       </div>
     </DndContext>
   );
