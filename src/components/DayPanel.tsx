@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
-import { toPng } from "html-to-image";
+import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
+import { SharePreviewModal } from "./SharePreviewModal";
 import type { TimetableDay } from "../types";
 
 const CUSTOM_PRESETS = [
@@ -26,38 +26,12 @@ export function DayPanel({ day, daysCount }: Props) {
   const addSlots = useAppStore((s) => s.addSlots);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
   const [bulkCount, setBulkCount] = useState(5);
+  const [showSharePreview, setShowSharePreview] = useState(false);
 
   const slots = day.slots;
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflicts = getMemberConflictSlotIds(slots, bands);
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  const handleExportImage = async () => {
-    const el = exportRef.current;
-    if (!el) return;
-    const prevHeight = el.style.height;
-    const prevFlex = el.style.flex;
-    const prevOverflow = el.style.overflow;
-    el.style.height = "auto";
-    el.style.flex = "none";
-    el.style.overflow = "visible";
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    try {
-      const dataUrl = await toPng(el, {
-        backgroundColor: "#0f172a",
-        pixelRatio: 2,
-      });
-      const link = document.createElement("a");
-      link.download = `timetable-${day.label}.png`;
-      link.href = dataUrl;
-      link.click();
-    } finally {
-      el.style.height = prevHeight;
-      el.style.flex = prevFlex;
-      el.style.overflow = prevOverflow;
-    }
-  };
 
   const handleCopyText = async () => {
     const lines = slots.map((slot) => {
@@ -149,10 +123,10 @@ export function DayPanel({ day, daysCount }: Props) {
           コピー
         </button>
         <button
-          onClick={handleExportImage}
-          className="rounded border border-slate-600 px-2 py-1 text-slate-200 hover:bg-slate-800"
+          onClick={() => setShowSharePreview(true)}
+          className="rounded border border-indigo-600 bg-indigo-950/40 px-2 py-1 text-indigo-300 hover:bg-indigo-900/50"
         >
-          画像保存
+          🎨 共有用画像
         </button>
       </div>
 
@@ -192,7 +166,6 @@ export function DayPanel({ day, daysCount }: Props) {
       </div>
 
       <div
-        ref={exportRef}
         // Extra right padding keeps the slot-delete "×" button clear of the
         // scrollbar that overlays this edge whenever the list overflows —
         // without it the scrollbar sits right on top of the button.
@@ -235,6 +208,10 @@ export function DayPanel({ day, daysCount }: Props) {
           </div>
         </SortableContext>
       </div>
+
+      {showSharePreview && (
+        <SharePreviewModal day={day} onClose={() => setShowSharePreview(false)} />
+      )}
     </div>
   );
 }

@@ -124,6 +124,40 @@ function recomputeTimes(
   });
 }
 
+// Live preview of the start time a dragged band would get if dropped at
+// targetSlotId right now. Walks the day's slots the same way recomputeTimes
+// does, but treats the dragged band's OWN current slot (if it has one in
+// this day) as if it were already vacated — that slot reverts to an empty
+// slot's default duration/transition (0 after it, per recomputeTimes), just
+// like it will the instant the drop actually happens. Without this, moving
+// a band whose durationMinutes differs from the day's default forward past
+// its own old slot would show a stale, now-wrong time.
+export function computeDropPreviewStartTime(
+  day: TimetableDay,
+  draggedBandId: string,
+  targetSlotId: string,
+  bands: Band[],
+): string {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  let cursor = timeToMinutes(day.settings.startTime);
+  for (const slot of day.slots) {
+    if (slot.id === targetSlotId) break;
+    const effectiveBandId = slot.bandId === draggedBandId ? null : slot.bandId;
+    let duration = day.settings.performanceMinutes;
+    let transitionAfter = 0;
+    if (effectiveBandId) {
+      const band = bandMap.get(effectiveBandId);
+      duration = band?.durationMinutes ?? day.settings.performanceMinutes;
+      transitionAfter =
+        band?.customTransitionMinutes ?? day.settings.transitionMinutes;
+    } else if (slot.customLabel !== null) {
+      duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
+    }
+    cursor += duration + transitionAfter;
+  }
+  return minutesToTime(cursor);
+}
+
 function updateDaySlots(
   days: TimetableDay[],
   dayId: string,

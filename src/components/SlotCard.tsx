@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useDndContext, useDraggable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { canPlaceBandInSlot, useAppStore } from "../store/useAppStore";
+import {
+  canPlaceBandInSlot,
+  computeDropPreviewStartTime,
+  useAppStore,
+} from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
 
 type Props = {
@@ -62,6 +66,10 @@ export function SlotCard({
     isDraggingBand && day && draggedBand
       ? !canPlaceBandInSlot(draggedBand, day, slot, venueHours)
       : false;
+  const previewStartTime =
+    isOver && isDraggingBand && draggedBandId && day && !isBlockedForDraggedBand
+      ? computeDropPreviewStartTime(day, draggedBandId, slot.id, bands)
+      : null;
 
   const isCustom = slot.customLabel !== null;
   const showBlockedHighlight = isOver && isBlockedForDraggedBand;
@@ -93,15 +101,13 @@ export function SlotCard({
               : "border-slate-700 bg-slate-800"
       }`}
     >
-      {showDropHighlight && (
+      {previewStartTime !== null && (
         // Live preview of the start time this band would get if dropped
-        // here right now. The slot's own startTime is already correct for
-        // this regardless of which band ends up in it — a slot's start is
-        // only a function of everything BEFORE it, never of its own
-        // occupant — so no separate what-if calculation is needed, just
-        // surfacing the value that's already computed.
+        // here right now, computed as-if the dragged band's own origin slot
+        // (if it has one) were already vacated — see
+        // computeDropPreviewStartTime for why that matters.
         <div className="pointer-events-none absolute -top-2 right-2 z-10 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-md shadow-black/40">
-          → {slot.startTime} 開始
+          → {previewStartTime} 開始予定
         </div>
       )}
       <button
