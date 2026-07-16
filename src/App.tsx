@@ -38,18 +38,20 @@ function App() {
 
   return (
     <DndContext onDragEnd={handleDragEnd}>
-      <div className="min-h-screen bg-slate-100">
-        <header className="border-b border-slate-200 bg-white px-6 py-4">
+      <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
+        <header className="shrink-0 border-b border-slate-200 bg-white px-6 py-3">
           <h1 className="text-lg font-bold text-slate-800">
             軽音ライブ タイムテーブル作成
           </h1>
         </header>
-        <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 lg:grid-cols-[380px_1fr]">
-          <div className="flex flex-col gap-6">
+        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_1fr]">
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
             <TextImportPanel />
             <BandListPanel />
           </div>
-          <Timetable />
+          <div className="flex min-h-0 flex-col overflow-hidden">
+            <Timetable />
+          </div>
         </main>
       </div>
     </DndContext>

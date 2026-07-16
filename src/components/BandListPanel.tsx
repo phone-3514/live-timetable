@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { getPlacedBandIds, useAppStore } from "../store/useAppStore";
-import { BandCard } from "./BandCard";
+import { BandChip } from "./BandChip";
 
 export function BandListPanel() {
   const bands = useAppStore((s) => s.bands);
@@ -13,11 +13,11 @@ export function BandListPanel() {
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[200px] flex-col gap-2 rounded-lg border-2 border-dashed p-3 ${
+      className={`flex min-h-0 flex-1 flex-col rounded-lg border-2 border-dashed p-2 ${
         isOver ? "border-indigo-400 bg-indigo-50" : "border-slate-200"
       }`}
     >
-      <h2 className="mb-1 text-sm font-semibold text-slate-500">
+      <h2 className="mb-1 shrink-0 text-xs font-semibold text-slate-500">
         未配置のバンド（{unplaced.length}）
       </h2>
       {bands.length === 0 && (
@@ -28,9 +28,11 @@ export function BandListPanel() {
       {bands.length > 0 && unplaced.length === 0 && (
         <p className="text-xs text-slate-400">全てのバンドが配置済みです</p>
       )}
-      {unplaced.map((band) => (
-        <BandCard key={band.id} band={band} />
-      ))}
+      <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto pb-1">
+        {unplaced.map((band) => (
+          <BandChip key={band.id} band={band} />
+        ))}
+      </div>
     </div>
   );
 }
