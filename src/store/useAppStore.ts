@@ -64,6 +64,7 @@ type AppState = {
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
+  autoScheduleDay: (dayId: string) => void;
 };
 
 function defaultSettings(): TimetableSettings {
@@ -516,7 +517,70 @@ export const useAppStore = create<AppState>((set) => ({
         return { ...day, settings, slots: recomputeTimes(day.slots, settings, state.bands) };
       }),
     })),
+
+  // Greedy best-effort scheduler for one day's empty performance slots.
+  // Fills slots in order; each slot's own startTime/endTime is re-read
+  // fresh on every iteration since an earlier assignment in this same run
+  // can shift every later slot's time (bands' durations differ from the
+  // day's default, cascading through recomputeTimes) — a static
+  // pre-computed eligibility table would go stale mid-run otherwise.
+  // Slots this can't fill (no eligible band left) are simply skipped, and
+  // whatever remains in the pool stays in the unplaced list.
+  autoScheduleDay: (dayId) =>
+    set((state) => {
+      const day = state.days.find((d) => d.id === dayId);
+      if (!day) return state;
+
+      const placedElsewhere = getPlacedBandIds(state.days);
+      let pool = state.bands.filter((b) => !placedElsewhere.has(b.id));
+      let days = state.days;
+
+      for (let i = 0; i < day.slots.length; i++) {
+        const currentDay = days.find((d) => d.id === dayId)!;
+        const slot = currentDay.slots[i];
+        if (slot.bandId !== null || slot.customLabel !== null) continue;
+
+        const eligible = pool.filter((b) =>
+          canPlaceBandInSlot(b, currentDay, slot, state.venueHours),
+        );
+        if (eligible.length === 0) continue;
+
+        // Prefer a candidate that doesn't share a member with whichever
+        // band is in the immediately adjacent slot(s), to avoid the same
+        // person performing back-to-back.
+        const prevBand = bandInSlot(currentDay.slots[i - 1], state.bands);
+        const nextBand = bandInSlot(currentDay.slots[i + 1], state.bands);
+        const neighborMembers = new Set([
+          ...(prevBand?.members ?? []),
+          ...(nextBand?.members ?? []),
+        ]);
+        const nonConflicting = eligible.filter(
+          (b) => !b.members.some((m) => neighborMembers.has(m)),
+        );
+        const chosen = (nonConflicting.length > 0 ? nonConflicting : eligible)[0];
+
+        days = days.map((d) => {
+          const slots = d.slots.map((s) => {
+            if (d.id === dayId && s.id === slot.id) return { ...s, bandId: chosen.id };
+            if (s.bandId === chosen.id) return { ...s, bandId: null };
+            return s;
+          });
+          return { ...d, slots: recomputeTimes(slots, d.settings, state.bands) };
+        });
+        pool = pool.filter((b) => b.id !== chosen.id);
+      }
+
+      return { days };
+    }),
 }));
+
+function bandInSlot(
+  slot: TimetableSlot | undefined,
+  bands: Band[],
+): Band | undefined {
+  if (!slot?.bandId) return undefined;
+  return bands.find((b) => b.id === slot.bandId);
+}
 
 export function getPlacedBandIds(days: TimetableDay[]): Set<string> {
   const ids = new Set<string>();

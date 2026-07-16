@@ -368,6 +368,7 @@ function parseTableBands(rawText: string): Band[] {
       id: crypto.randomUUID(),
       name: name || "(バンド名未設定)",
       members: splitMembers(membersCell),
+      setlist: [],
       desiredTime,
       ngTime,
       allowedDayIds: [],
@@ -402,7 +403,15 @@ function matchBandNameLine(line: string): string | null {
   return matchHeadingField(line, BAND_NAME_KEYWORDS);
 }
 
+// Numbered setlist line ("1.桜の時/aiko"). The prefix is stripped before
+// storing so the setlist shows clean "曲名/アーティスト" entries.
 const SETLIST_LINE_RE = /^\d+[.．]/;
+function stripSetlistPrefix(line: string): string {
+  return line.replace(/^\d+[.．]\s*/, "").trim();
+}
+// A standalone "希望順位"/slot-preference note ("3枠目", "第2希望"). Not
+// useful data once parsed — discarded entirely rather than stored anywhere.
+const SLOT_RANK_LINE_RE = /^\d+\s*枠目|^第\s*\d+\s*希望/;
 const SYNC_LINE_RE = /^同期演奏/;
 const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分/;
 // The next band's "submitter — timestamp" header line can fall inside the
@@ -424,6 +433,27 @@ function extractMemberName(line: string): string {
   return rest || line.trim();
 }
 
+// Setlist entries aren't always numbered ("桜の時/aiko" or "SUMMER SONG /
+// YUI" on their own line). Detecting these by "no Latin letters anywhere in
+// the line" doesn't work — plenty of artists romanize their name (aiko,
+// YUI, RADWIMPS...), so a Latin song/artist would false-positive as a
+// member line under that rule. What real member lines actually share is
+// *where* their Latin text sits: right after a grade prefix ("2年 Gt....")
+// or, when the grade is omitted, as a known instrument abbreviation at the
+// very start of the line ("Gt.未定"). A song line's "/" separated title and
+// artist never start that way.
+const GRADE_PREFIX_RE = /^(?:\d{1,2}|\?)\s*年/;
+const KNOWN_INSTRUMENT_PREFIX_RE =
+  /^[\s　]*(?:Vo|Gt|Ba|Dr|Key|Cho|Perc|Sax|Pf|Tp|Tb|DJ|MC)\.?/i;
+
+function looksLikeMemberLine(line: string): boolean {
+  return GRADE_PREFIX_RE.test(line) || KNOWN_INSTRUMENT_PREFIX_RE.test(line);
+}
+
+function looksLikeUnnumberedSongLine(line: string): boolean {
+  return line.includes("/") && !looksLikeMemberLine(line);
+}
+
 function parseChatLogBands(rawText: string): Band[] {
   const lines = rawText.split("\n").map((l) => l.trim());
   const anchors: number[] = [];
@@ -438,13 +468,18 @@ function parseChatLogBands(rawText: string): Band[] {
     const name = matchBandNameLine(blockLines[0])?.trim() ?? "";
 
     const members: string[] = [];
+    const setlist: string[] = [];
     const scheduleTimeParts: string[] = [];
     let durationMinutes: number | undefined;
 
     const rest = blockLines.slice(1);
     for (let i = 0; i < rest.length; i++) {
       const line = rest[i];
-      if (SETLIST_LINE_RE.test(line)) continue;
+      if (SETLIST_LINE_RE.test(line)) {
+        setlist.push(stripSetlistPrefix(line));
+        continue;
+      }
+      if (SLOT_RANK_LINE_RE.test(line)) continue;
       if (SYNC_LINE_RE.test(line)) continue;
       if (HEADER_LINE_RE.test(line)) continue;
 
@@ -470,6 +505,11 @@ function parseChatLogBands(rawText: string): Band[] {
         continue;
       }
 
+      if (looksLikeUnnumberedSongLine(line)) {
+        setlist.push(line);
+        continue;
+      }
+
       members.push(extractMemberName(line));
     }
 
@@ -492,6 +532,7 @@ function parseChatLogBands(rawText: string): Band[] {
       id: crypto.randomUUID(),
       name: name || "(バンド名未設定)",
       members,
+      setlist,
       desiredTime: scheduleTimeParts.join(" / "),
       ngTime: "",
       durationMinutes,

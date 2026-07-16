@@ -14,14 +14,18 @@ type Props = {
 // component only reports hover in/out plus its own DOM node.
 export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
   const deleteBand = useAppStore((s) => s.deleteBand);
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: `band:${band.id}` });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `band:${band.id}`,
+    data: { type: "band", band },
+  });
   const elRef = useRef<HTMLDivElement | null>(null);
 
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
-
+  // No transform/translate here — the DragOverlay (a portal to
+  // document.body, see App.tsx) is what visually follows the cursor. This
+  // element just dims in place while dragging; applying a manual transform
+  // here would also get clipped as soon as it crosses this panel's
+  // overflow-y-auto boundary, which is the "chip disappears mid-drag" bug
+  // the overlay is meant to fix.
   return (
     <div
       ref={(el) => {
@@ -30,7 +34,6 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       }}
       {...listeners}
       {...attributes}
-      style={style}
       onMouseEnter={() => elRef.current && onHoverStart(band, elRef.current)}
       onMouseLeave={onHoverEnd}
       className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing ${
@@ -46,6 +49,9 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       </span>
       {band.hasSync && <span title="同期演奏あり">🔌</span>}
       {band.hasKeyboard && <span title="キーボードあり">🎹</span>}
+      {band.setlist.length > 0 && (
+        <span title={`セットリスト:\n${band.setlist.join("\n")}`}>🎵</span>
+      )}
       {band.parseWarning && <span title={band.parseWarning}>⚠️</span>}
       <button
         // Stop the pointerdown from bubbling to the chip's drag listeners

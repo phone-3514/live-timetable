@@ -108,6 +108,20 @@ export function BandDetailsForm({ band }: Props) {
           🎹 Key
         </button>
       </div>
+      {band.setlist.length > 0 && (
+        <div className="rounded border border-slate-700 bg-slate-900 px-2 py-1">
+          <p className="mb-0.5 text-xs font-semibold text-slate-400">
+            🎵 セットリスト
+          </p>
+          <ul className="space-y-0.5 text-xs text-slate-300">
+            {band.setlist.map((song, i) => (
+              <li key={i} className="truncate">
+                {song}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {days.length > 1 && (
         <div className="flex flex-wrap gap-1">
           {days.map((day) => {

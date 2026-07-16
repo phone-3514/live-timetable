@@ -2,6 +2,10 @@ export type Band = {
   id: string;
   name: string;
   members: string[];
+  // Setlist entries as free text ("曲名/アーティスト名"), extracted from
+  // numbered or bare "title/artist" lines so they don't get misread as
+  // member names.
+  setlist: string[];
   desiredTime: string;
   ngTime: string;
   durationMinutes?: number;

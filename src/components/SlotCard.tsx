@@ -30,11 +30,12 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: slot.id });
+  } = useSortable({ id: slot.id, data: { type: "slot", slot, band } });
 
   const bandDraggable = useDraggable({
     id: band ? `band:${band.id}` : `empty-band:${slot.id}`,
     disabled: !band,
+    data: band ? { type: "band", band } : undefined,
   });
 
   const { active } = useDndContext();
@@ -69,7 +70,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
     <div
       ref={setNodeRef}
       style={rowStyle}
-      className={`flex items-stretch gap-2 rounded-lg border p-2 ${
+      className={`flex items-stretch gap-1.5 rounded-lg border p-1.5 ${
         isDragging ? "opacity-40" : ""
       } ${
         showBlockedHighlight
@@ -85,21 +86,21 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
         ref={setActivatorNodeRef}
         {...listeners}
         {...attributes}
-        className="flex w-6 shrink-0 cursor-grab items-center justify-center text-slate-500 hover:text-slate-300 active:cursor-grabbing"
+        className="flex w-4 shrink-0 cursor-grab items-center justify-center text-xs text-slate-500 hover:text-slate-300 active:cursor-grabbing"
         title="ドラッグして順番を入れ替え"
       >
         ⠿
       </button>
 
-      <div className="flex w-24 shrink-0 flex-col justify-center font-mono text-sm text-slate-300">
+      <div className="flex w-16 shrink-0 flex-col justify-center font-mono text-xs text-slate-300">
         <span>{slot.startTime}</span>
         <span className="text-slate-500">-{slot.endTime}</span>
       </div>
 
       {isCustom ? (
-        <div className="flex flex-1 items-center gap-2 rounded-md border border-amber-600 bg-amber-900/40 p-2">
+        <div className="flex flex-1 items-center gap-1.5 rounded-md border border-amber-600 bg-amber-900/40 px-1.5 py-1">
           <input
-            className="flex-1 bg-transparent font-semibold text-amber-300 outline-none"
+            className="flex-1 bg-transparent text-sm font-semibold text-amber-300 outline-none"
             value={slot.customLabel ?? ""}
             onChange={(e) =>
               updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
@@ -108,7 +109,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
           <input
             type="number"
             min={1}
-            className="w-16 bg-transparent text-right text-sm text-amber-400 outline-none"
+            className="w-14 bg-transparent text-right text-xs text-amber-400 outline-none"
             value={slot.customDurationMinutes ?? ""}
             onChange={(e) =>
               updateSlotContent(dayId, slot.id, {
@@ -123,19 +124,12 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
       ) : (
         <div
           ref={bandDraggable.setNodeRef}
-          style={
-            bandDraggable.transform
-              ? {
-                  transform: `translate3d(${bandDraggable.transform.x}px, ${bandDraggable.transform.y}px, 0)`,
-                }
-              : undefined
-          }
-          className={`flex min-h-[56px] flex-1 items-center rounded-md border p-2 ${
+          className={`flex min-h-[36px] flex-1 items-center rounded-md border px-1.5 py-1 ${
             band
               ? "border-slate-700 bg-slate-900"
               : showAmbientEligible || showDropHighlight
-                ? "border-dashed border-indigo-500 text-sm text-indigo-300"
-                : "border-dashed border-slate-700 text-sm text-slate-500"
+                ? "border-dashed border-indigo-500 text-xs text-indigo-300"
+                : "border-dashed border-slate-700 text-xs text-slate-500"
           } ${conflict ? "border-rose-500 bg-rose-950/40" : ""} ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
@@ -146,19 +140,19 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
               {...bandDraggable.attributes}
               className="w-full cursor-grab active:cursor-grabbing"
             >
-              <p className="font-semibold text-slate-100">
+              <p className="text-sm font-semibold text-slate-100">
                 {band.name}
                 {band.durationMinutes != null && (
-                  <span className="ml-2 text-xs font-normal text-indigo-400">
+                  <span className="ml-1.5 text-xs font-normal text-indigo-400">
                     ({band.durationMinutes}分)
                   </span>
                 )}
                 {band.hasSync && (
                   <span
-                    className="ml-2 rounded border border-violet-500 bg-violet-950/50 px-1 text-xs font-normal text-violet-300"
+                    className="ml-1 rounded border border-violet-500 bg-violet-950/50 px-1 text-xs font-normal text-violet-300"
                     title="同期演奏あり"
                   >
-                    🔌 同期
+                    🔌
                   </span>
                 )}
                 {band.hasKeyboard && (
@@ -166,7 +160,15 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                     className="ml-1 rounded border border-sky-500 bg-sky-950/50 px-1 text-xs font-normal text-sky-300"
                     title="キーボードあり"
                   >
-                    🎹 Key
+                    🎹
+                  </span>
+                )}
+                {band.setlist.length > 0 && (
+                  <span
+                    className="ml-1 rounded border border-emerald-500 bg-emerald-950/50 px-1 text-xs font-normal text-emerald-300"
+                    title={`セットリスト:\n${band.setlist.join("\n")}`}
+                  >
+                    🎵
                   </span>
                 )}
                 {band.customTransitionMinutes != null && (
@@ -174,16 +176,16 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                     className="ml-1 rounded border border-cyan-500 bg-cyan-950/50 px-1 text-xs font-normal text-cyan-300"
                     title="この後の転換時間（個別設定）"
                   >
-                    ⏱ +{band.customTransitionMinutes}分
+                    ⏱+{band.customTransitionMinutes}分
                   </span>
                 )}
               </p>
-              <p className="text-xs text-slate-400">
+              <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
               {conflict && (
-                <p className="mt-1 text-xs font-medium text-rose-400">
-                  ⚠ 前後の枠とメンバーが重複しています
+                <p className="text-xs font-medium text-rose-400">
+                  ⚠ 前後の枠とメンバーが重複
                 </p>
               )}
             </div>
@@ -197,7 +199,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col justify-center gap-1">
+      <div className="flex flex-col justify-center gap-0.5">
         <button
           onClick={() => moveSlot(dayId, slot.id, "up")}
           disabled={index === 0}
@@ -217,7 +219,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
       </div>
       <button
         onClick={() => removeSlot(dayId, slot.id)}
-        className="self-center text-sm text-slate-500 hover:text-rose-400"
+        className="self-center text-xs text-slate-500 hover:text-rose-400"
         title="枠を削除"
       >
         ×

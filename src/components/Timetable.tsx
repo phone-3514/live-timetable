@@ -19,6 +19,7 @@ export function Timetable() {
   const addSlot = useAppStore((s) => s.addSlot);
   const addSlots = useAppStore((s) => s.addSlots);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
+  const autoScheduleDay = useAppStore((s) => s.autoScheduleDay);
   const [bulkCount, setBulkCount] = useState(5);
 
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0];
@@ -118,8 +119,15 @@ export function Timetable() {
             />
           </label>
           <button
+            onClick={() => autoScheduleDay(activeDay.id)}
+            className="ml-auto rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+            title="希望日程・出演可能時間・機材転換の条件を考慮して、空き枠に未配置のバンドを自動で割り振ります"
+          >
+            ⚡ 自動配置
+          </button>
+          <button
             onClick={handleCopyText}
-            className="ml-auto rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
           >
             テキストをコピー
           </button>

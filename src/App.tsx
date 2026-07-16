@@ -1,18 +1,34 @@
-import { DndContext } from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
+import { useState } from "react";
+import { DndContext, DragOverlay } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { TextImportPanel } from "./components/TextImportPanel";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
+import { BandDragPreview } from "./components/BandDragPreview";
+import { SlotDragPreview } from "./components/SlotDragPreview";
+import type { Band, TimetableSlot } from "./types";
+
+type ActiveDragData =
+  | { type: "band"; band: Band }
+  | { type: "slot"; slot: TimetableSlot; band: Band | undefined };
 
 function App() {
   const days = useAppStore((s) => s.days);
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
   const reorderSlots = useAppStore((s) => s.reorderSlots);
+  const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
+    null,
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragData((event.active.data.current as ActiveDragData) ?? null);
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragData(null);
     const { active, over } = event;
     if (!over) return;
     const activeId = active.id.toString();
@@ -38,7 +54,11 @@ function App() {
   };
 
   return (
-    <DndContext onDragEnd={handleDragEnd}>
+    <DndContext
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveDragData(null)}
+    >
       <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
         <header className="shrink-0 border-b border-slate-800 bg-slate-900 px-6 py-3">
           <h1 className="text-lg font-bold text-slate-100">
@@ -56,6 +76,17 @@ function App() {
         </main>
         <DeleteUndoToast />
       </div>
+      <DragOverlay>
+        {activeDragData?.type === "band" && (
+          <BandDragPreview band={activeDragData.band} />
+        )}
+        {activeDragData?.type === "slot" && (
+          <SlotDragPreview
+            slot={activeDragData.slot}
+            band={activeDragData.band}
+          />
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
