@@ -160,12 +160,23 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
             </>
           )}
           {eventInfo.venue && (
-            <p
-              className="mt-2 font-medium tracking-wide"
-              style={{ fontSize: 20, color: theme.dateColor }}
-            >
-              📍 {eventInfo.venue}
-            </p>
+            // Plain text here let the browser treat every character as a
+            // valid line-break point (the default for CJK text with no
+            // white-space/word-break override), so a venue name could
+            // wrap mid-word ("薬泉" / "園") with the pin icon left
+            // stranded above it. An explicit row with nowrap on the label
+            // keeps the icon and full name together on one line; the
+            // header has no width constraint tighter than the canvas
+            // itself, so there's always room for it to grow into.
+            <div className="mt-2 flex flex-row items-center justify-center" style={{ gap: 6 }}>
+              <span style={{ fontSize: 20, lineHeight: 1 }}>📍</span>
+              <span
+                className="font-medium tracking-wide"
+                style={{ fontSize: 20, color: theme.dateColor, whiteSpace: "nowrap" }}
+              >
+                {eventInfo.venue}
+              </span>
+            </div>
           )}
           <div
             className="mt-5 rounded-full"
