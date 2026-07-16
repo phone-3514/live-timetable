@@ -6,21 +6,16 @@ import type { ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import type { TimetableDay } from "../types";
 
-// The canvas is no longer a fixed size — it's however wide the day's
-// column count makes it (see ShareTimetableTemplate) — so the preview
-// scale is derived from the node's actual measured size rather than a
-// constant ratio, and only shrinks it down (never enlarges a narrow day
-// past 1:1).
-const PREVIEW_MAX_WIDTH = 860;
-
 type Props = { day: TimetableDay; onClose: () => void };
 
 export function SharePreviewModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const [themeId, setThemeId] = useState<ThemeId>("hype");
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
 
   // The preview box needs its own explicit size (from the unscaled node's
@@ -36,7 +31,24 @@ export function SharePreviewModal({ day, onClose }: Props) {
     }
   }, [day, bands, themeId]);
 
-  const previewScale = naturalSize ? Math.min(1, PREVIEW_MAX_WIDTH / naturalSize.width) : 1;
+  // The scrollable area's own size (not the modal's, which also holds a
+  // header/theme-picker/footer) — scaling by width alone left a tall image
+  // far too big to fit vertically, so both axes are measured and the
+  // tighter constraint wins.
+  useLayoutEffect(() => {
+    const el = previewAreaRef.current;
+    if (!el) return;
+    const update = () => setAreaSize({ width: el.clientWidth, height: el.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const previewScale =
+    naturalSize && areaSize
+      ? Math.min(1, areaSize.width / naturalSize.width, areaSize.height / naturalSize.height)
+      : 1;
 
   const handleDownload = async () => {
     const el = captureRef.current;
@@ -59,7 +71,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-3">
@@ -102,23 +114,37 @@ export function SharePreviewModal({ day, onClose }: Props) {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto bg-slate-950 p-4">
+        <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
           <div
             style={{
               width: naturalSize ? naturalSize.width * previewScale : undefined,
               height: naturalSize ? naturalSize.height * previewScale : undefined,
             }}
-            className="mx-auto overflow-hidden rounded-xl shadow-lg"
+            className="overflow-hidden rounded-xl shadow-lg"
           >
             {/* Scaled-down view for on-screen preview only — never
                 captured. html-to-image sizes its output from the target
                 node's rendered bounding box, which an ancestor's CSS
                 transform affects, so this can't double as the capture
                 source (a separate off-screen, always-natural-size copy
-                below is what actually gets downloaded). */}
+                below is what actually gets downloaded).
+                width: fit-content is load-bearing: without it this block
+                div defaults to filling its parent's width rather than its
+                own content's true width. That's invisible on the very
+                first measurement (the parent isn't constrained yet), but
+                once the parent box below gets an explicit size from a
+                prior measurement, a later re-measurement (e.g. StrictMode
+                double-invoking effects, or switching themes) would read
+                that already-shrunk parent width back as if it were the
+                natural size — a self-reinforcing shrink with no way to
+                recover the true size afterward. */}
             <div
               ref={previewRef}
-              style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}
+              style={{
+                width: "fit-content",
+                transform: `scale(${previewScale})`,
+                transformOrigin: "top left",
+              }}
             >
               <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} />
             </div>

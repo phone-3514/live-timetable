@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
@@ -15,14 +15,10 @@ type Props = { day: TimetableDay; daysCount: number };
 
 // One day's whole timetable UI — label/date, settings, slot-add controls,
 // and the slot list itself. Rendered side by side per day (see Timetable).
-// The slot list always splits into exactly two columns — first half of
-// the day's slots on the left, second half on the right — so time still
-// reads top-to-bottom within each column the way a timetable should, and
-// each column gets its own vertical scroll if it doesn't fit. A previous
-// version tried to fit an unbounded number of columns by measuring
-// available height at runtime; that dynamic sizing could read a stale/zero
-// height on first layout and get stuck rendering far too many narrow
-// columns. A fixed two-column split has no such measurement to get wrong.
+// The slot list is a single scrollable column — multi-column experiments
+// here (unbounded columns sized from a runtime height measurement, then a
+// fixed two-column split) both made drag-and-drop reordering less direct
+// than a plain top-to-bottom list, so this reverts to that simpler shape.
 export function DayPanel({ day, daysCount }: Props) {
   const bands = useAppStore((s) => s.bands);
   const renameDay = useAppStore((s) => s.renameDay);
@@ -178,51 +174,34 @@ export function DayPanel({ day, daysCount }: Props) {
             上のボタンで枠を作成してください
           </p>
         ) : (
-          <SortableContext items={slots.map((s) => s.id)} strategy={rectSortingStrategy}>
-            <div className="grid h-full grid-cols-2 gap-1.5">
+          <SortableContext
+            items={slots.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex h-full flex-col gap-1.5 overflow-y-auto pr-1">
               {(() => {
                 // Performance order only counts slots that actually have a
                 // band (breaks/custom slots and empty slots don't get a
-                // number), computed once over the full original order so
-                // it stays correct regardless of which column a slot lands
-                // in visually.
-                const orderById = new Map<string, number>();
+                // number), recomputed fresh from the current slot order on
+                // every render, so reordering or dropping a band in always
+                // keeps the numbering correct automatically.
                 let order = 0;
-                for (const slot of slots) {
+                return slots.map((slot, i) => {
                   const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
-                  if (band) orderById.set(slot.id, ++order);
-                }
-
-                // Fixed two-column split: first half of the day on the
-                // left, second half on the right — time still flows
-                // top-to-bottom within each column, matching how a
-                // timetable is naturally read.
-                const half = Math.ceil(slots.length / 2);
-                const columns = [slots.slice(0, half), slots.slice(half)];
-
-                return columns.map((column, colIndex) => (
-                  <div
-                    key={colIndex}
-                    className="flex min-h-0 flex-col gap-1.5 overflow-y-auto pr-1"
-                  >
-                    {column.map((slot, rowIndex) => {
-                      const globalIndex = colIndex * half + rowIndex;
-                      const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
-                      return (
-                        <SlotCard
-                          key={slot.id}
-                          dayId={day.id}
-                          slot={slot}
-                          band={band}
-                          index={globalIndex}
-                          total={slots.length}
-                          conflict={conflicts.has(slot.id)}
-                          performanceOrder={orderById.get(slot.id) ?? null}
-                        />
-                      );
-                    })}
-                  </div>
-                ));
+                  if (band) order++;
+                  return (
+                    <SlotCard
+                      key={slot.id}
+                      dayId={day.id}
+                      slot={slot}
+                      band={band}
+                      index={i}
+                      total={slots.length}
+                      conflict={conflicts.has(slot.id)}
+                      performanceOrder={band ? order : null}
+                    />
+                  );
+                });
               })()}
             </div>
           </SortableContext>

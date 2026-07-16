@@ -181,30 +181,34 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
                             <div className="mt-1.5 flex flex-wrap" style={{ gap: 8 }}>
                               {band.hasSync && (
                                 <span
-                                  className="shrink-0 rounded-full border font-semibold tracking-wide"
+                                  className="inline-flex shrink-0 items-center justify-center rounded-full border font-semibold tracking-wide leading-none"
                                   style={{
                                     fontSize: 13,
-                                    padding: "3px 10px",
+                                    gap: 4,
+                                    padding: "5px 10px 4px",
                                     background: theme.syncBadge.bg,
                                     borderColor: theme.syncBadge.border,
                                     color: theme.syncBadge.text,
                                   }}
                                 >
-                                  ⚡ SYNC
+                                  <span>⚡</span>
+                                  <span>SYNC</span>
                                 </span>
                               )}
                               {band.hasKeyboard && (
                                 <span
-                                  className="shrink-0 rounded-full border font-semibold tracking-wide"
+                                  className="inline-flex shrink-0 items-center justify-center rounded-full border font-semibold tracking-wide leading-none"
                                   style={{
                                     fontSize: 13,
-                                    padding: "3px 10px",
+                                    gap: 4,
+                                    padding: "5px 10px 4px",
                                     background: theme.keyBadge.bg,
                                     borderColor: theme.keyBadge.border,
                                     color: theme.keyBadge.text,
                                   }}
                                 >
-                                  🎹 KEY
+                                  <span>🎹</span>
+                                  <span>KEY</span>
                                 </span>
                               )}
                             </div>
