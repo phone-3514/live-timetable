@@ -450,10 +450,6 @@ function looksLikeMemberLine(line: string): boolean {
   return GRADE_PREFIX_RE.test(line) || KNOWN_INSTRUMENT_PREFIX_RE.test(line);
 }
 
-function looksLikeUnnumberedSongLine(line: string): boolean {
-  return line.includes("/") && !looksLikeMemberLine(line);
-}
-
 function parseChatLogBands(rawText: string): Band[] {
   const lines = rawText.split("\n").map((l) => l.trim());
   const anchors: number[] = [];
@@ -471,6 +467,13 @@ function parseChatLogBands(rawText: string): Band[] {
     const setlist: string[] = [];
     const scheduleTimeParts: string[] = [];
     let durationMinutes: number | undefined;
+    // Setlists aren't always "曲名/アーティスト" or numbered — some
+    // applications just list bare song titles, one per line, right after
+    // バンド名 and before the member list starts. Until a real member line
+    // (grade/instrument prefix) is seen, an otherwise-unmatched line is
+    // still part of that song list; after members start, only slash-marked
+    // lines count as setlist so stray notes don't get misread as songs.
+    let seenMemberLine = false;
 
     const rest = blockLines.slice(1);
     for (let i = 0; i < rest.length; i++) {
@@ -505,7 +508,13 @@ function parseChatLogBands(rawText: string): Band[] {
         continue;
       }
 
-      if (looksLikeUnnumberedSongLine(line)) {
+      if (looksLikeMemberLine(line)) {
+        seenMemberLine = true;
+        members.push(extractMemberName(line));
+        continue;
+      }
+
+      if (!seenMemberLine || line.includes("/")) {
         setlist.push(line);
         continue;
       }

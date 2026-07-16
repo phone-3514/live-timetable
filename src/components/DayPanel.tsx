@@ -81,7 +81,15 @@ export function DayPanel({ day, daysCount }: Props) {
           type="date"
           value={day.date ?? ""}
           onChange={(e) => updateDayDate(day.id, e.target.value || null)}
-          className="w-28 bg-transparent text-xs text-slate-500 outline-none"
+          onClick={(e) => {
+            // Native <input type="date"> only reliably opens its calendar
+            // when the tiny built-in icon is clicked precisely. Calling
+            // showPicker() on any click turns the whole (now much larger)
+            // field into one big "open calendar" button.
+            e.currentTarget.showPicker?.();
+          }}
+          title="クリックして日付を変更"
+          className="w-36 cursor-pointer rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200 outline-none transition-colors hover:border-indigo-500 hover:bg-slate-700 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:scale-125"
         />
         {daysCount > 1 && (
           <button
