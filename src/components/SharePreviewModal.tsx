@@ -10,6 +10,7 @@ type Props = { day: TimetableDay; onClose: () => void };
 
 export function SharePreviewModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
+  const eventInfo = useAppStore((s) => s.eventInfo);
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
@@ -29,7 +30,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, themeId]);
+  }, [day, bands, themeId, eventInfo]);
 
   // The scrollable area's own size (not the modal's, which also holds a
   // header/theme-picker/footer) — scaling by width alone left a tall image
@@ -146,7 +147,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
                 transformOrigin: "top left",
               }}
             >
-              <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} />
+              <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} eventInfo={eventInfo} />
             </div>
           </div>
         </div>
@@ -175,7 +176,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
         aria-hidden="true"
       >
         <div ref={captureRef}>
-          <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} />
+          <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} eventInfo={eventInfo} />
         </div>
       </div>
     </div>

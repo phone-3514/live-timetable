@@ -62,9 +62,14 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
     setlistItalic: true,
     syncBadge: { bg: "rgba(139,92,246,0.15)", border: "rgba(167,139,250,0.4)", text: "#ddd6fe" },
     keyBadge: { bg: "rgba(14,165,233,0.15)", border: "rgba(56,189,248,0.4)", text: "#bae6fd" },
-    breakBorder: "rgba(255,255,255,0.1)",
-    breakBg: "rgba(255,255,255,0.015)",
-    breakText: "#94a3b8",
+    // A near-transparent background here (same idea as the band cards)
+    // read as nearly invisible against the busy dark gradient. Break rows
+    // instead get a solid, light background with dark text — the
+    // opposite polarity of everything else on this theme — so they're
+    // unmistakably a different kind of row, not just a dimmer band card.
+    breakBorder: "#64748b",
+    breakBg: "#cbd5e1",
+    breakText: "#1e293b",
     footerColor: "#64748b",
   },
   chic: {
@@ -92,9 +97,12 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
     setlistItalic: true,
     syncBadge: { bg: "#e8ede3", border: "#a8c090", text: "#4d5f3f" },
     keyBadge: { bg: "#f3e5e0", border: "#d4a5a5", text: "#7a4a4a" },
-    breakBorder: "rgba(180,160,135,0.5)",
-    breakBg: "rgba(255,255,255,0.2)",
-    breakText: "#a8977e",
+    // Solid warm taupe instead of a translucent white wash — the
+    // translucent version barely showed up against the equally-light page
+    // background, so break rows blended in rather than standing apart.
+    breakBorder: "#a4886a",
+    breakBg: "#e6d7c3",
+    breakText: "#3e2723",
     footerColor: "#a8977e",
   },
   clean: {
@@ -119,9 +127,12 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
     setlistItalic: false,
     syncBadge: { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
     keyBadge: { bg: "#fffbeb", border: "#fde68a", text: "#b45309" },
-    breakBorder: "#d1d5db",
-    breakBg: "#f9fafb",
-    breakText: "#6b7280",
+    // A touch darker/more saturated than the near-white band cards so a
+    // break row reads as visually distinct at a glance, not just a paler
+    // version of the same white.
+    breakBorder: "#9ca3af",
+    breakBg: "#e5e7eb",
+    breakText: "#1f2937",
     footerColor: "#9ca3af",
   },
 };

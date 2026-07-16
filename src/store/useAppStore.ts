@@ -23,15 +23,25 @@ type DeletedBandSnapshot = {
   placement: { dayId: string; slotId: string } | null;
 };
 
+// Event-wide (not per-day) details, shown on the share image — live name
+// and venue in its header, organization name in its footer.
+export type EventInfo = {
+  liveName: string;
+  venue: string;
+  organizationName: string;
+};
+
 type AppState = {
   rawText: string;
   bands: Band[];
   days: TimetableDay[];
   venueHours: VenueHours;
+  eventInfo: EventInfo;
   lastDeleted: DeletedBandSnapshot | null;
 
   setRawText: (text: string) => void;
   updateVenueHours: (partial: Partial<VenueHours>) => void;
+  updateEventInfo: (partial: Partial<EventInfo>) => void;
   parseFromRawText: () => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
@@ -286,11 +296,14 @@ export const useAppStore = create<AppState>((set) => ({
   bands: [],
   days: initialDays,
   venueHours: DEFAULT_VENUE_HOURS,
+  eventInfo: { liveName: "", venue: "", organizationName: "" },
   lastDeleted: null,
 
   setRawText: (text) => set({ rawText: text }),
   updateVenueHours: (partial) =>
     set((state) => ({ venueHours: { ...state.venueHours, ...partial } })),
+  updateEventInfo: (partial) =>
+    set((state) => ({ eventInfo: { ...state.eventInfo, ...partial } })),
 
   parseFromRawText: () =>
     set((state) => {

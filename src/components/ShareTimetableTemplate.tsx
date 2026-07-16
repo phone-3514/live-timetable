@@ -1,6 +1,7 @@
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import { THEMES } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
+import type { EventInfo } from "../store/useAppStore";
 
 // A purely presentational, non-interactive render of a day's timetable,
 // designed to be captured as a single shareable PNG (Discord/LINE/print) —
@@ -32,9 +33,9 @@ function formatDate(iso: string | null): string | null {
   }).format(d);
 }
 
-type Props = { day: TimetableDay; bands: Band[]; themeId: ThemeId };
+type Props = { day: TimetableDay; bands: Band[]; themeId: ThemeId; eventInfo: EventInfo };
 
-export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
+export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props) {
   const theme = THEMES[themeId];
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   // Fully-empty "still to be filled" slots are a working-draft artifact —
@@ -93,25 +94,77 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
           >
             LIVE TIMETABLE
           </span>
-          <h1
-            className="mt-2 font-black leading-none"
-            style={{
-              fontSize: 96,
-              ...(theme.dayTitleGradient
-                ? {
-                    backgroundImage: theme.dayTitleGradient,
-                    backgroundClip: "text",
-                    WebkitBackgroundClip: "text",
-                    color: "transparent",
-                  }
-                : { color: theme.dayTitleColor }),
-            }}
-          >
-            {day.label}
-          </h1>
-          {dateLabel && (
-            <p className="mt-3 font-medium" style={{ fontSize: 28, color: theme.dateColor }}>
-              {dateLabel}
+          {eventInfo.liveName ? (
+            <>
+              {/* Live name takes the big-title slot when provided — it's
+                  the event's actual name, more specific than the generic
+                  "Day N" marker, which becomes a secondary pill instead. */}
+              <h1
+                className="mt-2 font-black leading-tight"
+                style={{
+                  fontSize: 80,
+                  ...(theme.dayTitleGradient
+                    ? {
+                        backgroundImage: theme.dayTitleGradient,
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        color: "transparent",
+                      }
+                    : { color: theme.dayTitleColor }),
+                }}
+              >
+                {eventInfo.liveName}
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center justify-center" style={{ gap: 10 }}>
+                <span
+                  className="rounded-full font-bold"
+                  style={{
+                    fontSize: 20,
+                    padding: "4px 16px",
+                    background: theme.numberBadgeBackground,
+                    color: theme.numberBadgeText,
+                  }}
+                >
+                  {day.label}
+                </span>
+                {dateLabel && (
+                  <span className="font-medium" style={{ fontSize: 22, color: theme.dateColor }}>
+                    {dateLabel}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h1
+                className="mt-2 font-black leading-none"
+                style={{
+                  fontSize: 96,
+                  ...(theme.dayTitleGradient
+                    ? {
+                        backgroundImage: theme.dayTitleGradient,
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        color: "transparent",
+                      }
+                    : { color: theme.dayTitleColor }),
+                }}
+              >
+                {day.label}
+              </h1>
+              {dateLabel && (
+                <p className="mt-3 font-medium" style={{ fontSize: 28, color: theme.dateColor }}>
+                  {dateLabel}
+                </p>
+              )}
+            </>
+          )}
+          {eventInfo.venue && (
+            <p
+              className="mt-2 font-medium tracking-wide"
+              style={{ fontSize: 20, color: theme.dateColor }}
+            >
+              📍 {eventInfo.venue}
             </p>
           )}
           <div
@@ -236,9 +289,12 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
                     );
                   }
 
-                  // Non-band row (休憩・集合・リハーサルなど) — deliberately
-                  // quieter than a band row so the real lineup stays
-                  // visually dominant.
+                  // Non-band row (休憩・集合・リハーサルなど) — styled with
+                  // the opposite color polarity from band cards (solid
+                  // light background, dark text, on every theme including
+                  // the dark ones) so it reads as a clearly different kind
+                  // of row at a glance, not just a dimmer band card, while
+                  // staying easily legible on its own.
                   return (
                     <div
                       key={slot.id}
@@ -251,10 +307,10 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
                         color: theme.breakText,
                       }}
                     >
-                      <span className="font-mono" style={{ fontSize: 15 }}>
+                      <span className="font-mono font-semibold" style={{ fontSize: 16 }}>
                         {slot.startTime}-{slot.endTime}
                       </span>
-                      <span className="tracking-wide" style={{ fontSize: 15 }}>
+                      <span className="font-bold tracking-wide" style={{ fontSize: 16 }}>
                         {slot.customLabel}
                       </span>
                     </div>
@@ -265,8 +321,24 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
           </div>
         )}
 
-        <footer className="text-center" style={{ fontSize: 15, color: theme.footerColor }}>
-          軽音ライブ タイムテーブル作成
+        <footer className="text-center">
+          {eventInfo.organizationName && (
+            <p
+              className="font-semibold tracking-wide"
+              style={{ fontSize: 19, color: theme.dateColor }}
+            >
+              {eventInfo.organizationName}
+            </p>
+          )}
+          <p
+            style={{
+              fontSize: 14,
+              marginTop: eventInfo.organizationName ? 4 : 0,
+              color: theme.footerColor,
+            }}
+          >
+            軽音ライブ タイムテーブル作成
+          </p>
         </footer>
       </div>
     </div>
