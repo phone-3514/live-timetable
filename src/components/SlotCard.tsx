@@ -81,7 +81,7 @@ export function SlotCard({
     <div
       ref={setNodeRef}
       style={rowStyle}
-      className={`flex items-stretch gap-1.5 rounded-lg border p-1.5 ${
+      className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 ${
         isDragging ? "opacity-40" : ""
       } ${
         showBlockedHighlight
@@ -93,6 +93,17 @@ export function SlotCard({
               : "border-slate-700 bg-slate-800"
       }`}
     >
+      {showDropHighlight && (
+        // Live preview of the start time this band would get if dropped
+        // here right now. The slot's own startTime is already correct for
+        // this regardless of which band ends up in it — a slot's start is
+        // only a function of everything BEFORE it, never of its own
+        // occupant — so no separate what-if calculation is needed, just
+        // surfacing the value that's already computed.
+        <div className="pointer-events-none absolute -top-2 right-2 z-10 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-md shadow-black/40">
+          → {slot.startTime} 開始
+        </div>
+      )}
       <button
         ref={setActivatorNodeRef}
         {...listeners}
@@ -266,7 +277,7 @@ export function SlotCard({
       </div>
       <button
         onClick={() => removeSlot(dayId, slot.id)}
-        className="self-center text-xs text-slate-500 hover:text-rose-400"
+        className="flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70"
         title="枠を削除"
       >
         ×

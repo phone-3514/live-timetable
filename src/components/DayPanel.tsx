@@ -193,7 +193,10 @@ export function DayPanel({ day, daysCount }: Props) {
 
       <div
         ref={exportRef}
-        className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-slate-900 p-1.5"
+        // Extra right padding keeps the slot-delete "×" button clear of the
+        // scrollbar that overlays this edge whenever the list overflows —
+        // without it the scrollbar sits right on top of the button.
+        className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-slate-900 py-1.5 pl-1.5 pr-3"
       >
         {slots.length === 0 && (
           <p className="rounded-lg border border-dashed border-slate-700 p-3 text-center text-xs text-slate-500">
