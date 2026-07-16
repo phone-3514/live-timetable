@@ -300,28 +300,42 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
                     );
                   }
 
-                  // Non-band row (休憩・集合・リハーサルなど) — styled with
-                  // the opposite color polarity from band cards (solid
-                  // light background, dark text, on every theme including
-                  // the dark ones) so it reads as a clearly different kind
-                  // of row at a glance, not just a dimmer band card, while
-                  // staying easily legible on its own.
+                  // Non-band row (休憩・集合・リハーサルなど) — styled as a
+                  // clear section-divider/milestone rather than a quieter
+                  // version of a band card: solid (not dashed) border,
+                  // generous padding, and a large, heavily-weighted title
+                  // so "休憩" or "写真撮影" reads instantly even at a
+                  // glance on a small phone screen. Opposite color polarity
+                  // from band cards (solid light background, dark text) on
+                  // every theme, including the dark ones, so it's
+                  // unmistakably a different kind of row, not a dimmer
+                  // band card.
                   return (
                     <div
                       key={slot.id}
-                      className="flex items-center justify-center rounded-2xl border border-dashed"
+                      className="flex items-center justify-center rounded-2xl border-2"
                       style={{
-                        gap: 12,
-                        padding: 14,
+                        gap: 14,
+                        padding: "18px 16px",
                         borderColor: theme.breakBorder,
                         background: theme.breakBg,
-                        color: theme.breakText,
+                        boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
                       }}
                     >
-                      <span className="font-mono font-semibold" style={{ fontSize: 16 }}>
+                      <span
+                        className="font-mono font-bold"
+                        style={{ fontSize: 17, color: theme.breakText, opacity: 0.75 }}
+                      >
                         {slot.startTime}-{slot.endTime}
                       </span>
-                      <span className="font-bold tracking-wide" style={{ fontSize: 16 }}>
+                      <span
+                        aria-hidden="true"
+                        style={{ width: 2, height: 22, background: theme.breakText, opacity: 0.25 }}
+                      />
+                      <span
+                        className="font-black tracking-wide"
+                        style={{ fontSize: 23, color: theme.breakText }}
+                      >
                         {slot.customLabel}
                       </span>
                     </div>
