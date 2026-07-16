@@ -79,6 +79,7 @@ export function Timetable() {
             開始時刻
             <input
               type="time"
+              aria-label="1枠目の開始時刻"
               value={settings.startTime}
               onChange={(e) =>
                 updateSettings(activeDay.id, { startTime: e.target.value })

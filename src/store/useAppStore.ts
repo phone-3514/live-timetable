@@ -7,10 +7,12 @@ import type {
   TimetableSlot,
 } from "../types";
 import {
+  DEFAULT_VENUE_HOURS,
   extractDayOfMonthHints,
   extractTimeRange,
   parseBands,
   type TimeRange,
+  type VenueHours,
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 
@@ -19,8 +21,10 @@ type AppState = {
   bands: Band[];
   days: TimetableDay[];
   activeDayId: string;
+  venueHours: VenueHours;
 
   setRawText: (text: string) => void;
+  updateVenueHours: (partial: Partial<VenueHours>) => void;
   parseFromRawText: () => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
@@ -124,6 +128,7 @@ export function canPlaceBandInSlot(
   band: Band,
   day: TimetableDay,
   slot: TimetableSlot,
+  venue: VenueHours = DEFAULT_VENUE_HOURS,
 ): boolean {
   if (slot.customLabel !== null) return false;
   if (band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
@@ -133,12 +138,12 @@ export function canPlaceBandInSlot(
   const slotStart = timeToMinutes(slot.startTime);
   const slotEnd = timeToMinutes(slot.endTime);
 
-  const ngRange = extractTimeRange(band.ngTime);
+  const ngRange = extractTimeRange(band.ngTime, venue);
   if (ngRange && slotOverlapsRange(slotStart, slotEnd, ngRange)) {
     return false;
   }
 
-  const desiredRange = extractTimeRange(band.desiredTime);
+  const desiredRange = extractTimeRange(band.desiredTime, venue);
   if (desiredRange && !slotOverlapsRange(slotStart, slotEnd, desiredRange)) {
     return false;
   }
@@ -217,8 +222,11 @@ export const useAppStore = create<AppState>((set) => ({
   bands: [],
   days: initialDays,
   activeDayId: initialDays[0].id,
+  venueHours: DEFAULT_VENUE_HOURS,
 
   setRawText: (text) => set({ rawText: text }),
+  updateVenueHours: (partial) =>
+    set((state) => ({ venueHours: { ...state.venueHours, ...partial } })),
 
   parseFromRawText: () =>
     set((state) => {
@@ -388,7 +396,7 @@ export const useAppStore = create<AppState>((set) => ({
         !targetDay ||
         !targetSlot ||
         !band ||
-        !canPlaceBandInSlot(band, targetDay, targetSlot)
+        !canPlaceBandInSlot(band, targetDay, targetSlot, state.venueHours)
       ) {
         return state;
       }

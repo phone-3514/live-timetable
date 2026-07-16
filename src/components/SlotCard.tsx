@@ -19,6 +19,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
   const bands = useAppStore((s) => s.bands);
+  const venueHours = useAppStore((s) => s.venueHours);
 
   const {
     setNodeRef,
@@ -47,7 +48,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
   const isDraggingBand = draggedBandId !== null;
   const isBlockedForDraggedBand =
     isDraggingBand && day && draggedBand
-      ? !canPlaceBandInSlot(draggedBand, day, slot)
+      ? !canPlaceBandInSlot(draggedBand, day, slot, venueHours)
       : false;
 
   const isCustom = slot.customLabel !== null;

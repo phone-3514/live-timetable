@@ -1,4 +1,5 @@
 import type { Band } from "../types";
+import { timeToMinutes } from "./time";
 
 // A day-of-month must be a real calendar day (1-31). Listing the longer
 // alternatives first lets regex backtracking self-correct glued digit runs:
@@ -75,8 +76,52 @@ function toMinutes(hour: number, minute: number): number | null {
 // null bound = unbounded on that side (from the beginning / until the end).
 export type TimeRange = { startMinutes: number | null; endMinutes: number | null };
 
-export function extractTimeRange(text: string): TimeRange | null {
+// The venue's daily open/close time, referenced by the natural-language
+// keyword mappings below ("午前中" etc. have no numbers of their own to
+// parse, so they borrow these instead). Configurable in the UI — see
+// useAppStore's venueHours — with these as the fallback default.
+export type VenueHours = { openTime: string; closeTime: string };
+export const DEFAULT_VENUE_HOURS: VenueHours = { openTime: "09:00", closeTime: "21:00" };
+
+const NOON_MINUTES = 12 * 60;
+const EVENING_MINUTES = 16 * 60;
+
+// Checked before any numeric parsing, per the request that keyword phrases
+// take priority — a band that wrote "午前中" didn't also write a "9:00"
+// anywhere for the numeric path to find. Returns:
+//   - a TimeRange for phrases that bound one side of the day (午前中/午後/
+//     夕方以降),
+//   - null for phrases that explicitly mean no restriction (終日/いつでも/
+//     指定なし) — same "unrestricted" signal callers already treat null as,
+//   - undefined when no keyword matched, so the caller falls through to the
+//     numeric parsing below.
+function matchKeywordTimeRange(
+  text: string,
+  venue: VenueHours,
+): TimeRange | null | undefined {
+  if (text.includes("終日") || text.includes("いつでも") || text.includes("指定なし")) {
+    return null;
+  }
+  if (text.includes("午前")) {
+    return { startMinutes: timeToMinutes(venue.openTime), endMinutes: NOON_MINUTES };
+  }
+  if (text.includes("夕方")) {
+    return { startMinutes: EVENING_MINUTES, endMinutes: timeToMinutes(venue.closeTime) };
+  }
+  if (text.includes("午後")) {
+    return { startMinutes: NOON_MINUTES, endMinutes: timeToMinutes(venue.closeTime) };
+  }
+  return undefined;
+}
+
+export function extractTimeRange(
+  text: string,
+  venue: VenueHours = DEFAULT_VENUE_HOURS,
+): TimeRange | null {
   if (!text) return null;
+
+  const keywordRange = matchKeywordTimeRange(text, venue);
+  if (keywordRange !== undefined) return keywordRange;
 
   const closed = TIME_RANGE_RE.exec(text);
   if (closed) {
