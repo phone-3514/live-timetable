@@ -1,75 +1,50 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Band } from "../types";
-import { BandDetailsForm } from "./BandDetailsForm";
 
-type Props = { band: Band };
+type Props = {
+  band: Band;
+  onHoverStart: (band: Band, el: HTMLElement) => void;
+  onHoverEnd: () => void;
+};
 
-// Compact draggable tile for the unplaced-band grid. Full details (members,
-// desired schedule, sync/keyboard toggles, ...) live in a hover popover so
-// the base tile stays tiny and many bands fit on screen without scrolling.
-export function BandChip({ band }: Props) {
-  const [open, setOpen] = useState(false);
-  const closeTimer = useRef<number | null>(null);
-
+// Compact draggable tile for the unplaced-band grid. Full details render in
+// a single shared flyout owned by BandListPanel (see there for why) — this
+// component only reports hover in/out plus its own DOM node.
+export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: `band:${band.id}` });
+  const elRef = useRef<HTMLDivElement | null>(null);
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  function cancelClose() {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }
-  function scheduleClose() {
-    cancelClose();
-    closeTimer.current = window.setTimeout(() => setOpen(false), 150);
-  }
-
   return (
     <div
-      className="relative"
-      onMouseEnter={() => {
-        cancelClose();
-        setOpen(true);
+      ref={(el) => {
+        setNodeRef(el);
+        elRef.current = el;
       }}
-      onMouseLeave={scheduleClose}
+      {...listeners}
+      {...attributes}
+      style={style}
+      onMouseEnter={() => elRef.current && onHoverStart(band, elRef.current)}
+      onMouseLeave={onHoverEnd}
+      className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing ${
+        isDragging ? "relative z-50 opacity-50" : ""
+      } ${
+        band.parseWarning
+          ? "border-amber-600 bg-amber-950/40"
+          : "border-slate-700 bg-slate-800 hover:border-indigo-400"
+      }`}
     >
-      <div
-        ref={setNodeRef}
-        {...listeners}
-        {...attributes}
-        style={style}
-        className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing ${
-          isDragging ? "relative z-50 opacity-50" : ""
-        } ${
-          band.parseWarning
-            ? "border-amber-400 bg-amber-50"
-            : "border-slate-200 bg-white hover:border-indigo-300"
-        }`}
-        title="ドラッグしてタイムテーブルに配置／ホバーで詳細"
-      >
-        <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
-          {band.name}
-        </span>
-        {band.hasSync && <span title="同期演奏あり">🔌</span>}
-        {band.hasKeyboard && <span title="キーボードあり">🎹</span>}
-        {band.parseWarning && <span title={band.parseWarning}>⚠️</span>}
-      </div>
-
-      {open && (
-        <div
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-          className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"
-        >
-          <BandDetailsForm band={band} />
-        </div>
-      )}
+      <span className="min-w-0 flex-1 truncate font-medium text-slate-100">
+        {band.name}
+      </span>
+      {band.hasSync && <span title="同期演奏あり">🔌</span>}
+      {band.hasKeyboard && <span title="キーボードあり">🎹</span>}
+      {band.parseWarning && <span title={band.parseWarning}>⚠️</span>}
     </div>
   );
 }

@@ -67,31 +67,31 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
         isDragging ? "opacity-40" : ""
       } ${
         showBlockedHighlight
-          ? "border-rose-400 bg-rose-50"
+          ? "border-rose-500 bg-rose-950/40"
           : showDropHighlight
-            ? "border-indigo-400 bg-indigo-50"
-            : "border-slate-200 bg-white"
+            ? "border-indigo-400 bg-indigo-950/40"
+            : "border-slate-700 bg-slate-800"
       }`}
     >
       <button
         ref={setActivatorNodeRef}
         {...listeners}
         {...attributes}
-        className="flex w-6 shrink-0 cursor-grab items-center justify-center text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+        className="flex w-6 shrink-0 cursor-grab items-center justify-center text-slate-500 hover:text-slate-300 active:cursor-grabbing"
         title="ドラッグして順番を入れ替え"
       >
         ⠿
       </button>
 
-      <div className="flex w-24 shrink-0 flex-col justify-center font-mono text-sm text-slate-600">
+      <div className="flex w-24 shrink-0 flex-col justify-center font-mono text-sm text-slate-300">
         <span>{slot.startTime}</span>
-        <span className="text-slate-300">-{slot.endTime}</span>
+        <span className="text-slate-500">-{slot.endTime}</span>
       </div>
 
       {isCustom ? (
-        <div className="flex flex-1 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+        <div className="flex flex-1 items-center gap-2 rounded-md border border-amber-600 bg-amber-900/40 p-2">
           <input
-            className="flex-1 bg-transparent font-semibold text-amber-800 outline-none"
+            className="flex-1 bg-transparent font-semibold text-amber-300 outline-none"
             value={slot.customLabel ?? ""}
             onChange={(e) =>
               updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
@@ -100,7 +100,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
           <input
             type="number"
             min={1}
-            className="w-16 bg-transparent text-right text-sm text-amber-700 outline-none"
+            className="w-16 bg-transparent text-right text-sm text-amber-400 outline-none"
             value={slot.customDurationMinutes ?? ""}
             onChange={(e) =>
               updateSlotContent(dayId, slot.id, {
@@ -110,7 +110,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
               })
             }
           />
-          <span className="text-xs text-amber-600">分</span>
+          <span className="text-xs text-amber-500">分</span>
         </div>
       ) : (
         <div
@@ -124,9 +124,9 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
           }
           className={`flex min-h-[56px] flex-1 items-center rounded-md border p-2 ${
             band
-              ? "border-slate-200 bg-slate-50"
-              : "border-dashed border-slate-200 text-sm text-slate-300"
-          } ${conflict ? "border-rose-400 bg-rose-50" : ""} ${
+              ? "border-slate-700 bg-slate-900"
+              : "border-dashed border-slate-700 text-sm text-slate-500"
+          } ${conflict ? "border-rose-500 bg-rose-950/40" : ""} ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
         >
@@ -136,16 +136,16 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
               {...bandDraggable.attributes}
               className="w-full cursor-grab active:cursor-grabbing"
             >
-              <p className="font-semibold text-slate-800">
+              <p className="font-semibold text-slate-100">
                 {band.name}
                 {band.durationMinutes != null && (
-                  <span className="ml-2 text-xs font-normal text-indigo-500">
+                  <span className="ml-2 text-xs font-normal text-indigo-400">
                     ({band.durationMinutes}分)
                   </span>
                 )}
                 {band.hasSync && (
                   <span
-                    className="ml-2 rounded border border-violet-300 bg-violet-50 px-1 text-xs font-normal text-violet-700"
+                    className="ml-2 rounded border border-violet-500 bg-violet-950/50 px-1 text-xs font-normal text-violet-300"
                     title="同期演奏あり"
                   >
                     🔌 同期
@@ -153,18 +153,18 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
                 )}
                 {band.hasKeyboard && (
                   <span
-                    className="ml-1 rounded border border-sky-300 bg-sky-50 px-1 text-xs font-normal text-sky-700"
+                    className="ml-1 rounded border border-sky-500 bg-sky-950/50 px-1 text-xs font-normal text-sky-300"
                     title="キーボードあり"
                   >
                     🎹 Key
                   </span>
                 )}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
               {conflict && (
-                <p className="mt-1 text-xs font-medium text-rose-600">
+                <p className="mt-1 text-xs font-medium text-rose-400">
                   ⚠ 前後の枠とメンバーが重複しています
                 </p>
               )}
@@ -179,7 +179,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
         <button
           onClick={() => moveSlot(dayId, slot.id, "up")}
           disabled={index === 0}
-          className="px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-20"
+          className="px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
           title="上に移動"
         >
           ▲
@@ -187,7 +187,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
         <button
           onClick={() => moveSlot(dayId, slot.id, "down")}
           disabled={index === total - 1}
-          className="px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-20"
+          className="px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
           title="下に移動"
         >
           ▼
@@ -195,7 +195,7 @@ export function SlotCard({ dayId, slot, band, index, total, conflict }: Props) {
       </div>
       <button
         onClick={() => removeSlot(dayId, slot.id)}
-        className="self-center text-sm text-slate-300 hover:text-rose-500"
+        className="self-center text-sm text-slate-500 hover:text-rose-400"
         title="枠を削除"
       >
         ×

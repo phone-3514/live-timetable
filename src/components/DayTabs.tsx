@@ -22,8 +22,8 @@ export function DayTabs() {
             onClick={() => setActiveDay(day.id)}
             className={`flex flex-col gap-0.5 rounded-lg border px-2 py-1 ${
               isActive
-                ? "border-indigo-400 bg-indigo-50"
-                : "border-slate-200 bg-white hover:bg-slate-50"
+                ? "border-indigo-400 bg-indigo-950/40"
+                : "border-slate-700 bg-slate-800 hover:bg-slate-700/60"
             }`}
           >
             <div className="flex items-center gap-1">
@@ -32,13 +32,13 @@ export function DayTabs() {
                 onChange={(e) => renameDay(day.id, e.target.value)}
                 onFocus={() => setActiveDay(day.id)}
                 className={`w-16 bg-transparent text-sm outline-none ${
-                  isActive ? "font-semibold text-indigo-700" : "text-slate-500"
+                  isActive ? "font-semibold text-indigo-300" : "text-slate-400"
                 }`}
               />
               {days.length > 1 && (
                 <button
                   onClick={() => removeDay(day.id)}
-                  className="text-xs text-slate-300 hover:text-rose-500"
+                  className="text-xs text-slate-500 hover:text-rose-400"
                   title="この日を削除"
                 >
                   ×
@@ -53,20 +53,20 @@ export function DayTabs() {
               }
               onFocus={() => setActiveDay(day.id)}
               onClick={(e) => e.stopPropagation()}
-              className="w-32 bg-transparent text-xs text-slate-400 outline-none"
+              className="w-32 bg-transparent text-xs text-slate-500 outline-none"
             />
           </div>
         );
       })}
       <button
         onClick={addDay}
-        className="self-start rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+        className="self-start rounded-lg border border-dashed border-slate-600 px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
       >
         + 日を追加
       </button>
       <button
         onClick={autoDetectDayRestrictions}
-        className="self-start rounded-lg border border-slate-300 px-3 py-1 text-xs text-slate-400 hover:bg-slate-50"
+        className="self-start rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-500 hover:bg-slate-800"
         title="通常は不要です（貼り付け・希望/NG時間帯の編集・日付の設定のたびに自動で判定されます）。バンドカードで手動変更した出演可能日を、希望/NG時間帯のテキストが示す内容にリセットしたいときに使います"
       >
         日程を再判定（リセット）

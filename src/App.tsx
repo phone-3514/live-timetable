@@ -38,9 +38,9 @@ function App() {
 
   return (
     <DndContext onDragEnd={handleDragEnd}>
-      <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
-        <header className="shrink-0 border-b border-slate-200 bg-white px-6 py-3">
-          <h1 className="text-lg font-bold text-slate-800">
+      <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
+        <header className="shrink-0 border-b border-slate-800 bg-slate-900 px-6 py-3">
+          <h1 className="text-lg font-bold text-slate-100">
             軽音ライブ タイムテーブル作成
           </h1>
         </header>

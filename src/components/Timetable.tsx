@@ -43,7 +43,7 @@ export function Timetable() {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     try {
       const dataUrl = await toPng(el, {
-        backgroundColor: "#ffffff",
+        backgroundColor: "#0f172a",
         pixelRatio: 2,
       });
       const link = document.createElement("a");
@@ -74,8 +74,8 @@ export function Timetable() {
       <div className="flex shrink-0 flex-col gap-3">
         <DayTabs />
 
-        <div className="flex flex-wrap items-end gap-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+        <div className="flex flex-wrap items-end gap-4 rounded-lg border border-slate-700 bg-slate-900 p-3">
+          <label className="flex flex-col gap-1 text-sm text-slate-400">
             開始時刻
             <input
               type="time"
@@ -83,10 +83,10 @@ export function Timetable() {
               onChange={(e) =>
                 updateSettings(activeDay.id, { startTime: e.target.value })
               }
-              className="rounded border border-slate-300 px-2 py-1"
+              className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-100"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+          <label className="flex flex-col gap-1 text-sm text-slate-400">
             演奏時間（分）
             <input
               type="number"
@@ -97,10 +97,10 @@ export function Timetable() {
                   performanceMinutes: Number(e.target.value),
                 })
               }
-              className="w-24 rounded border border-slate-300 px-2 py-1"
+              className="w-24 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-100"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
+          <label className="flex flex-col gap-1 text-sm text-slate-400">
             転換時間（分）
             <input
               type="number"
@@ -111,18 +111,18 @@ export function Timetable() {
                   transitionMinutes: Number(e.target.value),
                 })
               }
-              className="w-24 rounded border border-slate-300 px-2 py-1"
+              className="w-24 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-100"
             />
           </label>
           <button
             onClick={handleCopyText}
-            className="ml-auto rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+            className="ml-auto rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
           >
             テキストをコピー
           </button>
           <button
             onClick={handleExportImage}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+            className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
           >
             画像を保存
           </button>
@@ -132,7 +132,7 @@ export function Timetable() {
           <span className="text-slate-500">枠を追加：</span>
           <button
             onClick={() => addSlot(activeDay.id)}
-            className="rounded bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700"
+            className="rounded bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-500"
           >
             + 演奏枠
           </button>
@@ -142,7 +142,7 @@ export function Timetable() {
               onClick={() =>
                 addCustomSlot(activeDay.id, preset.label, preset.minutes)
               }
-              className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-700 hover:bg-amber-100"
+              className="rounded border border-amber-600 bg-amber-900/40 px-3 py-1.5 text-amber-300 hover:bg-amber-800/50"
             >
               + {preset.label}
             </button>
@@ -152,10 +152,10 @@ export function Timetable() {
 
       <div
         ref={exportRef}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg bg-white p-2"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg bg-slate-900 p-2"
       >
         {slots.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+          <p className="rounded-lg border border-dashed border-slate-700 p-4 text-center text-sm text-slate-500">
             上のボタンでタイムテーブルの枠を作成してください
           </p>
         )}
