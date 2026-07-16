@@ -145,19 +145,50 @@ export function SlotCard({
               updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
             }
           />
-          <input
-            type="number"
-            min={1}
-            className="w-14 bg-transparent text-right text-xs text-amber-400 outline-none"
-            value={slot.customDurationMinutes ?? ""}
-            onChange={(e) =>
-              updateSlotContent(dayId, slot.id, {
-                customDurationMinutes: e.target.value
-                  ? Number(e.target.value)
-                  : null,
-              })
-            }
-          />
+          {/* +/- stepper buttons instead of relying on the number input's
+              tiny native spin arrows — easier to tap, and the input itself
+              gets a visible border/background so it reads as editable
+              rather than floating text. */}
+          <div className="flex shrink-0 items-center overflow-hidden rounded border border-amber-600/60 bg-amber-950/50">
+            <button
+              onClick={() =>
+                updateSlotContent(dayId, slot.id, {
+                  customDurationMinutes: Math.max(
+                    1,
+                    (slot.customDurationMinutes ?? 1) - 5,
+                  ),
+                })
+              }
+              className="px-1.5 py-1 text-sm font-bold text-amber-300 hover:bg-amber-800/60"
+              title="5分減らす"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={1}
+              className="w-10 bg-transparent text-center text-sm font-semibold text-amber-100 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              value={slot.customDurationMinutes ?? ""}
+              onChange={(e) =>
+                updateSlotContent(dayId, slot.id, {
+                  customDurationMinutes: e.target.value
+                    ? Number(e.target.value)
+                    : null,
+                })
+              }
+            />
+            <button
+              onClick={() =>
+                updateSlotContent(dayId, slot.id, {
+                  customDurationMinutes: (slot.customDurationMinutes ?? 0) + 5,
+                })
+              }
+              className="px-1.5 py-1 text-sm font-bold text-amber-300 hover:bg-amber-800/60"
+              title="5分増やす"
+            >
+              ＋
+            </button>
+          </div>
           <span className="text-xs text-amber-500">分</span>
         </div>
       ) : (

@@ -74,6 +74,12 @@ type AppState = {
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
   autoScheduleAllDays: () => void;
   resetAllPlacements: () => void;
+  // Unlike resetAllPlacements (which only unassigns bands, keeping the
+  // slots themselves), this deletes every slot on every day outright —
+  // a full return to the empty-timetable state. Parsed bands are left
+  // alone; they just end up back in the unplaced pool since nothing
+  // references them anymore.
+  clearAllSlots: () => void;
 };
 
 function defaultSettings(): TimetableSettings {
@@ -686,6 +692,11 @@ export const useAppStore = create<AppState>((set) => ({
         );
         return { ...day, slots: recomputeTimes(slots, day.settings, state.bands) };
       }),
+    })),
+
+  clearAllSlots: () =>
+    set((state) => ({
+      days: state.days.map((day) => ({ ...day, slots: [] })),
     })),
 }));
 

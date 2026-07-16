@@ -30,11 +30,20 @@ export function DayPanel({ day, daysCount }: Props) {
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customMinutes, setCustomMinutes] = useState(10);
 
   const slots = day.slots;
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflicts = getMemberConflictSlotIds(slots, bands);
+
+  const handleAddCustomNamed = () => {
+    const label = customName.trim();
+    if (!label) return;
+    addCustomSlot(day.id, label, customMinutes);
+    setCustomName("");
+  };
 
   const handleCopyText = async () => {
     const lines = slots.map((slot) => {
@@ -166,6 +175,43 @@ export function DayPanel({ day, daysCount }: Props) {
             +{preset.label}
           </button>
         ))}
+      </div>
+
+      {/* Arbitrary-name non-band events (準備・顔合わせ・写真撮影 etc.) —
+          same addCustomSlot as the presets above, so they're identical in
+          every way that matters: no transition time gets added after them
+          (recomputeTimes only adds one after a slot with a real bandId),
+          and the duration is set here, before the event is even added. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
+        <input
+          value={customName}
+          onChange={(e) => setCustomName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleAddCustomNamed();
+          }}
+          placeholder="例：準備、写真撮影"
+          aria-label={`${day.label}に追加する任意の非演奏枠の名前`}
+          className="w-32 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+        />
+        <div className="flex items-center overflow-hidden rounded border border-slate-600">
+          <input
+            type="number"
+            min={1}
+            max={999}
+            value={customMinutes}
+            onChange={(e) => setCustomMinutes(Number(e.target.value))}
+            aria-label={`${day.label}に追加する任意の非演奏枠の所要時間（分）`}
+            className="w-12 bg-slate-800 px-1.5 py-1 text-center text-slate-100 outline-none"
+          />
+          <span className="bg-slate-800 px-1.5 py-1 text-slate-400">分</span>
+        </div>
+        <button
+          onClick={handleAddCustomNamed}
+          disabled={!customName.trim()}
+          className="rounded bg-slate-600 px-2 py-1 font-medium text-white hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          + 追加
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 rounded-lg bg-slate-900 p-1.5">

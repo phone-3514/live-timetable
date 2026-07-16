@@ -11,6 +11,7 @@ export function Timetable() {
   const addDay = useAppStore((s) => s.addDay);
   const autoScheduleAllDays = useAppStore((s) => s.autoScheduleAllDays);
   const resetAllPlacements = useAppStore((s) => s.resetAllPlacements);
+  const clearAllSlots = useAppStore((s) => s.clearAllSlots);
   const autoDetectDayRestrictions = useAppStore(
     (s) => s.autoDetectDayRestrictions,
   );
@@ -22,6 +23,16 @@ export function Timetable() {
       )
     ) {
       resetAllPlacements();
+    }
+  };
+
+  const handleClearAllSlots = () => {
+    if (
+      window.confirm(
+        "本当に全ての枠を削除しますか？タイムテーブル上の演奏枠・休憩枠などが全て削除され、空の状態に戻ります（この操作は元に戻せません）。",
+      )
+    ) {
+      clearAllSlots();
     }
   };
 
@@ -40,6 +51,13 @@ export function Timetable() {
           className="rounded border border-rose-700 px-3 py-1.5 text-rose-300 hover:bg-rose-950/40"
         >
           配置をリセット
+        </button>
+        <button
+          onClick={handleClearAllSlots}
+          className="rounded border border-rose-800 bg-rose-950/30 px-3 py-1.5 text-rose-400 hover:bg-rose-950/60"
+          title="演奏枠・休憩枠など、全ての日の枠を完全に削除して空の状態に戻します"
+        >
+          🗑 全枠削除
         </button>
         <button
           onClick={addDay}
