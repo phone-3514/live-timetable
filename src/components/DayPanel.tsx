@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
@@ -11,25 +11,18 @@ const CUSTOM_PRESETS = [
   { label: "リハーサル", minutes: 20 },
 ];
 
-// Rough measured height of one SlotCard row including its gap, used to
-// figure out how many rows fit in the available height without scrolling.
-// An estimate rather than a per-row measurement — rows are fairly uniform
-// height in the live UI (band names truncate to one line here, unlike the
-// share image), so this stays close enough in practice.
-// Measured empirically at ~59-60px content height + 6px gap; rounded up a
-// bit further as a safety margin so the estimate errs toward wrapping one
-// column early rather than slightly overflowing a nearly-full one.
-const ROW_HEIGHT_PX = 70;
-const MIN_COLUMN_WIDTH_PX = 300;
-
 type Props = { day: TimetableDay; daysCount: number };
 
 // One day's whole timetable UI — label/date, settings, slot-add controls,
 // and the slot list itself. Rendered side by side per day (see Timetable).
-// The slot list no longer scrolls vertically: it wraps into as many
-// columns as fit the day panel's available height, growing sideways
-// (with its own horizontal scroll as a last resort) instead of forcing
-// everything into one long scrolling strip.
+// The slot list always splits into exactly two columns — first half of
+// the day's slots on the left, second half on the right — so time still
+// reads top-to-bottom within each column the way a timetable should, and
+// each column gets its own vertical scroll if it doesn't fit. A previous
+// version tried to fit an unbounded number of columns by measuring
+// available height at runtime; that dynamic sizing could read a stale/zero
+// height on first layout and get stuck rendering far too many narrow
+// columns. A fixed two-column split has no such measurement to get wrong.
 export function DayPanel({ day, daysCount }: Props) {
   const bands = useAppStore((s) => s.bands);
   const renameDay = useAppStore((s) => s.renameDay);
@@ -41,20 +34,6 @@ export function DayPanel({ day, daysCount }: Props) {
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
-  const listContainerRef = useRef<HTMLDivElement>(null);
-  const [rowsPerColumn, setRowsPerColumn] = useState(8);
-
-  useLayoutEffect(() => {
-    const el = listContainerRef.current;
-    if (!el) return;
-    const update = () => {
-      setRowsPerColumn(Math.max(1, Math.floor(el.clientHeight / ROW_HEIGHT_PX)));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const slots = day.slots;
   const settings = day.settings;
@@ -193,21 +172,14 @@ export function DayPanel({ day, daysCount }: Props) {
         ))}
       </div>
 
-      <div
-        ref={listContainerRef}
-        // No vertical scroll — the list wraps into columns (below) that
-        // fill this container's height instead. Horizontal scroll is the
-        // fallback once there are more bands than fit in that many
-        // columns at a readable width, rather than shrinking anything.
-        className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-lg bg-slate-900 p-1.5"
-      >
+      <div className="min-h-0 flex-1 rounded-lg bg-slate-900 p-1.5">
         {slots.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-700 p-3 text-center text-xs text-slate-500">
             上のボタンで枠を作成してください
           </p>
         ) : (
           <SortableContext items={slots.map((s) => s.id)} strategy={rectSortingStrategy}>
-            <div className="flex h-full gap-1.5">
+            <div className="grid h-full grid-cols-2 gap-1.5">
               {(() => {
                 // Performance order only counts slots that actually have a
                 // band (breaks/custom slots and empty slots don't get a
@@ -221,23 +193,20 @@ export function DayPanel({ day, daysCount }: Props) {
                   if (band) orderById.set(slot.id, ++order);
                 }
 
-                // Column-major chunking: column 0 gets the first
-                // rowsPerColumn slots (top to bottom), column 1 the next
-                // batch, and so on — new columns appear as needed instead
-                // of the list growing (and scrolling) downward.
-                const columns: typeof slots[] = [];
-                for (let i = 0; i < slots.length; i += rowsPerColumn) {
-                  columns.push(slots.slice(i, i + rowsPerColumn));
-                }
+                // Fixed two-column split: first half of the day on the
+                // left, second half on the right — time still flows
+                // top-to-bottom within each column, matching how a
+                // timetable is naturally read.
+                const half = Math.ceil(slots.length / 2);
+                const columns = [slots.slice(0, half), slots.slice(half)];
 
                 return columns.map((column, colIndex) => (
                   <div
                     key={colIndex}
-                    className="flex shrink-0 flex-col gap-1.5"
-                    style={{ width: MIN_COLUMN_WIDTH_PX }}
+                    className="flex min-h-0 flex-col gap-1.5 overflow-y-auto pr-1"
                   >
                     {column.map((slot, rowIndex) => {
-                      const globalIndex = colIndex * rowsPerColumn + rowIndex;
+                      const globalIndex = colIndex * half + rowIndex;
                       const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
                       return (
                         <SlotCard

@@ -8,44 +8,17 @@ import type { ThemeId } from "../utils/shareThemes";
 // scrollbars, drag handles, and buttons that have no place in a shared
 // image.
 //
-// Readability comes first, the same way the live UI now works: rather than
-// stacking every slot into one ever-taller column and shrinking text (or
-// forcing a portrait aspect ratio), slots wrap into a fixed number of rows
-// per column and new columns appear as needed. Width grows with band
-// count instead of font size shrinking — the result naturally lands
-// somewhere around a landscape/poster ratio instead of a long scrolling
-// strip, and every row stays at full readable size regardless of how
-// packed the day is.
+// Layout mirrors the live UI: always exactly two columns (first half of
+// the day's slots on the left, second half on the right), time flowing
+// top-to-bottom within each — not an unbounded number of columns that
+// grows with band count. That approach produced unusably panoramic images
+// for a packed day; a fixed two-column split keeps the canvas a
+// consistent, balanced width and simply grows taller for more bands,
+// which reads as a normal timetable rather than a wide banner.
 export const CANVAS_PADDING = 64;
 const COLUMN_WIDTH = 580;
 const COLUMN_GAP = 28;
 const MAX_SETLIST_SONGS = 5;
-// Rough estimates used only to pick a column count that lands somewhere
-// near a landscape/poster ratio — not exact (a wrapped setlist can make a
-// real row taller), just enough to stop a fixed rows-per-column from
-// either stacking a handful of bands into a tall strip (too few columns)
-// or stretching a packed day into an unusably panoramic banner (too many).
-const EST_HEADER_HEIGHT = 300;
-const EST_FOOTER_HEIGHT = 60;
-const EST_ROW_HEIGHT = 130;
-const TARGET_ASPECT = 1.7; // roughly 16:9
-
-function pickColumnCount(totalRows: number): number {
-  if (totalRows <= 1) return 1;
-  let best = 1;
-  let bestDiff = Infinity;
-  for (let cols = 1; cols <= totalRows; cols++) {
-    const rows = Math.ceil(totalRows / cols);
-    const width = CANVAS_PADDING * 2 + COLUMN_WIDTH * cols + COLUMN_GAP * (cols - 1);
-    const height = EST_HEADER_HEIGHT + rows * EST_ROW_HEIGHT + EST_FOOTER_HEIGHT;
-    const diff = Math.abs(width / height - TARGET_ASPECT);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = cols;
-    }
-  }
-  return best;
-}
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -78,17 +51,14 @@ export function ShareTimetableTemplate({ day, bands, themeId }: Props) {
     if (slot.bandId) orderById.set(slot.id, ++order);
   }
 
-  // Column-major chunking, same idea as the live UI: column 0 gets the
-  // first N slots top-to-bottom, column 1 the next batch, and so on — the
-  // canvas gains a column instead of gaining height. The column count
-  // (and so rows-per-column) adapts to the band count so the image stays
-  // roughly landscape-shaped whether there are 4 bands or 40.
-  const columnCount = pickColumnCount(visibleSlots.length);
-  const rowsPerColumn = Math.ceil(visibleSlots.length / columnCount) || 1;
-  const columns: TimetableSlot[][] = [];
-  for (let i = 0; i < visibleSlots.length; i += rowsPerColumn) {
-    columns.push(visibleSlots.slice(i, i + rowsPerColumn));
-  }
+  // Fixed two-column split, same as the live UI: first half of the day on
+  // the left, second half on the right. The canvas width is therefore
+  // constant regardless of band count — only the height grows. A single
+  // leftover band (odd total) doesn't get a wasted, empty second column.
+  const half = Math.ceil(visibleSlots.length / 2);
+  const columns: TimetableSlot[][] = [visibleSlots.slice(0, half), visibleSlots.slice(half)].filter(
+    (c) => c.length > 0,
+  );
   const canvasWidth =
     CANVAS_PADDING * 2 +
     COLUMN_WIDTH * Math.max(columns.length, 1) +
