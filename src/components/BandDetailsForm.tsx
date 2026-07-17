@@ -84,6 +84,20 @@ export function BandDetailsForm({ band }: Props) {
           }
         />
       </div>
+      <input
+        className="w-full border-b border-transparent bg-transparent text-xs text-amber-300 outline-none focus:border-slate-500"
+        value={band.gearTags.join(", ")}
+        placeholder="共有機材タグ（カンマ区切り、例：共有キーボード）"
+        title="同じタグを持つバンドが連続する枠に配置されると、機材競合として警告されます"
+        onChange={(e) =>
+          updateBand(band.id, {
+            gearTags: e.target.value
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+          })
+        }
+      />
       <div className="flex flex-wrap gap-1">
         <button
           onClick={() => updateBand(band.id, { hasSync: !band.hasSync })}

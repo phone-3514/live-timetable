@@ -17,6 +17,7 @@ type Props = {
   index: number;
   total: number;
   conflict: boolean;
+  gearConflict: boolean;
   performanceOrder: number | null;
 };
 
@@ -27,6 +28,7 @@ export function SlotCard({
   index,
   total,
   conflict,
+  gearConflict,
   performanceOrder,
 }: Props) {
   const [showSetlist, setShowSetlist] = useState(false);
@@ -207,7 +209,7 @@ export function SlotCard({
               : showAmbientEligible || showDropHighlight
                 ? "border-dashed border-indigo-500 text-xs text-indigo-300"
                 : "border-dashed border-slate-700 text-xs text-slate-500"
-          } ${conflict ? "border-rose-500 bg-rose-950/40" : ""} ${
+          } ${conflict ? "border-rose-500 bg-rose-950/40" : gearConflict ? "border-amber-500 bg-amber-950/30" : ""} ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
         >
@@ -288,6 +290,11 @@ export function SlotCard({
               {conflict && (
                 <p className="text-xs font-medium text-rose-400">
                   ⚠ 前後の枠とメンバーが重複
+                </p>
+              )}
+              {!conflict && gearConflict && (
+                <p className="text-xs font-medium text-amber-400">
+                  ⚙ 前後の枠と共有機材が重複
                 </p>
               )}
             </div>

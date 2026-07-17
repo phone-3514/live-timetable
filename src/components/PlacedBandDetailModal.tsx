@@ -30,6 +30,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const [editDuration, setEditDuration] = useState(
     band.durationMinutes != null ? String(band.durationMinutes) : "",
   );
+  const [editGearTags, setEditGearTags] = useState(band.gearTags.join(", "));
 
   const desiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "未設定";
   const setlist = linkedApp
@@ -39,6 +40,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   function startEditing() {
     setEditName(band.name);
     setEditDuration(band.durationMinutes != null ? String(band.durationMinutes) : "");
+    setEditGearTags(band.gearTags.join(", "));
     setIsEditing(true);
   }
 
@@ -57,6 +59,10 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     updateBand(band.id, {
       name: trimmedName,
       durationMinutes: parsedDuration ?? undefined,
+      gearTags: editGearTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
     });
     setIsEditing(false);
   }
@@ -151,6 +157,30 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                 同期演奏{band.hasSync ? "あり" : "なし"}
               </Badge>
               {band.hasKeyboard && <Badge tone="part">🎹 キーボードあり</Badge>}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="font-semibold text-slate-500">共有機材タグ</dt>
+            <dd className="mt-1">
+              {isEditing ? (
+                <input
+                  value={editGearTags}
+                  onChange={(e) => setEditGearTags(e.target.value)}
+                  placeholder="カンマ区切り（例：共有キーボード）"
+                  className="min-h-11 w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+                />
+              ) : band.gearTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {band.gearTags.map((tag) => (
+                    <Badge key={tag} tone="warning">
+                      ⚙ {tag}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500">未設定</p>
+              )}
             </dd>
           </div>
 

@@ -384,6 +384,7 @@ function parseTableBands(rawText: string): Band[] {
       allowedDayIds: [],
       hasSync: detectHasSync(line),
       hasKeyboard: detectHasKeyboard(line),
+      gearTags: [],
       raw: line,
       parseWarning,
     };
@@ -625,6 +626,7 @@ function parseChatLogBands(rawText: string): Band[] {
       allowedDayIds: [],
       hasSync: detectHasSync(blockText),
       hasKeyboard: detectHasKeyboard(blockText),
+      gearTags: [],
       raw: blockText,
       parseWarning,
     };

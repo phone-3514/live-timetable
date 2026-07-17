@@ -26,6 +26,14 @@ export type Band = {
   // slot (e.g. keyboard/sync bands often need longer changeover). Manually
   // set only — undefined falls back to the day's default transitionMinutes.
   customTransitionMinutes?: number;
+  // Free-text labels for physical gear this band needs that another band
+  // might also need ("共有キーボード", "ギターアンプ" — whatever the circle
+  // actually owns and has to physically move between bands). Two bands
+  // sharing a tag back-to-back is what getGearConflictSlotIds flags — see
+  // useAppStore.ts — since that's the classic "the set started late because
+  // the keyboard was still being carried across stage" problem. Manually
+  // set only; nothing auto-detects these the way hasSync/hasKeyboard do.
+  gearTags: string[];
   raw: string;
   parseWarning?: string;
 };

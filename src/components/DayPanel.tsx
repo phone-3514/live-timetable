@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
+import { getGearConflictSlotIds, getMemberConflictSlotIds, useAppStore } from "../store/useAppStore";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import type { TimetableDay } from "../types";
@@ -37,6 +37,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflicts = getMemberConflictSlotIds(slots, bands);
+  const gearConflicts = getGearConflictSlotIds(slots, bands);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();
@@ -244,6 +245,7 @@ export function DayPanel({ day, daysCount }: Props) {
                       index={i}
                       total={slots.length}
                       conflict={conflicts.has(slot.id)}
+                      gearConflict={gearConflicts.has(slot.id)}
                       performanceOrder={band ? order : null}
                     />
                   );

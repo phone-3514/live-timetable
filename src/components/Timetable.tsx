@@ -1,6 +1,11 @@
-import type { CSSProperties } from "react";
-import { useAppStore } from "../store/useAppStore";
+import { useMemo, useState, type CSSProperties } from "react";
+import {
+  computeGearConflictDetails,
+  computeMemberSchedules,
+  useAppStore,
+} from "../store/useAppStore";
 import { DayPanel } from "./DayPanel";
+import { ScheduleReviewModal } from "./ScheduleReviewModal";
 
 // All days render side by side (not tab-switched) so the whole event's
 // schedule is visible on one 100vh screen at once. Actions that used to be
@@ -16,6 +21,16 @@ export function Timetable() {
   const autoDetectDayRestrictions = useAppStore(
     (s) => s.autoDetectDayRestrictions,
   );
+  const bands = useAppStore((s) => s.bands);
+  const [showScheduleReview, setShowScheduleReview] = useState(false);
+
+  const reviewIssueCount = useMemo(() => {
+    const conflictMembers = computeMemberSchedules(bands, days).filter(
+      (m) => m.hasAdjacentConflict,
+    ).length;
+    const gearConflicts = computeGearConflictDetails(days, bands).length;
+    return conflictMembers + gearConflicts;
+  }, [bands, days]);
 
   const handleReset = () => {
     if (
@@ -67,6 +82,22 @@ export function Timetable() {
           + 日を追加
         </button>
         <button
+          onClick={() => setShowScheduleReview(true)}
+          className={`min-h-11 rounded border px-3 font-medium md:min-h-0 md:py-1.5 ${
+            reviewIssueCount > 0
+              ? "border-amber-500 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50"
+              : "border-slate-600 text-slate-300 hover:bg-slate-800"
+          }`}
+          title="掛け持ちメンバーの連続枠や、機材タグが重複する連続枠をまとめて確認します"
+        >
+          📋 スケジュール確認
+          {reviewIssueCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
+              {reviewIssueCount}
+            </span>
+          )}
+        </button>
+        <button
           onClick={autoDetectDayRestrictions}
           className="min-h-11 rounded border border-slate-700 px-3 text-xs text-slate-500 hover:bg-slate-800 md:ml-auto md:min-h-0 md:py-1"
           title="通常は不要です（貼り付け・希望/NG時間帯の編集・日付の設定のたびに自動で判定されます）。バンドカードで手動変更した出演可能日を、希望/NG時間帯のテキストが示す内容にリセットしたいときに使います"
@@ -89,6 +120,10 @@ export function Timetable() {
           <DayPanel key={day.id} day={day} daysCount={days.length} />
         ))}
       </div>
+
+      {showScheduleReview && (
+        <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />
+      )}
     </div>
   );
 }

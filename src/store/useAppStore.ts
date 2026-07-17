@@ -771,3 +771,183 @@ export function getMemberConflictSlotIds(
 
   return conflicts;
 }
+
+// Same shape as getMemberConflictSlotIds above, but for shared physical
+// gear (see Band.gearTags) instead of shared members — two bands tagged
+// with the same piece of equipment back-to-back means someone has to
+// physically move it across the stage in whatever transition time is set,
+// which is exactly the kind of thing that's easy to miss scanning a long
+// timetable but obvious once flagged.
+export function getGearConflictSlotIds(
+  slots: TimetableSlot[],
+  bands: Band[],
+): Set<string> {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const conflicts = new Set<string>();
+
+  for (let i = 0; i < slots.length - 1; i++) {
+    const a = slots[i];
+    const b = slots[i + 1];
+    if (!a.bandId || !b.bandId) continue;
+    const bandA = bandMap.get(a.bandId);
+    const bandB = bandMap.get(b.bandId);
+    if (!bandA || !bandB || bandA.gearTags.length === 0) continue;
+    const shared = bandA.gearTags.some((tag) => bandB.gearTags.includes(tag));
+    if (shared) {
+      conflicts.add(a.id);
+      conflicts.add(b.id);
+    }
+  }
+
+  return conflicts;
+}
+
+export type GearConflictDetail = {
+  dayLabel: string;
+  bandAName: string;
+  bandBName: string;
+  sharedTags: string[];
+  transitionMinutes: number;
+};
+
+// Rich version of getGearConflictSlotIds for the schedule-review dashboard
+// (ScheduleReviewModal) — that inline highlight only needs "is this slot
+// involved," the dashboard needs to say *which* bands, *which* tag, and how
+// much transition time they're actually getting so the organizer can judge
+// whether it's enough without having to go find the slot on the grid.
+export function computeGearConflictDetails(
+  days: TimetableDay[],
+  bands: Band[],
+): GearConflictDetail[] {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const details: GearConflictDetail[] = [];
+
+  for (const day of days) {
+    const slots = day.slots;
+    for (let i = 0; i < slots.length - 1; i++) {
+      const a = slots[i];
+      const b = slots[i + 1];
+      if (!a.bandId || !b.bandId) continue;
+      const bandA = bandMap.get(a.bandId);
+      const bandB = bandMap.get(b.bandId);
+      if (!bandA || !bandB || bandA.gearTags.length === 0) continue;
+      const sharedTags = bandA.gearTags.filter((tag) => bandB.gearTags.includes(tag));
+      if (sharedTags.length === 0) continue;
+      const transitionMinutes = Math.max(
+        0,
+        timeToMinutes(b.startTime) - timeToMinutes(a.endTime),
+      );
+      details.push({
+        dayLabel: day.label,
+        bandAName: bandA.name,
+        bandBName: bandB.name,
+        sharedTags,
+        transitionMinutes,
+      });
+    }
+  }
+
+  return details;
+}
+
+export type MemberScheduleEntry = {
+  bandId: string;
+  bandName: string;
+  dayLabel: string;
+  startTime: string;
+  endTime: string;
+};
+
+export type MemberSchedule = {
+  name: string;
+  entries: MemberScheduleEntry[];
+  hasAdjacentConflict: boolean;
+  unplacedCount: number;
+};
+
+// One row per member who's in 2+ bands, each with every band they're in and
+// where (if anywhere) it landed on the grid — the standalone view for "who's
+// actually overloaded today" that getMemberConflictSlotIds' per-slot inline
+// highlight doesn't give you, since that only surfaces one conflict at a
+// time as you scroll past it. Meant for a final review pass right before
+// placement gets locked in, not for continuous display.
+export function computeMemberSchedules(
+  bands: Band[],
+  days: TimetableDay[],
+): MemberSchedule[] {
+  const byMember = new Map<string, { displayName: string; bandIds: Set<string> }>();
+  for (const band of bands) {
+    const seenInThisBand = new Set<string>();
+    for (const rawName of band.members) {
+      const key = normalizeMemberName(rawName);
+      if (!key || seenInThisBand.has(key)) continue;
+      seenInThisBand.add(key);
+      const entry = byMember.get(key) ?? { displayName: rawName, bandIds: new Set() };
+      entry.bandIds.add(band.id);
+      byMember.set(key, entry);
+    }
+  }
+
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const placementByBandId = new Map<
+    string,
+    { dayLabel: string; startTime: string; endTime: string }
+  >();
+  const conflictSlotIdsByDay = new Map<string, Set<string>>();
+  for (const day of days) {
+    conflictSlotIdsByDay.set(day.id, getMemberConflictSlotIds(day.slots, bands));
+    for (const slot of day.slots) {
+      if (slot.bandId) {
+        placementByBandId.set(slot.bandId, {
+          dayLabel: day.label,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+        });
+      }
+    }
+  }
+
+  const schedules: MemberSchedule[] = [];
+  for (const { displayName, bandIds } of byMember.values()) {
+    if (bandIds.size < 2) continue;
+
+    const entries: MemberScheduleEntry[] = [...bandIds]
+      .map((bandId) => {
+        const band = bandMap.get(bandId)!;
+        const placement = placementByBandId.get(bandId);
+        return {
+          bandId,
+          bandName: band.name,
+          dayLabel: placement?.dayLabel ?? "",
+          startTime: placement?.startTime ?? "",
+          endTime: placement?.endTime ?? "",
+        };
+      })
+      .sort((a, b) => `${a.dayLabel}${a.startTime}`.localeCompare(`${b.dayLabel}${b.startTime}`));
+
+    let hasAdjacentConflict = false;
+    for (const day of days) {
+      const conflictSlotIds = conflictSlotIdsByDay.get(day.id);
+      if (!conflictSlotIds) continue;
+      for (const slot of day.slots) {
+        if (slot.bandId && bandIds.has(slot.bandId) && conflictSlotIds.has(slot.id)) {
+          hasAdjacentConflict = true;
+        }
+      }
+    }
+
+    schedules.push({
+      name: displayName,
+      entries,
+      hasAdjacentConflict,
+      unplacedCount: entries.filter((e) => !e.startTime).length,
+    });
+  }
+
+  return schedules.sort((a, b) => {
+    if (a.hasAdjacentConflict !== b.hasAdjacentConflict) {
+      return a.hasAdjacentConflict ? -1 : 1;
+    }
+    return b.entries.length - a.entries.length;
+  });
+}
