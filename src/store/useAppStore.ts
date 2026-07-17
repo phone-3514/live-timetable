@@ -90,6 +90,15 @@ type AppState = {
   // the same undo/redo history as everything else.
   bulkAssignToDay: (bandIds: string[], dayId: string) => void;
   deleteBands: (bandIds: string[]) => void;
+  // Clipboard-driven bulk reorder: given a day and an ordered list of band
+  // names (typically the user's own edited copy of what "コピー" produces —
+  // pasted into a text editor, lines reordered, pasted back), permutes
+  // which band occupies each of that day's already-band-carrying slot
+  // positions to match. Names that don't resolve to a band currently on
+  // this day are skipped; bands on the day but not mentioned keep their
+  // relative order, appended after everything that WAS mentioned — nothing
+  // gets silently dropped just because a line was left out.
+  reorderDayBandsByNames: (dayId: string, orderedNames: string[]) => void;
   unassignSlot: (slotId: string) => void;
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
@@ -631,6 +640,46 @@ export const useAppStore = create<AppState>()(
         return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
       });
       return { bands, days };
+    }),
+
+  reorderDayBandsByNames: (dayId, orderedNames) =>
+    set((state) => {
+      const day = state.days.find((d) => d.id === dayId);
+      if (!day) return state;
+      const bandMap = new Map(state.bands.map((b) => [b.id, b]));
+
+      // Band ids currently placed on this day, in their current slot order.
+      const remainingIds = day.slots
+        .filter((s): s is TimetableSlot & { bandId: string } => s.bandId !== null)
+        .map((s) => s.bandId);
+
+      const newOrderIds: string[] = [];
+      for (const rawName of orderedNames) {
+        const name = rawName.trim();
+        if (!name) continue;
+        const idx = remainingIds.findIndex((id) => bandMap.get(id)?.name === name);
+        if (idx === -1) continue;
+        newOrderIds.push(remainingIds[idx]);
+        remainingIds.splice(idx, 1);
+      }
+      // Anything on the day but not mentioned in the pasted text keeps its
+      // relative order, appended after everything that WAS mentioned —
+      // leaving a line out never silently drops a band from the day.
+      newOrderIds.push(...remainingIds);
+      if (newOrderIds.length === 0) return state;
+
+      let cursor = 0;
+      const days = state.days.map((d) => {
+        if (d.id !== dayId) return d;
+        const slots = d.slots.map((s) => {
+          if (s.bandId === null) return s;
+          const nextId = newOrderIds[cursor];
+          cursor++;
+          return { ...s, bandId: nextId };
+        });
+        return { ...d, slots: recomputeTimes(slots, d.settings, state.bands) };
+      });
+      return { days };
     }),
 
   unassignSlot: (slotId) =>

@@ -5,9 +5,26 @@ import {
   getMemberConflictSlotIds,
   useAppStore,
 } from "../store/useAppStore";
+import { useToastStore } from "../store/useToastStore";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import type { TimetableDay } from "../types";
+
+// Strips the "HH:MM-HH:MM  " prefix handleCopyText below writes onto every
+// line, and drops a leading line that's just the day's own label — so
+// pasting back either the *exact* text "コピー" produced (reordered in a
+// text editor) or a plain hand-typed list of band names both work the same
+// way for reorderDayBandsByNames.
+function parseBandNamesFromPastedText(dayLabel: string, text: string): string[] {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const withoutHeader = lines[0] === dayLabel ? lines.slice(1) : lines;
+  return withoutHeader.map((line) =>
+    line.replace(/^\d{1,2}:\d{2}-\d{1,2}:\d{2}\s+/, "").trim(),
+  );
+}
 
 const CUSTOM_PRESETS = [
   { label: "休憩", minutes: 10 },
@@ -32,6 +49,8 @@ export function DayPanel({ day, daysCount }: Props) {
   const addSlot = useAppStore((s) => s.addSlot);
   const addSlots = useAppStore((s) => s.addSlots);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
+  const reorderDayBandsByNames = useAppStore((s) => s.reorderDayBandsByNames);
+  const showToast = useToastStore((s) => s.show);
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -58,6 +77,40 @@ export function DayPanel({ day, daysCount }: Props) {
       return `${slot.startTime}-${slot.endTime}  ${label}`;
     });
     await navigator.clipboard.writeText([day.label, ...lines].join("\n"));
+  };
+
+  const handlePasteReorder = async () => {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      showToast(
+        "クリップボードを読み取れませんでした。ブラウザの権限設定を確認してください",
+        "error",
+      );
+      return;
+    }
+    const names = parseBandNamesFromPastedText(day.label, text);
+    const placedBandNames = new Set(
+      slots
+        .filter((s) => s.bandId !== null)
+        .map((s) => bandMap.get(s.bandId!)?.name)
+        .filter((name): name is string => !!name),
+    );
+    const matchedCount = names.filter((n) => placedBandNames.has(n.trim())).length;
+    if (matchedCount === 0) {
+      showToast(
+        "この日に配置されているバンド名と一致する行が見つかりませんでした",
+        "error",
+      );
+      return;
+    }
+    reorderDayBandsByNames(day.id, names);
+    const skipped = names.length - matchedCount;
+    showToast(
+      `${matchedCount}件を並び替えました${skipped > 0 ? `（${skipped}件は一致せずスキップ）` : ""}`,
+      "success",
+    );
   };
 
   return (
@@ -138,6 +191,13 @@ export function DayPanel({ day, daysCount }: Props) {
           className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-800 md:ml-auto md:min-h-0 md:py-1"
         >
           コピー
+        </button>
+        <button
+          onClick={handlePasteReorder}
+          title="コピーしたテキストの行順を編集してから貼り付けると、その順番にバンドを並び替えます"
+          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1"
+        >
+          貼り付けて並び替え
         </button>
         <button
           onClick={() => setShowSharePreview(true)}
