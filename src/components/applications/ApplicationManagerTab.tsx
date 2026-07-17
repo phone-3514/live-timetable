@@ -4,6 +4,8 @@ import { ApplicationImportPanel } from "./ApplicationImportPanel";
 import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
 import { RejectConfirmModal } from "./RejectConfirmModal";
+import { NameResolutionModal } from "./NameResolutionModal";
+import { findNearDuplicateNames } from "../../utils/nameResolution";
 import type { Application } from "../../types";
 
 export function ApplicationManagerTab() {
@@ -16,6 +18,7 @@ export function ApplicationManagerTab() {
 
   const [pendingReject, setPendingReject] = useState<Application | null>(null);
   const [filterText, setFilterText] = useState("");
+  const [showNameResolution, setShowNameResolution] = useState(false);
 
   // Computed once here and shared by MemberFrameCounts (per-member chips)
   // and ApplicationTable (per-band high-participation counts) instead of
@@ -25,6 +28,14 @@ export function ApplicationManagerTab() {
   const frameCounts = useMemo(() => computeMemberFrameCounts(applications), [applications]);
 
   const pendingCount = applications.filter((a) => !a.approved).length;
+  // Cheap enough (O(n²) over a few dozen–hundred unique names, see
+  // findNearDuplicateNames) to recompute on every applications change just
+  // for the header badge's count, without threading the full pair list
+  // down — NameResolutionModal recomputes the same thing itself once open.
+  const nearDuplicateCount = useMemo(
+    () => findNearDuplicateNames(frameCounts).length,
+    [frameCounts],
+  );
 
   function handleReset() {
     if (applications.length === 0) return;
@@ -58,13 +69,28 @@ export function ApplicationManagerTab() {
           destructive one that still needs its own confirm dialog) so
           neither is mistakable for a routine secondary control. */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
-        <h2 className="mr-auto text-sm font-semibold text-slate-100">
+        <h2 className="text-sm font-semibold text-slate-100">
           出演申し込み管理
           <span className="ml-2 font-normal text-slate-500">
             （{applications.length}件・未承認{pendingCount}件）
           </span>
         </h2>
-        <div className="flex flex-wrap gap-2">
+        <span
+          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-indigo-500 bg-indigo-950/50 px-3 text-xs font-semibold text-indigo-200"
+          title="全申し込みを通じたユニークな参加者数（同一人物の重複はカウントしません）"
+        >
+          👥 参加者 {frameCounts.size}名
+        </span>
+        {nearDuplicateCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowNameResolution(true)}
+            className="min-h-9 rounded-full border border-amber-500 bg-amber-950/40 px-3 text-xs font-semibold text-amber-300 hover:bg-amber-900/50"
+          >
+            ⚠ 似た名前を確認（{nearDuplicateCount}件）
+          </button>
+        )}
+        <div className="ml-auto flex flex-wrap gap-2">
           <button
             type="button"
             onClick={handleApproveAll}
@@ -126,6 +152,13 @@ export function ApplicationManagerTab() {
             removeApplication(pendingReject.id);
             setPendingReject(null);
           }}
+        />
+      )}
+
+      {showNameResolution && (
+        <NameResolutionModal
+          frameCounts={frameCounts}
+          onClose={() => setShowNameResolution(false)}
         />
       )}
     </div>

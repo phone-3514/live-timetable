@@ -38,7 +38,7 @@ export function normalizeApplicationText(text: string): string {
 // a heading" signal a typo can't accidentally produce, while a bare
 // "text:" shape is common enough in ordinary prose that a looser tolerance
 // would risk misreading unrelated lines as a heading.
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
     new Array(b.length + 1).fill(0),
   );
@@ -435,17 +435,25 @@ export const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$
 // such label on the line isolates the name regardless of spacing style.
 export const PART_LABEL_RE = /[A-Za-z]+(?:[.\/][A-Za-z]+)*\.?/g;
 
-// A slot-preference note is sometimes appended to a member's own name in
-// parentheses instead of sitting on its own line ("篠原麟一(3枠目)",
-// "田中（第2希望）", "蛯名了一 （３枠目） ") — half-width and full-width
-// parens *and* digits both occur (the digit class below matches both, since
-// plain \d never matches ０-９), so this strips it regardless of which
-// width someone happened to type in.
-export const SLOT_RANK_PAREN_RE =
-  /[（(]\s*(?:[0-9０-９]+\s*枠目|第\s*[0-9０-９]+\s*希望)\s*[）)]\s*$/;
+// A slot-preference note is sometimes appended to a member's own name
+// instead of sitting on its own line — in parentheses ("篠原麟一(3枠目)",
+// "田中（第2希望）", "蛯名了一（枠指定なし）") or as bare trailing text
+// ("蛯名了一 2枠", "蛯名了一 1枠のみ"). Organizers phrase these
+// inconsistently, so rather than matching one exact wording, anything in
+// parens that *mentions* 枠 (or the older "第N希望" phrasing) is treated as
+// noise regardless of what else is inside it, and a same trailing bare-text
+// rule catches the un-parenthesized form. Half-width and full-width parens
+// and digits both occur in the wild, hence the explicit ０-９ class
+// alongside 0-9 (plain \d never matches full-width digits).
+const FRAME_ANNOTATION_PAREN_RE =
+  /[（(][^（）()]*(?:枠|第\s*[0-9０-９]+\s*希望)[^（）()]*[）)]/g;
+const TRAILING_FRAME_ANNOTATION_RE = /[\s　]+[^\s　]*枠[^\s　]*\s*$/;
 
 export function stripFrameCountAnnotation(name: string): string {
-  return name.replace(SLOT_RANK_PAREN_RE, "").trim();
+  return name
+    .replace(FRAME_ANNOTATION_PAREN_RE, "")
+    .replace(TRAILING_FRAME_ANNOTATION_RE, "")
+    .trim();
 }
 
 // Instrument/part label plus, separately, the grade prefix ("2年") and the

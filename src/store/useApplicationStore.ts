@@ -30,6 +30,13 @@ type ApplicationState = {
    * was converted into — keeping the Timetable Editor's unplaced list in
    * sync rather than leaving orphaned bands behind. */
   clearAll: () => void;
+  /** Name Resolution merge: rewrites every member matching fromName
+   * (name-normalized, so it catches every raw spelling variant already
+   * grouped under that identity) to toName's exact spelling, across every
+   * application. Also propagates to the Timetable Editor's own Band records
+   * via useAppStore.renameBandMember, so a band approved before the merge
+   * doesn't keep showing the pre-merge spelling. */
+  mergeMemberName: (fromName: string, toName: string) => void;
 };
 
 function applicationToBand(app: Application): Band {
@@ -124,6 +131,19 @@ export const useApplicationStore = create<ApplicationState>()(
           }
         }
         set({ applications: [], rawText: "" });
+      },
+
+      mergeMemberName: (fromName, toName) => {
+        const fromKey = normalizeMemberName(fromName);
+        set((state) => ({
+          applications: state.applications.map((app) => ({
+            ...app,
+            members: app.members.map((m) =>
+              normalizeMemberName(m.name) === fromKey ? { ...m, name: toName } : m,
+            ),
+          })),
+        }));
+        useAppStore.getState().renameBandMember(fromName, toName);
       },
     }),
     { name: "live-timetable-applications" },

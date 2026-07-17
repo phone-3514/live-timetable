@@ -45,6 +45,13 @@ type AppState = {
   // Manager tab to push an approved band into the timetable's unplaced list
   // without disturbing anything already parsed/placed there.
   addBands: (bands: Band[]) => void;
+  // Rewrites every occurrence of fromName (matched name-normalized, so it
+  // catches every raw spelling variant already merged into that identity)
+  // to toName across every band's member list — the Timetable Editor side
+  // of the Name Resolution merge in the Application Manager, so a band
+  // already approved before the merge doesn't keep showing the old
+  // spelling. See useApplicationStore's mergeMemberName, which calls this.
+  renameBandMember: (fromName: string, toName: string) => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
   undoDeleteBand: () => void;
@@ -321,6 +328,19 @@ export const useAppStore = create<AppState>()(
       // per-band day-toggle overrides already made on them.
       const resolvedNew = autoResolveBandDays(newBands, state.days);
       return { bands: [...state.bands, ...resolvedNew] };
+    }),
+
+  renameBandMember: (fromName, toName) =>
+    set((state) => {
+      const fromKey = normalizeMemberName(fromName);
+      return {
+        bands: state.bands.map((b) => ({
+          ...b,
+          members: b.members.map((m) =>
+            normalizeMemberName(m) === fromKey ? toName : m,
+          ),
+        })),
+      };
     }),
 
   updateBand: (id, partial) =>
