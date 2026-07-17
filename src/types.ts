@@ -1,7 +1,24 @@
+export type BandMemberDetail = {
+  name: string;
+  /** e.g. "3年" — empty when not set. */
+  grade: string;
+  part: string;
+};
+
 export type Band = {
   id: string;
   name: string;
   members: string[];
+  // Optional richer per-member data (grade/part), directly editable via
+  // PlacedBandDetailModal. `members` above stays the source of truth for
+  // plain names — kept in sync on every edit — since that's what the
+  // Timetable display and conflict detection (getMemberConflictDetails)
+  // actually read; memberDetails only ever adds grade/part on top for the
+  // Setlist export. Undefined (or empty) for bands nobody has edited yet,
+  // in which case the Setlist falls back to a linked Application's member
+  // data, then to plain names with blank grade/part — see
+  // computeSetlistEntries.
+  memberDetails?: BandMemberDetail[];
   // Setlist entries as free text ("曲名/アーティスト名"), extracted from
   // numbered or bare "title/artist" lines so they don't get misread as
   // member names.

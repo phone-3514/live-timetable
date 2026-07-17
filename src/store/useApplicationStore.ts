@@ -40,6 +40,7 @@ function applicationToBand(app: Application): Band {
     id: crypto.randomUUID(),
     name: app.bandName,
     members: app.members.map((m) => m.name),
+    memberDetails: app.members.map((m) => ({ name: m.name, grade: m.grade, part: m.part })),
     setlist: app.setlist.map((s) => (s.artist ? `${s.title}/${s.artist}` : s.title)),
     desiredTime: app.desiredDateTime,
     ngTime: "",

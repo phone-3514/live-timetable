@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { Badge } from "./applications/Badge";
-import type { Band, TimetableSlot } from "../types";
+import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
 interface Props {
   band: Band;
@@ -25,12 +25,26 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const updateBand = useAppStore((s) => s.updateBand);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
+  // Priority for what's actually shown/edited: the band's own
+  // memberDetails once anyone has edited it (see handleSave), then a
+  // linked Application's members (pre-editing behavior), then plain names
+  // with blank grade/part for a band with neither. Same order
+  // computeSetlistEntries uses, so this modal and the Setlist export never
+  // disagree about which member data is current.
+  const displayMembers: BandMemberDetail[] =
+    band.memberDetails && band.memberDetails.length > 0
+      ? band.memberDetails
+      : linkedApp
+        ? linkedApp.members.map((m) => ({ name: m.name, grade: m.grade, part: m.part }))
+        : band.members.map((name) => ({ name, grade: "", part: "" }));
+
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(band.name);
   const [editDuration, setEditDuration] = useState(
     band.durationMinutes != null ? String(band.durationMinutes) : "",
   );
   const [editGearTags, setEditGearTags] = useState(band.gearTags.join(", "));
+  const [editMembers, setEditMembers] = useState<BandMemberDetail[]>([]);
 
   const desiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "未設定";
   const setlist = linkedApp
@@ -41,7 +55,20 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     setEditName(band.name);
     setEditDuration(band.durationMinutes != null ? String(band.durationMinutes) : "");
     setEditGearTags(band.gearTags.join(", "));
+    setEditMembers(displayMembers.map((m) => ({ ...m })));
     setIsEditing(true);
+  }
+
+  function updateEditMember(index: number, patch: Partial<BandMemberDetail>) {
+    setEditMembers((prev) => prev.map((m, i) => (i === index ? { ...m, ...patch } : m)));
+  }
+
+  function removeEditMember(index: number) {
+    setEditMembers((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addEditMember() {
+    setEditMembers((prev) => [...prev, { name: "", grade: "", part: "" }]);
   }
 
   function handleSave() {
@@ -51,6 +78,14 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     if (parsedDuration != null && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
       return;
     }
+    // Blank-name rows (an added-then-abandoned row, or a name someone
+    // cleared) are dropped rather than saved as an empty member — same
+    // "don't persist obviously-incomplete input" rule the gear-tag field
+    // below already follows (empty tags filtered out after the comma
+    // split).
+    const cleanedMembers = editMembers
+      .map((m) => ({ name: m.name.trim(), grade: m.grade.trim(), part: m.part.trim() }))
+      .filter((m) => m.name.length > 0);
     // Slot start/end times aren't stored on the Band itself — they're
     // recomputed from cumulative durations down the day whenever any band's
     // durationMinutes changes (see recomputeTimes in useAppStore), so
@@ -63,6 +98,12 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean),
+      memberDetails: cleanedMembers,
+      // members stays a plain name list in sync with memberDetails — it's
+      // what the Timetable display and conflict detection
+      // (getMemberConflictDetails) actually read, so a rename here needs
+      // to show up there too, not just in the Setlist export.
+      members: cleanedMembers.map((m) => m.name),
     });
     setIsEditing(false);
   }
@@ -95,7 +136,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               type="button"
               onClick={startEditing}
               className="flex h-9 shrink-0 items-center gap-1 rounded border border-slate-600 px-2 text-xs font-medium text-slate-300 hover:bg-slate-800"
-              title="バンド名・演奏時間を編集"
+              title="バンド名・演奏時間・メンバーを編集"
             >
               ✎ 編集
             </button>
@@ -187,9 +228,52 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
           <div>
             <dt className="font-semibold text-slate-500">メンバー</dt>
             <dd className="mt-1">
-              {linkedApp ? (
+              {isEditing ? (
+                <div className="space-y-1.5">
+                  {editMembers.map((m, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-1.5">
+                      <input
+                        value={m.grade}
+                        onChange={(e) => updateEditMember(i, { grade: e.target.value })}
+                        placeholder="学年"
+                        aria-label={`メンバー${i + 1}の学年`}
+                        className="min-h-11 w-14 rounded border border-indigo-500 bg-slate-800 px-1.5 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+                      />
+                      <input
+                        value={m.part}
+                        onChange={(e) => updateEditMember(i, { part: e.target.value })}
+                        placeholder="パート"
+                        aria-label={`メンバー${i + 1}のパート`}
+                        className="min-h-11 w-16 rounded border border-indigo-500 bg-slate-800 px-1.5 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+                      />
+                      <input
+                        value={m.name}
+                        onChange={(e) => updateEditMember(i, { name: e.target.value })}
+                        placeholder="氏名"
+                        aria-label={`メンバー${i + 1}の氏名`}
+                        className="min-h-11 min-w-24 flex-1 rounded border border-indigo-500 bg-slate-800 px-1.5 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeEditMember(i)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 md:h-6 md:w-6"
+                        title="このメンバーを削除"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addEditMember}
+                    className="min-h-9 rounded border border-slate-600 px-2 text-xs text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+                  >
+                    + メンバーを追加
+                  </button>
+                </div>
+              ) : displayMembers.length > 0 ? (
                 <ul className="space-y-1">
-                  {linkedApp.members.map((m, i) => (
+                  {displayMembers.map((m, i) => (
                     <li key={i} className="flex flex-wrap items-center gap-1">
                       {m.grade && <Badge tone="grade">{m.grade}</Badge>}
                       {m.part && <Badge tone="part">{m.part}</Badge>}
@@ -198,7 +282,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                   ))}
                 </ul>
               ) : (
-                <p className="text-slate-200">{band.members.join(", ") || "未設定"}</p>
+                <p className="text-slate-500">未設定</p>
               )}
             </dd>
           </div>

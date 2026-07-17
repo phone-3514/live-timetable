@@ -19,15 +19,16 @@ function splitSongText(raw: string): SetlistSongEntry {
 }
 
 // One row per performing band, in performance order, for the printable
-// setlist document (SetlistExportTemplate). Prefers the richer data an
-// approved Application carries (per-member part/grade, setlist artists
-// split out) over the flatter Band record it was converted into — same
-// cross-reference PlacedBandDetailModal already uses, for the same reason:
-// applicationToBand collapses members down to bare name strings, so a band
-// with no linked application (manually added, or an old record from before
-// this app relied exclusively on Application Manager for band data) falls
-// back to what Band itself has, with part/grade left blank rather than
-// guessed at.
+// setlist document (SetlistExportTemplate). Member data preference order:
+// 1) Band.memberDetails — the band's own editable per-member record (see
+//    PlacedBandDetailModal), authoritative once anyone has touched it,
+//    since it's what "editing a member" actually writes to; 2) a linked
+//    Application's members — the pre-editing behavior, for bands nobody
+//    has opened the editor on yet; 3) Band.members with part/grade left
+//    blank, for a band with neither (manually added, or an old record from
+//    before this app relied on Application Manager for band data).
+// Setlist songs still only ever come from the Application/Band setlist
+// fields — editing member details doesn't touch those.
 export function computeSetlistEntries(
   day: TimetableDay,
   bands: Band[],
@@ -47,9 +48,12 @@ export function computeSetlistEntries(
     const songs: SetlistSongEntry[] = linkedApp
       ? linkedApp.setlist.map((s) => ({ title: s.title, artist: s.artist }))
       : band.setlist.map(splitSongText);
-    const members: SetlistMemberEntry[] = linkedApp
-      ? linkedApp.members.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
-      : band.members.map((name) => ({ name, part: "", grade: "" }));
+    const members: SetlistMemberEntry[] =
+      band.memberDetails && band.memberDetails.length > 0
+        ? band.memberDetails.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
+        : linkedApp
+          ? linkedApp.members.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
+          : band.members.map((name) => ({ name, part: "", grade: "" }));
 
     entries.push({
       order,

@@ -28,6 +28,10 @@ type Props = {
    * map onto this table's color roles. Defaults to "standard" (white
    * background, print-friendly), same as before themes existed here. */
   themeId?: ThemeId;
+  /** "1日目" only means something once there's a second day to distinguish
+   * it from — same reasoning as ShareTimetableTemplate's identical prop.
+   * For a single-day event this hides the day label from the header. */
+  isSingleDay: boolean;
 };
 
 function formatDate(iso: string | null): string | null {
@@ -220,9 +224,11 @@ export function SetlistExportTemplate({
   entries,
   columns = 1,
   themeId = "standard",
+  isSingleDay,
 }: Props) {
   const COLORS = getSetlistPalette(THEMES[themeId]);
   const dateLabel = formatDate(day.date);
+  const showDayLabel = !isSingleDay;
   const isMultiColumn = columns > 1;
   const contentWidth = isMultiColumn
     ? columns * COLUMN_WIDTH + (columns - 1) * COLUMN_GAP
@@ -287,9 +293,13 @@ export function SetlistExportTemplate({
           {eventInfo.liveName || "出演スケジュール"}
         </h1>
         <p style={{ marginTop: 4, fontSize: 12.5, color: COLORS.subtitle }}>
-          {day.label}
-          {dateLabel ? `　${dateLabel}` : ""}
-          {eventInfo.venue ? `　@ ${eventInfo.venue}` : ""}
+          {[
+            showDayLabel ? day.label : null,
+            dateLabel,
+            eventInfo.venue ? `@ ${eventInfo.venue}` : null,
+          ]
+            .filter((part): part is string => !!part)
+            .join("　")}
         </p>
         <div style={{ marginTop: 10, height: 2, background: COLORS.rowBorder }} />
       </header>

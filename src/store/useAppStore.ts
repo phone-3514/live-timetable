@@ -1176,22 +1176,12 @@ export function computeMemberSchedules(
 
   const schedules: MemberSchedule[] = [];
   for (const { displayName, bandIds } of byMember.values()) {
-    if (bandIds.size < 2) continue;
-
-    const entries: MemberScheduleEntry[] = [...bandIds]
-      .map((bandId) => {
-        const band = bandMap.get(bandId)!;
-        const placement = placementByBandId.get(bandId);
-        return {
-          bandId,
-          bandName: band.name,
-          dayLabel: placement?.dayLabel ?? "",
-          startTime: placement?.startTime ?? "",
-          endTime: placement?.endTime ?? "",
-        };
-      })
-      .sort((a, b) => `${a.dayLabel}${a.startTime}`.localeCompare(`${b.dayLabel}${b.startTime}`));
-
+    // hasAdjacentConflict has to be computed before the size gate below,
+    // not after: a member whose only band was placed into two slots (the
+    // same-band-repeat rule in getMemberConflictDetails) has bandIds.size
+    // === 1, but is still genuinely double-booked in time and needs to
+    // show up here — the dashboard would otherwise silently miss exactly
+    // the case a same-band repeat is meant to catch.
     let hasAdjacentConflict = false;
     let conflictReason: MemberConflictReason | null = null;
     for (const day of days) {
@@ -1206,6 +1196,22 @@ export function computeMemberSchedules(
         }
       }
     }
+
+    if (bandIds.size < 2 && !hasAdjacentConflict) continue;
+
+    const entries: MemberScheduleEntry[] = [...bandIds]
+      .map((bandId) => {
+        const band = bandMap.get(bandId)!;
+        const placement = placementByBandId.get(bandId);
+        return {
+          bandId,
+          bandName: band.name,
+          dayLabel: placement?.dayLabel ?? "",
+          startTime: placement?.startTime ?? "",
+          endTime: placement?.endTime ?? "",
+        };
+      })
+      .sort((a, b) => `${a.dayLabel}${a.startTime}`.localeCompare(`${b.dayLabel}${b.startTime}`));
 
     schedules.push({
       name: displayName,

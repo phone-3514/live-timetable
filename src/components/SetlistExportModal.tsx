@@ -35,6 +35,7 @@ function computeColumnCount(entryCount: number): number {
 export function SetlistExportModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
   const eventInfo = useAppStore((s) => s.eventInfo);
+  const isSingleDay = useAppStore((s) => s.days.length === 1);
   const applications = useApplicationStore((s) => s.applications);
   const entries = useMemo(
     () => computeSetlistEntries(day, bands, applications),
@@ -284,7 +285,13 @@ export function SetlistExportModal({ day, onClose }: Props) {
                 transformOrigin: "top left",
               }}
             >
-              <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} themeId={themeId} />
+              <SetlistExportTemplate
+                day={day}
+                eventInfo={eventInfo}
+                entries={entries}
+                themeId={themeId}
+                isSingleDay={isSingleDay}
+              />
             </div>
           </div>
         </div>
@@ -328,6 +335,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             entries={entries}
             columns={1}
             themeId={themeId}
+            isSingleDay={isSingleDay}
           />
         </div>
       </div>
@@ -342,6 +350,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             entries={entries}
             columns={pngColumns}
             themeId={themeId}
+            isSingleDay={isSingleDay}
           />
         </div>
       </div>
