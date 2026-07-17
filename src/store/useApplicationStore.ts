@@ -1,17 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Application, Band } from "../types";
-import { parseApplications } from "../utils/parseApplications";
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { useAppStore } from "./useAppStore";
 
 type ApplicationState = {
-  rawText: string;
   applications: Application[];
 
-  setRawText: (text: string) => void;
-  parseAndAddFromRawText: () => void;
   /** Appends already-parsed applications (used by the batch chat-export
    * file upload flow, which parses off the main paste-and-parse path so it
    * can run its own noise-filtering pass first — see parseChatExportFile). */
@@ -58,17 +54,7 @@ function applicationToBand(app: Application): Band {
 export const useApplicationStore = create<ApplicationState>()(
   persist(
     (set, get) => ({
-      rawText: "",
       applications: [],
-
-      setRawText: (text) => set({ rawText: text }),
-
-      parseAndAddFromRawText: () =>
-        set((state) => {
-          const parsed = parseApplications(state.rawText);
-          if (parsed.length === 0) return state;
-          return { applications: [...state.applications, ...parsed], rawText: "" };
-        }),
 
       addApplications: (newApplications) =>
         set((state) => ({
@@ -130,7 +116,7 @@ export const useApplicationStore = create<ApplicationState>()(
             useAppStore.getState().deleteBand(app.linkedBandId);
           }
         }
-        set({ applications: [], rawText: "" });
+        set({ applications: [] });
       },
 
       mergeMemberName: (fromName, toName) => {

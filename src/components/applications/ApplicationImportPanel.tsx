@@ -7,10 +7,13 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+// Sole entry point for getting applications into the Application Manager —
+// the old manual paste-and-parse textarea is gone (superseded by this once
+// noise-filtered batch file upload could handle everything the textarea
+// could, plus multi-message exports it never could), so this is now a
+// single prominent dropzone rather than one small button next to a bigger
+// primary action.
 export function ApplicationImportPanel() {
-  const rawText = useApplicationStore((s) => s.rawText);
-  const setRawText = useApplicationStore((s) => s.setRawText);
-  const parseAndAddFromRawText = useApplicationStore((s) => s.parseAndAddFromRawText);
   const addApplications = useApplicationStore((s) => s.addApplications);
   const showToast = useToastStore((s) => s.show);
 
@@ -47,72 +50,61 @@ export function ApplicationImportPanel() {
   return (
     <div className="flex shrink-0 flex-col gap-1.5">
       <h2 className="text-xs font-semibold text-slate-400">
-        Discordの出演申し込みメッセージを貼り付け
+        Discordチャットログを取り込み
       </h2>
-      <textarea
-        value={rawText}
-        onChange={(e) => setRawText(e.target.value)}
-        placeholder={
-          "バンド名：ヤバい夏合宿さん\n1.あつまれ！パーティピーポー / ヤバイTシャツ屋さん\n2年 Vo.深澤実夢\n同期演奏：なし\n演奏時間：10分\n（複数バンド分をまとめて貼り付けても自動で分割されます）"
-        }
-        rows={8}
-        className="w-full resize-y rounded-lg border border-slate-700 bg-slate-800 p-2 font-mono text-xs text-slate-100 placeholder:text-slate-500"
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={parseAndAddFromRawText}
-          disabled={!rawText.trim()}
-          className="min-h-11 rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:px-3 md:py-1 md:text-xs md:font-normal"
-        >
-          解析して追加
-        </button>
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragOver(true);
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragOver(false);
-            const file = e.dataTransfer.files?.[0];
-            if (file) void handleFile(file);
-          }}
-          disabled={isProcessing}
-          title="DiscordChatExporterのエクスポートファイル（.json / .txt）をドラッグ＆ドロップ、またはクリックして選択"
-          className={`flex min-h-11 items-center gap-1.5 rounded border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
-            isDragOver
-              ? "border-indigo-400 bg-indigo-950/60 text-indigo-200"
-              : "border-slate-600 text-slate-300 hover:bg-slate-800"
-          } ${isProcessing ? "cursor-wait opacity-70" : ""}`}
-        >
-          {isProcessing ? (
-            <>
-              <span
-                aria-hidden
-                className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"
-              />
-              メッセージを解析中…
-            </>
-          ) : (
-            "📁 チャットログファイルを取り込む"
-          )}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,.txt,application/json,text/plain"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void handleFile(file);
-            e.target.value = "";
-          }}
-          className="hidden"
-        />
+      <div
+        onClick={() => !isProcessing && fileInputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragOver(true);
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) void handleFile(file);
+        }}
+        title="DiscordChatExporterのエクスポートファイル（.json / .txt）をドラッグ＆ドロップ、またはクリックして選択"
+        className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+          isDragOver
+            ? "border-indigo-400 bg-indigo-950/40"
+            : "border-slate-700 hover:border-slate-500 hover:bg-slate-800/50"
+        } ${isProcessing ? "cursor-wait opacity-70" : ""}`}
+      >
+        {isProcessing ? (
+          <>
+            <span
+              aria-hidden
+              className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"
+            />
+            <span className="text-xs font-medium text-slate-300">メッセージを解析中…</span>
+          </>
+        ) : (
+          <>
+            <span className="text-2xl" aria-hidden>
+              📁
+            </span>
+            <span className="text-xs font-medium text-slate-300">
+              ここにチャットログファイル（.json / .txt）を
+              <br />
+              ドラッグ＆ドロップ
+            </span>
+            <span className="text-[11px] text-slate-500">またはクリックして選択</span>
+          </>
+        )}
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,.txt,application/json,text/plain"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFile(file);
+          e.target.value = "";
+        }}
+        className="hidden"
+      />
       <p className="text-[11px] text-slate-500">
         Discordのチャット履歴エクスポート（JSON/TXT）を丸ごと取り込み、テンプレートやダミーデータ・雑談を自動除外して有効な申し込みだけを追加します。
       </p>

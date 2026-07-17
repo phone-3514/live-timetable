@@ -127,7 +127,6 @@ export function restoreBackup(data: BackupData): void {
   });
   useApplicationStore.setState({
     applications: data.applications ?? [],
-    rawText: "",
   });
   useUiStore.setState({ activeTab: data.ui?.activeTab ?? "timetable" });
 }
