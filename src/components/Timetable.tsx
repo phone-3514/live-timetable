@@ -6,10 +6,12 @@ import {
 } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useHistoryStore } from "../store/useHistoryStore";
+import { useFuriganaStore } from "../store/useFuriganaStore";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
+import { FuriganaImportModal } from "./FuriganaImportModal";
 
 // All days render side by side (not tab-switched) so the whole event's
 // schedule is visible on one 100vh screen at once. Actions that used to be
@@ -28,8 +30,10 @@ export function Timetable() {
   const bands = useAppStore((s) => s.bands);
   const eventInfo = useAppStore((s) => s.eventInfo);
   const applications = useApplicationStore((s) => s.applications);
+  const furiganaByKey = useFuriganaStore((s) => s.furiganaByKey);
   const [showScheduleReview, setShowScheduleReview] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [exportingRoster, setExportingRoster] = useState(false);
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
@@ -67,7 +71,7 @@ export function Timetable() {
   const handleExportRoster = async () => {
     setExportingRoster(true);
     try {
-      const entries = computeMemberRoster(days, bands, applications);
+      const entries = computeMemberRoster(days, bands, applications, furiganaByKey);
       const eventLabel = eventInfo.liveName.trim() || "ライブ";
       await downloadMemberRosterExcel(entries, `参加者名簿-${eventLabel}.xlsx`);
     } finally {
@@ -149,9 +153,16 @@ export function Timetable() {
           onClick={handleExportRoster}
           disabled={exportingRoster}
           className="min-h-11 rounded border border-teal-600 bg-teal-950/30 px-3 font-medium text-teal-300 hover:bg-teal-900/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:py-1.5"
-          title="配置済みの全メンバーを学年・氏名・パートで重複なくまとめ、受付・振り込み確認チェック欄付きのExcel名簿を出力します"
+          title="配置済みの全メンバーを学年・ふりがな・氏名・パートで重複なくまとめ、受付・振り込み確認のチェック欄（ドロップダウン）付きのExcel名簿を出力します"
         >
           {exportingRoster ? "名簿を生成中…" : "📇 参加者名簿を出力 (Excel)"}
+        </button>
+        <button
+          onClick={() => setShowFuriganaImport(true)}
+          className="min-h-11 rounded border border-slate-600 px-3 text-xs text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1.5"
+          title="名簿マスタから氏名・ふりがなだけを安全に取り込み、参加者名簿Excelのふりがな列に反映します"
+        >
+          📥 ふりがな取込
         </button>
         <button
           onClick={autoDetectDayRestrictions}
@@ -181,6 +192,9 @@ export function Timetable() {
         <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />
       )}
       {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
+      {showFuriganaImport && (
+        <FuriganaImportModal onClose={() => setShowFuriganaImport(false)} />
+      )}
     </div>
   );
 }
