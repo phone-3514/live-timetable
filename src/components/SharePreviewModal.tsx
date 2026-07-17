@@ -14,7 +14,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
-  const [themeId, setThemeId] = useState<ThemeId>("hype");
+  const [themeId, setThemeId] = useState<ThemeId>("standard");
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -88,31 +88,33 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </button>
         </div>
 
-        <div className="flex shrink-0 gap-2 border-b border-slate-800 px-4 py-3">
-          {(Object.values(THEMES)).map((theme) => (
-            <button
-              key={theme.id}
-              onClick={() => setThemeId(theme.id)}
-              title={theme.subtitle}
-              className={`flex-1 rounded-lg border px-2 py-1.5 text-left transition-colors ${
-                themeId === theme.id
-                  ? "border-indigo-400 bg-indigo-950/40"
-                  : "border-slate-700 bg-slate-800 hover:border-slate-500"
-              }`}
-            >
-              <span
-                className="mb-1 block h-3 w-full rounded-full"
-                style={{ background: theme.pageBackground }}
-              />
-              <span
-                className={`block text-xs font-semibold ${
-                  themeId === theme.id ? "text-indigo-200" : "text-slate-300"
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3">
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
+            {(Object.values(THEMES)).map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => setThemeId(theme.id)}
+                title={theme.subtitle}
+                className={`rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                  themeId === theme.id
+                    ? "border-indigo-400 bg-indigo-950/40"
+                    : "border-slate-700 bg-slate-800 hover:border-slate-500"
                 }`}
               >
-                {theme.name}
-              </span>
-            </button>
-          ))}
+                <span
+                  className="mb-1 block h-3 w-full rounded-full"
+                  style={{ background: theme.pageBackground }}
+                />
+                <span
+                  className={`block text-[11px] font-semibold leading-tight ${
+                    themeId === theme.id ? "text-indigo-200" : "text-slate-300"
+                  }`}
+                >
+                  {theme.name}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
