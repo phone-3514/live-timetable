@@ -36,7 +36,13 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       {...attributes}
       onMouseEnter={() => elRef.current && onHoverStart(band, elRef.current)}
       onMouseLeave={onHoverEnd}
-      className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing ${
+      // Touch has no hover, so the details flyout (which onHoverStart opens)
+      // would otherwise be unreachable on mobile — a tap fires this too.
+      // touch-none is the standard dnd-kit fix so a touch-drag here is
+      // handled by the drag sensor instead of being swallowed as a page
+      // scroll gesture.
+      onClick={() => elRef.current && onHoverStart(band, elRef.current)}
+      className={`flex min-h-11 touch-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing md:min-h-0 ${
         isDragging ? "relative z-50 opacity-50" : ""
       } ${
         band.parseWarning
@@ -57,8 +63,11 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
         // Stop the pointerdown from bubbling to the chip's drag listeners
         // above, otherwise clicking delete would also kick off a drag.
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => deleteBand(band.id)}
-        className="-my-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70"
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteBand(band.id);
+        }}
+        className="-my-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70 md:h-6 md:w-6"
         title="削除"
       >
         ×

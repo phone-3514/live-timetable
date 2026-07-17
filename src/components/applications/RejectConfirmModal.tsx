@@ -49,11 +49,11 @@ export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }
           ))}
         </ul>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-col-reverse justify-end gap-2 sm:flex-row">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800"
+            className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
           >
             キャンセル
           </button>
@@ -62,8 +62,8 @@ export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }
             onClick={onConfirm}
             className={
               zeroedOut.length > 0
-                ? "rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
-                : "rounded bg-slate-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-500"
+                ? "min-h-11 rounded bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-500 sm:min-h-0 sm:py-1.5 sm:text-xs"
+                : "min-h-11 rounded bg-slate-600 px-4 text-sm font-medium text-white hover:bg-slate-500 sm:min-h-0 sm:py-1.5 sm:text-xs"
             }
           >
             {zeroedOut.length > 0 ? "それでも却下する" : "却下する"}

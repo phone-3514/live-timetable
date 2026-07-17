@@ -22,7 +22,7 @@ export function BandDetailsForm({ band }: Props) {
         />
         <button
           onClick={() => deleteBand(band.id)}
-          className="shrink-0 text-sm text-slate-500 hover:text-rose-400"
+          className="flex h-9 w-9 shrink-0 items-center justify-center text-base text-slate-500 hover:text-rose-400"
           title="削除"
         >
           ×
@@ -87,7 +87,7 @@ export function BandDetailsForm({ band }: Props) {
       <div className="flex flex-wrap gap-1">
         <button
           onClick={() => updateBand(band.id, { hasSync: !band.hasSync })}
-          className={`rounded border px-1.5 py-0.5 text-xs ${
+          className={`rounded border min-h-9 px-1.5 py-0.5 text-xs ${
             band.hasSync
               ? "border-violet-500 bg-violet-950/50 text-violet-300"
               : "border-slate-600 bg-slate-800 text-slate-500"
@@ -98,7 +98,7 @@ export function BandDetailsForm({ band }: Props) {
         </button>
         <button
           onClick={() => updateBand(band.id, { hasKeyboard: !band.hasKeyboard })}
-          className={`rounded border px-1.5 py-0.5 text-xs ${
+          className={`rounded border min-h-9 px-1.5 py-0.5 text-xs ${
             band.hasKeyboard
               ? "border-sky-500 bg-sky-950/50 text-sky-300"
               : "border-slate-600 bg-slate-800 text-slate-500"
@@ -132,7 +132,7 @@ export function BandDetailsForm({ band }: Props) {
               <button
                 key={day.id}
                 onClick={() => toggleBandDay(band.id, day.id)}
-                className={`rounded border px-1.5 py-0.5 text-xs ${
+                className={`rounded border min-h-9 px-1.5 py-0.5 text-xs ${
                   isAllowed
                     ? "border-emerald-500 bg-emerald-950/50 text-emerald-300"
                     : "border-slate-600 bg-slate-800 text-slate-500 line-through"

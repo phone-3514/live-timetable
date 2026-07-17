@@ -45,13 +45,20 @@ export function BandListPanel() {
   // The flyout is anchored outside the whole grid (not below the individual
   // chip) so it never sits on top of neighboring chips — a popover pinned
   // under the hovered chip would otherwise block the mouse's path to the
-  // next one, since it renders above the grid.
+  // next one, since it renders above the grid. On mobile the sidebar is
+  // full-width (stacked layout, see App.tsx), so "outside the panel to the
+  // right" doesn't exist — the horizontal clamp below keeps it fully
+  // on-screen either way, sliding it left over the panel itself once
+  // there's no room beside it.
   function showHover(band: Band, chipEl: HTMLElement) {
     cancelHide();
     const panelRect = containerRef.current?.getBoundingClientRect();
     if (!panelRect) return;
     const chipRect = chipEl.getBoundingClientRect();
-    const left = panelRect.right + 8;
+    const left = Math.max(
+      8,
+      Math.min(panelRect.right + 8, window.innerWidth - POPOVER_WIDTH - 8),
+    );
     const top = Math.max(
       8,
       Math.min(chipRect.top, window.innerHeight - POPOVER_EST_HEIGHT - 8),
@@ -92,14 +99,27 @@ export function BandListPanel() {
       </div>
 
       {hover && (
-        <div
-          onMouseEnter={cancelHide}
-          onMouseLeave={scheduleHide}
-          style={{ top: hover.top, left: hover.left, width: POPOVER_WIDTH }}
-          className="fixed z-50 rounded-lg border border-slate-700 bg-slate-800 p-3 shadow-lg shadow-black/40"
-        >
-          <BandDetailsForm band={hover.band} />
-        </div>
+        <>
+          {/* Touch has no hover/mouseleave to trigger scheduleHide, so a
+              tap-opened flyout would otherwise be stuck open until another
+              chip is tapped — this invisible backdrop gives touch users an
+              explicit "tap anywhere else to close". Harmless on desktop:
+              the popover's own onMouseEnter still cancels it immediately if
+              the mouse happens to be over it. */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setHover(null)}
+            aria-hidden="true"
+          />
+          <div
+            onMouseEnter={cancelHide}
+            onMouseLeave={scheduleHide}
+            style={{ top: hover.top, left: hover.left, width: POPOVER_WIDTH }}
+            className="fixed z-50 rounded-lg border border-slate-700 bg-slate-800 p-3 shadow-lg shadow-black/40"
+          >
+            <BandDetailsForm band={hover.band} />
+          </div>
+        </>
       )}
     </div>
   );

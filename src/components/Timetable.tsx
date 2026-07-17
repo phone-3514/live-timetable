@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { DayPanel } from "./DayPanel";
 
@@ -37,46 +38,52 @@ export function Timetable() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex flex-1 flex-col gap-2 md:min-h-0">
       <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm">
         <button
           onClick={autoScheduleAllDays}
-          className="rounded bg-emerald-600 px-3 py-1.5 font-medium text-white hover:bg-emerald-500"
+          className="min-h-11 rounded bg-emerald-600 px-3 font-medium text-white hover:bg-emerald-500 md:min-h-0 md:py-1.5"
           title="全ての日をまとめて考慮し、希望日程・出演可能時間・機材転換の条件を満たすように未配置のバンドを自動で割り振ります（枠数もバランスを取るため自動で増減します）"
         >
           ⚡ 一括自動配置
         </button>
         <button
           onClick={handleReset}
-          className="rounded border border-rose-700 px-3 py-1.5 text-rose-300 hover:bg-rose-950/40"
+          className="min-h-11 rounded border border-rose-700 px-3 text-rose-300 hover:bg-rose-950/40 md:min-h-0 md:py-1.5"
         >
           配置をリセット
         </button>
         <button
           onClick={handleClearAllSlots}
-          className="rounded border border-rose-800 bg-rose-950/30 px-3 py-1.5 text-rose-400 hover:bg-rose-950/60"
+          className="min-h-11 rounded border border-rose-800 bg-rose-950/30 px-3 text-rose-400 hover:bg-rose-950/60 md:min-h-0 md:py-1.5"
           title="演奏枠・休憩枠など、全ての日の枠を完全に削除して空の状態に戻します"
         >
           🗑 全枠削除
         </button>
         <button
           onClick={addDay}
-          className="rounded border border-dashed border-slate-600 px-3 py-1.5 text-slate-400 hover:bg-slate-800"
+          className="min-h-11 rounded border border-dashed border-slate-600 px-3 text-slate-400 hover:bg-slate-800 md:min-h-0 md:py-1.5"
         >
           + 日を追加
         </button>
         <button
           onClick={autoDetectDayRestrictions}
-          className="ml-auto rounded border border-slate-700 px-3 py-1 text-xs text-slate-500 hover:bg-slate-800"
+          className="min-h-11 rounded border border-slate-700 px-3 text-xs text-slate-500 hover:bg-slate-800 md:ml-auto md:min-h-0 md:py-1"
           title="通常は不要です（貼り付け・希望/NG時間帯の編集・日付の設定のたびに自動で判定されます）。バンドカードで手動変更した出演可能日を、希望/NG時間帯のテキストが示す内容にリセットしたいときに使います"
         >
           日程を再判定（リセット）
         </button>
       </div>
 
+      {/* Side-by-side columns only from md up — below that, days stack
+          vertically (each panel gets a bounded, independently-scrollable
+          height; see DayPanel) since there's no room to show multiple full
+          day columns on a phone screen. --day-count carries the desktop
+          column count through so the md: grid still expands/contracts with
+          the actual number of days. */}
       <div
-        className="grid min-h-0 flex-1 gap-2"
-        style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
+        className="grid flex-1 grid-cols-1 gap-2 md:min-h-0 md:[grid-template-columns:repeat(var(--day-count),minmax(0,1fr))]"
+        style={{ "--day-count": days.length } as CSSProperties}
       >
         {days.map((day) => (
           <DayPanel key={day.id} day={day} daysCount={days.length} />

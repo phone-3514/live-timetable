@@ -65,9 +65,9 @@ function App() {
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveDragData(null)}
     >
-      <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
-        <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-800 bg-slate-900 px-6 py-2.5">
-          <h1 className="shrink-0 text-lg font-bold text-slate-100">
+      <div className="flex min-h-screen flex-col bg-slate-950 md:h-screen md:overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-3 py-2 md:gap-x-6 md:px-6 md:py-2.5">
+          <h1 className="shrink-0 text-base font-bold text-slate-100 md:text-lg">
             軽音ライブ タイムテーブル作成
           </h1>
           <nav className="flex shrink-0 gap-1" role="tablist" aria-label="表示切り替え">
@@ -76,7 +76,7 @@ function App() {
               role="tab"
               aria-selected={activeTab === "timetable"}
               onClick={() => setActiveTab("timetable")}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+              className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
                 activeTab === "timetable"
                   ? "bg-indigo-600 text-white"
                   : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -89,7 +89,7 @@ function App() {
               role="tab"
               aria-selected={activeTab === "applications"}
               onClick={() => setActiveTab("applications")}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+              className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
                 activeTab === "applications"
                   ? "bg-indigo-600 text-white"
                   : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -108,32 +108,40 @@ function App() {
                 onChange={(e) => updateEventInfo({ liveName: e.target.value })}
                 placeholder="ライブ名（例：軽音祭 vol.5）"
                 aria-label="ライブ名"
-                className="w-48 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+                className="min-h-11 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-48 md:min-h-0"
               />
               <input
                 value={eventInfo.venue}
                 onChange={(e) => updateEventInfo({ venue: e.target.value })}
                 placeholder="会場"
                 aria-label="会場名"
-                className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+                className="min-h-11 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-36 sm:flex-none md:min-h-0"
               />
               <input
                 value={eventInfo.organizationName}
                 onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
                 placeholder="団体名"
                 aria-label="団体名"
-                className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+                className="min-h-11 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-36 sm:flex-none md:min-h-0"
               />
             </div>
           )}
         </header>
         {activeTab === "timetable" ? (
-          <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_1fr]">
-            <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+          // content-start below lg: without it, CSS Grid's default
+          // align-content:stretch splits this container's full flex-1
+          // height evenly across the two stacked rows once they're in a
+          // single grid-cols-1 column on mobile — harmless-looking here
+          // since BandListPanel's own flex-1 just absorbs the extra height,
+          // but the same pattern visibly breaks as a stray gap in
+          // ApplicationManagerTab, so it's fixed the same way in both
+          // places rather than relying on that coincidence.
+          <main className="grid flex-1 content-start grid-cols-1 gap-4 p-3 md:min-h-0 md:overflow-hidden md:p-4 lg:content-normal lg:grid-cols-[340px_1fr]">
+            <div className="flex flex-col gap-3 md:min-h-0 md:overflow-hidden">
               <TextImportPanel />
               <BandListPanel />
             </div>
-            <div className="flex min-h-0 flex-col overflow-hidden">
+            <div className="flex flex-col md:min-h-0 md:overflow-hidden">
               <Timetable />
             </div>
           </main>

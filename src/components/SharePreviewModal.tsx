@@ -81,7 +81,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </h2>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-200 md:h-7 md:w-7"
             title="閉じる"
           >
             ×
@@ -89,13 +89,13 @@ export function SharePreviewModal({ day, onClose }: Props) {
         </div>
 
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3">
-          <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
+          <div className="grid grid-cols-3 gap-2 min-[420px]:grid-cols-4 sm:grid-cols-5 md:grid-cols-7">
             {(Object.values(THEMES)).map((theme) => (
               <button
                 key={theme.id}
                 onClick={() => setThemeId(theme.id)}
                 title={theme.subtitle}
-                className={`rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                className={`min-h-11 rounded-lg border px-2 py-1.5 text-left transition-colors md:min-h-0 ${
                   themeId === theme.id
                     ? "border-indigo-400 bg-indigo-950/40"
                     : "border-slate-700 bg-slate-800 hover:border-slate-500"
@@ -157,14 +157,14 @@ export function SharePreviewModal({ day, onClose }: Props) {
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-800 px-4 py-3">
           <button
             onClick={onClose}
-            className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+            className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1.5"
           >
             閉じる
           </button>
           <button
             onClick={handleDownload}
             disabled={downloading}
-            className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            className="min-h-11 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
             {downloading ? "画像を生成中…" : "画像をダウンロード"}
           </button>

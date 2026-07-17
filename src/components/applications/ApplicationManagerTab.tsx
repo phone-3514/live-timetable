@@ -42,46 +42,71 @@ export function ApplicationManagerTab() {
   }
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_1fr]">
-      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
-        <ApplicationImportPanel />
-        <MemberFrameCounts
-          applications={applications}
-          selectedMember={filterText || null}
-          onSelectMember={handleSelectMember}
-        />
+    <div className="flex flex-1 flex-col md:min-h-0 md:overflow-hidden">
+      {/* Prominent top action bar — Bulk Approve and Reset are the two
+          highest-stakes, most-reached-for actions in this tab, so they sit
+          right next to the page title where they're always visible with no
+          scrolling, rather than buried partway down the sidebar. Distinct
+          colors (solid green = primary/constructive, outlined red = a
+          destructive one that still needs its own confirm dialog) so
+          neither is mistakable for a routine secondary control. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
+        <h2 className="mr-auto text-sm font-semibold text-slate-100">
+          出演申し込み管理
+          <span className="ml-2 font-normal text-slate-500">
+            （{applications.length}件・未承認{pendingCount}件）
+          </span>
+        </h2>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={handleApproveAll}
             disabled={pendingCount === 0}
-            className="self-start rounded border border-indigo-600 px-3 py-1 text-xs font-medium text-indigo-300 hover:bg-indigo-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-11 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 disabled:opacity-60"
           >
-            一括承認（未承認{pendingCount}件）
+            ✓ 一括承認（{pendingCount}件）
           </button>
           <button
             type="button"
             onClick={handleReset}
             disabled={applications.length === 0}
-            className="self-start rounded border border-red-800 px-3 py-1 text-xs font-medium text-red-400 hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-11 rounded-md border-2 border-red-600 px-4 text-sm font-semibold text-red-400 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-600"
           >
-            エントリー初期化
+            🗑 エントリー初期化
           </button>
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-col overflow-hidden">
-        <h2 className="mb-2 shrink-0 text-xs font-semibold text-slate-400">
-          出演申し込み一覧（{applications.length}件）
-        </h2>
-        <ApplicationTable
-          applications={applications}
-          onApprove={approveApplication}
-          onUnapprove={unapproveApplication}
-          onRequestReject={setPendingReject}
-          filterText={filterText}
-          onFilterTextChange={setFilterText}
-        />
+      {/* content-start below lg: CSS Grid's default align-content:stretch
+          would otherwise split the container's full flex-1 height evenly
+          across the two stacked rows once they're both in a single
+          grid-cols-1 column on mobile, ballooning each row (and the gap
+          between them) far past its actual content height. lg:content-normal
+          restores the default at the breakpoint where the two become real
+          side-by-side columns that are supposed to fill the full height. */}
+      <div className="grid flex-1 content-start grid-cols-1 gap-4 p-4 md:min-h-0 md:overflow-hidden lg:content-normal lg:grid-cols-[340px_1fr]">
+        <div className="flex flex-col gap-3 md:min-h-0 md:overflow-y-auto">
+          <ApplicationImportPanel />
+          <MemberFrameCounts
+            applications={applications}
+            selectedMember={filterText || null}
+            onSelectMember={handleSelectMember}
+          />
+        </div>
+
+        <div className="flex flex-col md:min-h-0 md:overflow-hidden">
+          <h3 className="mb-2 shrink-0 text-xs font-semibold text-slate-400">
+            出演申し込み一覧（{applications.length}件）
+          </h3>
+          <ApplicationTable
+            applications={applications}
+            onApprove={approveApplication}
+            onUnapprove={unapproveApplication}
+            onRequestReject={setPendingReject}
+            filterText={filterText}
+            onFilterTextChange={setFilterText}
+          />
+        </div>
       </div>
 
       {pendingReject && (

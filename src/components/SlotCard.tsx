@@ -114,7 +114,12 @@ export function SlotCard({
         ref={setActivatorNodeRef}
         {...listeners}
         {...attributes}
-        className="flex w-4 shrink-0 cursor-grab items-center justify-center text-xs text-slate-500 hover:text-slate-300 active:cursor-grabbing"
+        // touch-none stops the browser from treating a touch-drag here as a
+        // page/list scroll gesture instead of handing it to dnd-kit — the
+        // standard fix for "drag and drop doesn't work on mobile" with
+        // PointerSensor (the default sensor, already touch-capable via the
+        // Pointer Events API once this is set).
+        className="flex min-h-11 w-8 shrink-0 touch-none cursor-grab items-center justify-center text-base text-slate-500 hover:text-slate-300 active:cursor-grabbing md:min-h-0 md:w-4 md:text-xs"
         title="ドラッグして順番を入れ替え"
       >
         ⠿
@@ -208,7 +213,7 @@ export function SlotCard({
             <div
               {...bandDraggable.listeners}
               {...bandDraggable.attributes}
-              className="w-full cursor-grab active:cursor-grabbing"
+              className="w-full min-h-11 cursor-grab touch-none active:cursor-grabbing md:min-h-0"
             >
               <p className="text-sm font-semibold text-slate-100">
                 {band.name}
@@ -294,11 +299,11 @@ export function SlotCard({
         </div>
       )}
 
-      <div className="flex flex-col justify-center gap-0.5">
+      <div className="flex flex-col justify-center gap-1">
         <button
           onClick={() => moveSlot(dayId, slot.id, "up")}
           disabled={index === 0}
-          className="px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
+          className="flex min-h-9 min-w-9 items-center justify-center px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20 md:min-h-0 md:min-w-0"
           title="上に移動"
         >
           ▲
@@ -306,7 +311,7 @@ export function SlotCard({
         <button
           onClick={() => moveSlot(dayId, slot.id, "down")}
           disabled={index === total - 1}
-          className="px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
+          className="flex min-h-9 min-w-9 items-center justify-center px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20 md:min-h-0 md:min-w-0"
           title="下に移動"
         >
           ▼
@@ -314,7 +319,7 @@ export function SlotCard({
       </div>
       <button
         onClick={() => removeSlot(dayId, slot.id)}
-        className="flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70"
+        className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70 md:h-6 md:w-6"
         title="枠を削除"
       >
         ×

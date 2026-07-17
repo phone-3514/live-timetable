@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Application } from "../../types";
 import { computeMemberFrameCounts } from "../../store/useApplicationStore";
+import { Badge } from "./Badge";
 
 interface Props {
   applications: Application[];
@@ -35,28 +36,18 @@ export function MemberFrameCounts({ applications, selectedMember, onSelectMember
                 type="button"
                 onClick={() => onSelectMember(name)}
                 aria-pressed={isSelected}
-                className={
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium md:min-h-0 ${
                   isSelected
-                    ? "inline-flex items-center gap-1 rounded-full border border-indigo-400 bg-indigo-600 px-2.5 py-0.5 text-xs text-white"
+                    ? "border-indigo-400 bg-indigo-600 text-white"
                     : count >= 3
-                      ? "inline-flex items-center gap-1 rounded-full border border-amber-600 bg-amber-950/40 px-2.5 py-0.5 text-xs text-amber-300 hover:border-amber-400"
-                      : "inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-300 hover:border-slate-500"
-                }
+                      ? "border-amber-600 bg-amber-950/40 text-amber-300 hover:border-amber-400"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+                }`}
               >
-                {/* Small, visually subtle grade tag — inline with the name
-                    rather than a separate row/section, so grouping by
-                    grade never costs extra vertical space. */}
-                {grade && (
-                  <span
-                    className={
-                      isSelected
-                        ? "rounded bg-indigo-800/60 px-1 text-[9px] font-medium leading-[14px] text-indigo-200"
-                        : "rounded bg-slate-700 px-1 text-[9px] font-medium leading-[14px] text-slate-400"
-                    }
-                  >
-                    {grade}
-                  </span>
-                )}
+                {/* Grade shown as an inline badge next to the name — not a
+                    separate grouped section — so it costs no extra vertical
+                    space over a flat chip list. */}
+                {grade && <Badge tone="grade">{grade}</Badge>}
                 <span>
                   {name}: {count}
                 </span>

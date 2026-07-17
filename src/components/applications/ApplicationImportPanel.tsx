@@ -22,7 +22,7 @@ export function ApplicationImportPanel() {
       <button
         onClick={parseAndAddFromRawText}
         disabled={!rawText.trim()}
-        className="self-start rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="min-h-11 self-start rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:px-3 md:py-1 md:text-xs md:font-normal"
       >
         解析して追加
       </button>

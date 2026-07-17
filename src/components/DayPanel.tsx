@@ -56,7 +56,7 @@ export function DayPanel({ day, daysCount }: Props) {
   };
 
   return (
-    <div className="flex min-h-0 flex-col gap-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+    <div className="flex h-[75vh] flex-col gap-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40 p-2 md:h-auto md:min-h-0">
       <div className="flex shrink-0 items-center gap-1.5">
         <input
           value={day.label}
@@ -75,12 +75,12 @@ export function DayPanel({ day, daysCount }: Props) {
             e.currentTarget.showPicker?.();
           }}
           title="クリックして日付を変更"
-          className="w-36 cursor-pointer rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200 outline-none transition-colors hover:border-indigo-500 hover:bg-slate-700 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:scale-125"
+          className="min-h-11 w-36 cursor-pointer rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200 outline-none transition-colors hover:border-indigo-500 hover:bg-slate-700 md:min-h-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:scale-125"
         />
         {daysCount > 1 && (
           <button
             onClick={() => removeDay(day.id)}
-            className="ml-auto text-xs text-slate-500 hover:text-rose-400"
+            className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center text-base text-slate-500 hover:text-rose-400 md:h-auto md:w-auto md:text-xs"
             title="この日を削除"
           >
             ×
@@ -97,7 +97,7 @@ export function DayPanel({ day, daysCount }: Props) {
             onChange={(e) =>
               updateSettings(day.id, { startTime: e.target.value })
             }
-            className="w-24 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100"
+            className="min-h-11 w-24 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-slate-400">
@@ -111,7 +111,7 @@ export function DayPanel({ day, daysCount }: Props) {
                 performanceMinutes: Number(e.target.value),
               })
             }
-            className="w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100"
+            className="min-h-11 w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-slate-400">
@@ -125,18 +125,18 @@ export function DayPanel({ day, daysCount }: Props) {
                 transitionMinutes: Number(e.target.value),
               })
             }
-            className="w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100"
+            className="min-h-11 w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
           />
         </label>
         <button
           onClick={handleCopyText}
-          className="ml-auto rounded border border-slate-600 px-2 py-1 text-slate-200 hover:bg-slate-800"
+          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-800 md:ml-auto md:min-h-0 md:py-1"
         >
           コピー
         </button>
         <button
           onClick={() => setShowSharePreview(true)}
-          className="rounded border border-indigo-600 bg-indigo-950/40 px-2 py-1 text-indigo-300 hover:bg-indigo-900/50"
+          className="min-h-11 rounded border border-indigo-600 bg-indigo-950/40 px-2 text-indigo-300 hover:bg-indigo-900/50 md:min-h-0 md:py-1"
         >
           🎨 共有用画像
         </button>
@@ -145,7 +145,7 @@ export function DayPanel({ day, daysCount }: Props) {
       <div className="flex shrink-0 flex-wrap items-center gap-1 text-xs">
         <button
           onClick={() => addSlot(day.id)}
-          className="rounded bg-indigo-600 px-2 py-1 text-white hover:bg-indigo-500"
+          className="min-h-11 rounded bg-indigo-600 px-2 text-white hover:bg-indigo-500 md:min-h-0 md:py-1"
         >
           + 演奏枠
         </button>
@@ -157,11 +157,11 @@ export function DayPanel({ day, daysCount }: Props) {
             value={bulkCount}
             onChange={(e) => setBulkCount(Number(e.target.value))}
             aria-label={`${day.label}に一括追加する演奏枠数`}
-            className="w-9 bg-slate-800 px-1 py-1 text-center text-slate-100 outline-none"
+            className="min-h-11 w-9 bg-slate-800 px-1 text-center text-slate-100 outline-none md:min-h-0 md:py-1"
           />
           <button
             onClick={() => addSlots(day.id, bulkCount)}
-            className="bg-indigo-600 px-2 py-1 text-white hover:bg-indigo-500"
+            className="min-h-11 bg-indigo-600 px-2 text-white hover:bg-indigo-500 md:min-h-0 md:py-1"
           >
             一括追加
           </button>
@@ -170,7 +170,7 @@ export function DayPanel({ day, daysCount }: Props) {
           <button
             key={preset.label}
             onClick={() => addCustomSlot(day.id, preset.label, preset.minutes)}
-            className="rounded border border-amber-600 bg-amber-900/40 px-2 py-1 text-amber-300 hover:bg-amber-800/50"
+            className="min-h-11 rounded border border-amber-600 bg-amber-900/40 px-2 text-amber-300 hover:bg-amber-800/50 md:min-h-0 md:py-1"
           >
             +{preset.label}
           </button>
@@ -191,7 +191,7 @@ export function DayPanel({ day, daysCount }: Props) {
           }}
           placeholder="例：準備、写真撮影"
           aria-label={`${day.label}に追加する任意の非演奏枠の名前`}
-          className="w-32 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+          className="min-h-11 w-32 rounded border border-slate-600 bg-slate-800 px-2 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:py-1"
         />
         <div className="flex items-center overflow-hidden rounded border border-slate-600">
           <input
@@ -201,14 +201,14 @@ export function DayPanel({ day, daysCount }: Props) {
             value={customMinutes}
             onChange={(e) => setCustomMinutes(Number(e.target.value))}
             aria-label={`${day.label}に追加する任意の非演奏枠の所要時間（分）`}
-            className="w-12 bg-slate-800 px-1.5 py-1 text-center text-slate-100 outline-none"
+            className="min-h-11 w-12 bg-slate-800 px-1.5 text-center text-slate-100 outline-none md:min-h-0 md:py-1"
           />
           <span className="bg-slate-800 px-1.5 py-1 text-slate-400">分</span>
         </div>
         <button
           onClick={handleAddCustomNamed}
           disabled={!customName.trim()}
-          className="rounded bg-slate-600 px-2 py-1 font-medium text-white hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-11 rounded bg-slate-600 px-2 font-medium text-white hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-0 md:py-1"
         >
           + 追加
         </button>

@@ -2,7 +2,27 @@
 
 html, body, #root {
   height: 100%;
-  overflow: hidden;
+}
+
+/* Desktop is a fixed-viewport "app shell" — every panel manages its own
+   internal scroll (see the various overflow-y-auto containers), and the
+   page itself never scrolls. That model doesn't survive mobile stacking:
+   once the sidebar and timetable stack vertically instead of sitting side
+   by side, their combined natural height regularly exceeds one screen, so
+   the page itself needs to scroll below this breakpoint or the excess
+   content is simply clipped and unreachable. Desktop keeps the old
+   no-scroll behavior via the min-width override. */
+@media (max-width: 767px) {
+  html, body, #root {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+}
+
+@media (min-width: 768px) {
+  html, body, #root {
+    overflow: hidden;
+  }
 }
 
 html {
@@ -11,4 +31,19 @@ html {
 
 body {
   margin: 0;
+}
+
+/* iOS Safari auto-zooms the page when a focused form field's computed
+   font-size is under 16px. Every text/number/date input, textarea, and
+   select in this app is styled with a Tailwind text-xs/text-sm utility
+   (12-14px) for desktop density, which is exactly the range that triggers
+   it. #root gives this enough specificity to win over those utility
+   classes without resorting to !important; scoped to mobile only so
+   desktop keeps its smaller, denser field text. */
+@media (max-width: 767px) {
+  #root input,
+  #root textarea,
+  #root select {
+    font-size: 16px;
+  }
 }
