@@ -8,6 +8,7 @@ import {
 import { useToastStore } from "../store/useToastStore";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
+import { SetlistExportModal } from "./SetlistExportModal";
 import type { TimetableDay } from "../types";
 
 // Strips the "HH:MM-HH:MM  " prefix handleCopyText below writes onto every
@@ -53,6 +54,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const showToast = useToastStore((s) => s.show);
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
+  const [showSetlistExport, setShowSetlistExport] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customMinutes, setCustomMinutes] = useState(10);
 
@@ -205,6 +207,12 @@ export function DayPanel({ day, daysCount }: Props) {
         >
           🎨 共有用画像
         </button>
+        <button
+          onClick={() => setShowSetlistExport(true)}
+          className="min-h-11 rounded border border-emerald-600 bg-emerald-950/40 px-2 text-emerald-300 hover:bg-emerald-900/50 md:min-h-0 md:py-1"
+        >
+          📋 セットリストを出力
+        </button>
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-1 text-xs">
@@ -322,6 +330,9 @@ export function DayPanel({ day, daysCount }: Props) {
 
       {showSharePreview && (
         <SharePreviewModal day={day} onClose={() => setShowSharePreview(false)} />
+      )}
+      {showSetlistExport && (
+        <SetlistExportModal day={day} onClose={() => setShowSetlistExport(false)} />
       )}
     </div>
   );
