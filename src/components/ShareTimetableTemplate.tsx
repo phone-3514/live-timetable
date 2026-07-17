@@ -33,9 +33,19 @@ function formatDate(iso: string | null): string | null {
   }).format(d);
 }
 
-type Props = { day: TimetableDay; bands: Band[]; themeId: ThemeId; eventInfo: EventInfo };
+type Props = {
+  day: TimetableDay;
+  bands: Band[];
+  themeId: ThemeId;
+  eventInfo: EventInfo;
+  // "1日目" is only meaningful information once there's a second day to
+  // distinguish it from — for a single-day event it's just clutter next to
+  // the event name, so the caller (SharePreviewModal) tells us how many
+  // days the event has and this hides the badge when there's only one.
+  isSingleDay: boolean;
+};
 
-export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props) {
+export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingleDay }: Props) {
   const theme = THEMES[themeId];
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   // Fully-empty "still to be filled" slots are a working-draft artifact —
@@ -45,6 +55,7 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
     (s) => s.bandId !== null || s.customLabel !== null,
   );
   const dateLabel = formatDate(day.date);
+  const showDayLabel = !isSingleDay;
 
   const orderById = new Map<string, number>();
   let order = 0;
@@ -115,27 +126,39 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
               >
                 {eventInfo.liveName}
               </h1>
-              <div className="mt-3 flex flex-wrap items-center justify-center" style={{ gap: 10 }}>
-                <span
-                  className="rounded-full font-bold"
-                  style={{
-                    fontSize: 20,
-                    padding: "4px 16px",
-                    background: theme.numberBadgeBackground,
-                    color: theme.numberBadgeText,
-                  }}
-                >
-                  {day.label}
-                </span>
-                {dateLabel && (
-                  <span className="font-medium" style={{ fontSize: 22, color: theme.dateColor }}>
-                    {dateLabel}
-                  </span>
-                )}
-              </div>
+              {(showDayLabel || dateLabel) && (
+                <div className="mt-3 flex flex-wrap items-center justify-center" style={{ gap: 10 }}>
+                  {showDayLabel && (
+                    <span
+                      className="rounded-full font-bold"
+                      style={{
+                        fontSize: 20,
+                        padding: "4px 16px",
+                        background: theme.numberBadgeBackground,
+                        color: theme.numberBadgeText,
+                      }}
+                    >
+                      {day.label}
+                    </span>
+                  )}
+                  {dateLabel && (
+                    <span className="font-medium" style={{ fontSize: 22, color: theme.dateColor }}>
+                      {dateLabel}
+                    </span>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
+              {/* No live name set, so this heading slot has nothing more
+                  specific to show than the day marker itself in the
+                  multi-day case — but for a single-day event "1日目" would
+                  be the *only* heading with nothing to distinguish it from,
+                  so the date takes its place when one's been set. If
+                  neither a live name nor a date exists for a single-day
+                  event, day.label stays as the fallback title rather than
+                  leaving the header blank. */}
               <h1
                 className="mt-2 font-black leading-none"
                 style={{
@@ -150,9 +173,9 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
                     : { color: theme.dayTitleColor }),
                 }}
               >
-                {day.label}
+                {showDayLabel || !dateLabel ? day.label : dateLabel}
               </h1>
-              {dateLabel && (
+              {dateLabel && showDayLabel && (
                 <p className="mt-3 font-medium" style={{ fontSize: 28, color: theme.dateColor }}>
                   {dateLabel}
                 </p>

@@ -11,6 +11,7 @@ type Props = { day: TimetableDay; onClose: () => void };
 export function SharePreviewModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
   const eventInfo = useAppStore((s) => s.eventInfo);
+  const isSingleDay = useAppStore((s) => s.days.length === 1);
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
@@ -149,7 +150,13 @@ export function SharePreviewModal({ day, onClose }: Props) {
                 transformOrigin: "top left",
               }}
             >
-              <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} eventInfo={eventInfo} />
+              <ShareTimetableTemplate
+                day={day}
+                bands={bands}
+                themeId={themeId}
+                eventInfo={eventInfo}
+                isSingleDay={isSingleDay}
+              />
             </div>
           </div>
         </div>
@@ -178,7 +185,13 @@ export function SharePreviewModal({ day, onClose }: Props) {
         aria-hidden="true"
       >
         <div ref={captureRef}>
-          <ShareTimetableTemplate day={day} bands={bands} themeId={themeId} eventInfo={eventInfo} />
+          <ShareTimetableTemplate
+            day={day}
+            bands={bands}
+            themeId={themeId}
+            eventInfo={eventInfo}
+            isSingleDay={isSingleDay}
+          />
         </div>
       </div>
     </div>
