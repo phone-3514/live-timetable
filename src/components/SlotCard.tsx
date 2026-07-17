@@ -349,7 +349,7 @@ export function SlotCard({
         ×
       </button>
       {band && showDetails && (
-        <PlacedBandDetailModal band={band} onClose={() => setShowDetails(false)} />
+        <PlacedBandDetailModal band={band} slot={slot} onClose={() => setShowDetails(false)} />
       )}
     </div>
   );
