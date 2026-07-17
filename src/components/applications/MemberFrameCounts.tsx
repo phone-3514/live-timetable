@@ -1,21 +1,23 @@
 import { useMemo } from "react";
-import type { Application } from "../../types";
-import { computeMemberFrameCounts } from "../../store/useApplicationStore";
+import type { MemberFrameCount } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 
 interface Props {
-  applications: Application[];
+  // Precomputed once by the parent (ApplicationManagerTab) and shared with
+  // ApplicationTable's per-band high-participation counts, rather than
+  // each recomputing computeMemberFrameCounts from the full application
+  // list independently.
+  frameCounts: Map<string, MemberFrameCount>;
   selectedMember: string | null;
   onSelectMember: (name: string) => void;
 }
 
-export function MemberFrameCounts({ applications, selectedMember, onSelectMember }: Props) {
+export function MemberFrameCounts({ frameCounts, selectedMember, onSelectMember }: Props) {
   const counts = useMemo(() => {
-    const map = computeMemberFrameCounts(applications);
-    return [...map.entries()].sort(
+    return [...frameCounts.entries()].sort(
       (a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0], "ja"),
     );
-  }, [applications]);
+  }, [frameCounts]);
 
   if (counts.length === 0) return null;
 

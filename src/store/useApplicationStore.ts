@@ -186,6 +186,45 @@ export function computeMemberFrameCounts(
   return result;
 }
 
+const HIGH_PARTICIPATION_THRESHOLD = 3;
+
+export type HighParticipationInfo = {
+  /** Number of this band's members whose total frame count across all
+   * applications is >= HIGH_PARTICIPATION_THRESHOLD. */
+  highCount: number;
+  /** highCount broken down by exact slot count, ascending (e.g. "3 slots:
+   * 1 person, 4 slots: 1 person") — for the badge's expanded detail. */
+  breakdown: { slots: number; people: number }[];
+};
+
+/**
+ * For one application/band, how many of its members are "high
+ * participation" (3+ total bands across every application, not just this
+ * one) — a lottery/scheduling signal for "this band is stacked with
+ * people who are already spread thin elsewhere". Takes the already-computed
+ * frameCounts map (see computeMemberFrameCounts) rather than recomputing it
+ * per band, so scanning every application only costs one pass over its own
+ * (small) member list, not a full cross-application scan each time.
+ */
+export function computeHighParticipation(
+  app: Application,
+  frameCounts: Map<string, MemberFrameCount>,
+): HighParticipationInfo {
+  const uniqueNames = new Set(app.members.map((m) => normalizeMemberName(m.name)));
+  const bySlots = new Map<number, number>();
+  for (const name of uniqueNames) {
+    const count = frameCounts.get(name)?.count ?? 0;
+    if (count >= HIGH_PARTICIPATION_THRESHOLD) {
+      bySlots.set(count, (bySlots.get(count) ?? 0) + 1);
+    }
+  }
+  const breakdown = [...bySlots.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([slots, people]) => ({ slots, people }));
+  const highCount = breakdown.reduce((sum, b) => sum + b.people, 0);
+  return { highCount, breakdown };
+}
+
 /**
  * For each member of `app`, the number of *other* applications (excluding
  * `app` itself) they would still perform in if `app` were rejected/deleted.

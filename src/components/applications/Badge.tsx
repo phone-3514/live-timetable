@@ -5,14 +5,17 @@ import type { ReactNode } from "react";
 // neutral slate (informational, not an action or a signal), Sync = a
 // distinct violet family (matches the 🔌 sync indicators used elsewhere in
 // the Timetable Editor), Status = green/red like everywhere else "approved
-// vs. needs attention" is shown in this app.
+// vs. needs attention" is shown in this app, Warning = amber (matches the
+// existing 3+ frame-count chip color in MemberFrameCounts) for the
+// high-participation-member flag.
 export type BadgeTone =
   | "part"
   | "grade"
   | "sync-on"
   | "sync-off"
   | "status-approved"
-  | "status-pending";
+  | "status-pending"
+  | "warning";
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
   part: "bg-indigo-950 text-indigo-200 border border-indigo-600",
@@ -21,6 +24,7 @@ const TONE_CLASSES: Record<BadgeTone, string> = {
   "sync-off": "bg-slate-800 text-slate-400 border border-slate-600",
   "status-approved": "bg-emerald-950 text-emerald-200 border border-emerald-500",
   "status-pending": "bg-slate-800 text-slate-400 border border-slate-600",
+  warning: "bg-amber-950 text-amber-200 border border-amber-500",
 };
 
 interface Props {

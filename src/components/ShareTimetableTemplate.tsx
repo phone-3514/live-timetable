@@ -278,22 +278,54 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo }: Props
                             </div>
                           )}
                           {shownSetlist.length > 0 && (
-                            <p
-                              className="font-light"
-                              style={{
-                                marginTop: 6,
-                                fontSize: 16,
-                                lineHeight: 1.55,
-                                color: theme.setlistColor,
-                                fontStyle: theme.setlistItalic ? "italic" : "normal",
-                                // Word-wrap naturally instead of being
-                                // forced onto one line and truncated.
-                                overflowWrap: "break-word",
-                              }}
-                            >
-                              ♪ {shownSetlist.join(" / ")}
-                              {extraSongs > 0 ? ` 他${extraSongs}曲` : ""}
-                            </p>
+                            // One song per line (this is a real DOM render via
+                            // html-to-image, so line breaks show up in the
+                            // exported PNG) — joining with " / " put every
+                            // song's artist right up against the next song's
+                            // title with no visual break, making the list
+                            // unreadable once a band had more than one song.
+                            // Numbering each line makes the song boundary
+                            // unambiguous even if two titles happen to share
+                            // a word.
+                            <div style={{ marginTop: 6 }}>
+                              {shownSetlist.map((song, i) => {
+                                const slashIndex = song.indexOf("/");
+                                const title = slashIndex === -1 ? song : song.slice(0, slashIndex);
+                                const artist =
+                                  slashIndex === -1 ? "" : song.slice(slashIndex + 1).trim();
+                                return (
+                                  <p
+                                    key={i}
+                                    className="font-light"
+                                    style={{
+                                      fontSize: 16,
+                                      lineHeight: 1.55,
+                                      color: theme.setlistColor,
+                                      fontStyle: theme.setlistItalic ? "italic" : "normal",
+                                      overflowWrap: "break-word",
+                                    }}
+                                  >
+                                    {i === 0 ? "♪ " : "　"}
+                                    {i + 1}. {title.trim()}
+                                    {artist && (
+                                      <span style={{ opacity: 0.7 }}>&nbsp;-&nbsp;{artist}</span>
+                                    )}
+                                  </p>
+                                );
+                              })}
+                              {extraSongs > 0 && (
+                                <p
+                                  className="font-light"
+                                  style={{
+                                    fontSize: 14,
+                                    color: theme.setlistColor,
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  　他{extraSongs}曲
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

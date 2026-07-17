@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useApplicationStore } from "../../store/useApplicationStore";
+import { useMemo, useState } from "react";
+import { computeMemberFrameCounts, useApplicationStore } from "../../store/useApplicationStore";
 import { ApplicationImportPanel } from "./ApplicationImportPanel";
 import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
@@ -16,6 +16,13 @@ export function ApplicationManagerTab() {
 
   const [pendingReject, setPendingReject] = useState<Application | null>(null);
   const [filterText, setFilterText] = useState("");
+
+  // Computed once here and shared by MemberFrameCounts (per-member chips)
+  // and ApplicationTable (per-band high-participation counts) instead of
+  // each independently re-scanning every application — an update to any
+  // one band's status still instantly recomputes this (it's a plain
+  // useMemo keyed on applications), just without the duplicated work.
+  const frameCounts = useMemo(() => computeMemberFrameCounts(applications), [applications]);
 
   const pendingCount = applications.filter((a) => !a.approved).length;
 
@@ -88,7 +95,7 @@ export function ApplicationManagerTab() {
         <div className="flex flex-col gap-3 md:min-h-0 md:overflow-y-auto">
           <ApplicationImportPanel />
           <MemberFrameCounts
-            applications={applications}
+            frameCounts={frameCounts}
             selectedMember={filterText || null}
             onSelectMember={handleSelectMember}
           />
@@ -100,6 +107,7 @@ export function ApplicationManagerTab() {
           </h3>
           <ApplicationTable
             applications={applications}
+            frameCounts={frameCounts}
             onApprove={approveApplication}
             onUnapprove={unapproveApplication}
             onRequestReject={setPendingReject}

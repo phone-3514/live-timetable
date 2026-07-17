@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import type { Application } from "../../types";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
+import {
+  computeHighParticipation,
+  type HighParticipationInfo,
+  type MemberFrameCount,
+} from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 
 type SortKey =
@@ -10,11 +15,16 @@ type SortKey =
   | "durationMinutes"
   | "desiredDateTime"
   | "hasSync"
-  | "memberCount";
+  | "memberCount"
+  | "highParticipationCount";
 type SortDir = "asc" | "desc";
 
 interface Props {
   applications: Application[];
+  // Precomputed once by the parent (ApplicationManagerTab, shared with
+  // MemberFrameCounts) — see computeHighParticipation below for why this
+  // table doesn't rescan every application per band.
+  frameCounts: Map<string, MemberFrameCount>;
   onApprove: (id: string) => void;
   onUnapprove: (id: string) => void;
   onRequestReject: (app: Application) => void;
@@ -49,8 +59,41 @@ function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
   );
 }
 
+// Compact badge for "how many of this band's members are already spread
+// across 3+ bands elsewhere" — a lottery/scheduling signal, not shown at
+// all when zero (keeps rows without any high-participation member free of
+// clutter). Click toggles an inline breakdown ("3枠: 1人, 4枠: 1人"); the
+// same text is also on the badge's title so a mouse hover shows it without
+// a click, satisfying both interaction styles on desktop and touch.
+function HighParticipationBadge({ info }: { info: HighParticipationInfo }) {
+  const [expanded, setExpanded] = useState(false);
+  if (info.highCount === 0) return null;
+
+  const breakdownText = info.breakdown.map((b) => `${b.slots}枠: ${b.people}人`).join(" / ");
+
+  return (
+    <div className="inline-block">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        title={breakdownText}
+        aria-expanded={expanded}
+        className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-200 hover:border-amber-400 md:min-h-0"
+      >
+        ⚠ 3枠以上: {info.highCount}人
+      </button>
+      {expanded && (
+        <p className="mt-1 max-w-[12rem] text-[11px] font-normal leading-snug text-amber-300">
+          {breakdownText}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ApplicationTable({
   applications,
+  frameCounts,
   onApprove,
   onUnapprove,
   onRequestReject,
@@ -59,6 +102,14 @@ export function ApplicationTable({
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("applicationDateTime");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const highParticipationByAppId = useMemo(() => {
+    const map = new Map<string, HighParticipationInfo>();
+    for (const app of applications) {
+      map.set(app.id, computeHighParticipation(app, frameCounts));
+    }
+    return map;
+  }, [applications, frameCounts]);
 
   const filtered = useMemo(() => {
     const q = filterText.trim().toLowerCase();
@@ -113,11 +164,16 @@ export function ApplicationTable({
         case "memberCount":
           cmp = a.members.length - b.members.length;
           break;
+        case "highParticipationCount":
+          cmp =
+            (highParticipationByAppId.get(a.id)?.highCount ?? 0) -
+            (highParticipationByAppId.get(b.id)?.highCount ?? 0);
+          break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [filtered, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir, highParticipationByAppId]);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
@@ -158,6 +214,17 @@ export function ApplicationTable({
           </button>
         )}
         <span className="text-xs text-slate-500">{sorted.length}件</span>
+        <button
+          type="button"
+          onClick={() => toggleSort("highParticipationCount")}
+          className={`min-h-11 rounded border px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
+            sortKey === "highParticipationCount"
+              ? "border-amber-500 bg-amber-950/50 text-amber-300"
+              : "border-slate-600 text-slate-300 hover:bg-slate-800"
+          }`}
+        >
+          3枠以上の人数で並び替え{sortIndicator("highParticipationCount")}
+        </button>
       </div>
 
       {sorted.length === 0 && (
@@ -214,6 +281,12 @@ export function ApplicationTable({
                 )}
               </div>
 
+              {(highParticipationByAppId.get(app.id)?.highCount ?? 0) > 0 && (
+                <div className="mt-2">
+                  <HighParticipationBadge info={highParticipationByAppId.get(app.id)!} />
+                </div>
+              )}
+
               {app.setlist.length > 0 && (
                 <div className="mt-2 text-xs text-slate-300">
                   <p className="mb-0.5 font-semibold text-slate-500">セットリスト</p>
@@ -258,18 +331,16 @@ export function ApplicationTable({
         <div className="hidden min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-700 md:block">
           <table className="w-full table-fixed border-collapse text-xs">
             <colgroup>
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
               <col className="w-[6%]" />
-              <col className="w-[7%]" />
               <col className="w-[9%]" />
-              {/* Wider than a naive 7% share would suggest — at the table's
-                  own md:768px cutoff there's little room left, and 承認/却下
-                  wrap into cramped single-character lines below ~60px. */}
-              <col className="w-[11%]" />
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead className="sticky top-0 border-b border-slate-700 bg-slate-900">
               <tr>
@@ -286,6 +357,13 @@ export function ApplicationTable({
                 <th className={plainHeaderClass}>メンバー</th>
                 <th className={headerClass} onClick={() => toggleSort("hasSync")}>
                   同期{sortIndicator("hasSync")}
+                </th>
+                <th
+                  className={headerClass}
+                  onClick={() => toggleSort("highParticipationCount")}
+                  title="このバンドのメンバーのうち、全申し込みを通じて3バンド以上に参加している人数"
+                >
+                  3枠以上{sortIndicator("highParticipationCount")}
                 </th>
                 <th className={headerClass} onClick={() => toggleSort("durationMinutes")}>
                   演奏時間{sortIndicator("durationMinutes")}
@@ -328,6 +406,9 @@ export function ApplicationTable({
                     <Badge tone={app.hasSync ? "sync-on" : "sync-off"}>
                       {app.hasSync ? "あり" : "なし"}
                     </Badge>
+                  </td>
+                  <td className="break-words px-2 py-1.5">
+                    <HighParticipationBadge info={highParticipationByAppId.get(app.id)!} />
                   </td>
                   <td className="break-words px-2 py-1.5 text-slate-300">
                     {app.durationMinutes != null ? `${app.durationMinutes}分` : "-"}
