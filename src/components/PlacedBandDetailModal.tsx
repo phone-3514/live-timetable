@@ -17,13 +17,19 @@ interface Props {
 // down to plain name strings) — so this looks up the application that
 // produced this band via linkedBandId and prefers its fields, falling back
 // to the Band's own flatter fields for a band with no such link (manually
-// added, or the link was lost some other way). Editing here only ever
-// touches the Band (via updateBand) — the linked Application stays exactly
-// as submitted, since it's the historical record of what was applied for,
-// not the timetable's own display copy.
+// added, or the link was lost some other way). Editing a member's name/
+// grade/part here writes to both the Band (via updateBand) AND, when a
+// linked Application exists, that Application's own member list (via
+// updateApplicationMembers) — so a correction made here (fixing a
+// misspelled name, say) is immediately visible in the Application
+// Manager's list, grade badges, frame counts, and search/filter too,
+// instead of only ever showing up on the Timetable side. One-directional:
+// the Application Manager has no member-editing UI of its own to
+// propagate back the other way (see useApplicationStore.ts).
 export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const applications = useApplicationStore((s) => s.applications);
   const updateBand = useAppStore((s) => s.updateBand);
+  const updateApplicationMembers = useApplicationStore((s) => s.updateApplicationMembers);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
   // Priority for what's actually shown/edited: the band's own
@@ -118,6 +124,12 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       // to show up there too, not just in the Setlist export.
       members: cleanedMembers.map((m) => m.name),
     });
+    // Propagate to the Application Manager's own copy too, so it never
+    // shows stale name/grade/part after an edit made here — see this
+    // component's top-of-file comment.
+    if (linkedApp) {
+      updateApplicationMembers(linkedApp.id, cleanedMembers);
+    }
     setIsEditing(false);
   }
 

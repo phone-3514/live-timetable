@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Application, Band } from "../types";
+import type { Application, ApplicationMember, Band } from "../types";
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { useAppStore } from "./useAppStore";
@@ -33,6 +33,14 @@ type ApplicationState = {
    * via useAppStore.renameBandMember, so a band approved before the merge
    * doesn't keep showing the pre-merge spelling. */
   mergeMemberName: (fromName: string, toName: string) => void;
+  /** Called when a member's name/grade/part is edited on the Band side
+   * (PlacedBandDetailModal, for a band with a linked application) —
+   * replaces that application's member list to match, so the Application
+   * Manager (list, grade badges, frame counts, search/filter) never shows
+   * stale data after an edit made in the Timetable Editor. One-
+   * directional: the Application Manager has no member-editing UI of its
+   * own to propagate back the other way. */
+  updateApplicationMembers: (applicationId: string, members: ApplicationMember[]) => void;
 };
 
 function applicationToBand(app: Application): Band {
@@ -133,6 +141,13 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
         useAppStore.getState().renameBandMember(fromName, toName);
       },
+
+      updateApplicationMembers: (applicationId, members) =>
+        set((state) => ({
+          applications: state.applications.map((app) =>
+            app.id === applicationId ? { ...app, members } : app,
+          ),
+        })),
     }),
     { name: "live-timetable-applications" },
   ),

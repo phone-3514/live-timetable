@@ -361,6 +361,14 @@ export const useAppStore = create<AppState>()(
           members: b.members.map((m) =>
             normalizeMemberName(m) === fromKey ? toName : m,
           ),
+          // memberDetails (grade/part) is a separate copy of the same
+          // people (see PlacedBandDetailModal editing) — without updating
+          // it here too, a rename via the Application Manager's name-
+          // resolution merge would leave the Setlist export (which prefers
+          // memberDetails when present) still showing the old spelling.
+          memberDetails: b.memberDetails?.map((m) =>
+            normalizeMemberName(m.name) === fromKey ? { ...m, name: toName } : m,
+          ),
         })),
       };
     }),
