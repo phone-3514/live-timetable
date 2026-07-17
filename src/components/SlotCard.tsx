@@ -18,19 +18,8 @@ type Props = {
   total: number;
   conflict: boolean;
   gearConflict: boolean;
-  /** Count of this band's members who are individually "high
-   * participation" (3+ bands across the whole event) — drives the
-   * timeline heatmap's per-slot intensity. 0 = no visible indicator. */
-  heatLevel: number;
   performanceOrder: number | null;
 };
-
-const HEAT_LEVEL_STYLES = [
-  "", // 0 — no indicator
-  "border-l-4 border-l-amber-500",
-  "border-l-4 border-l-orange-500",
-  "border-l-4 border-l-red-500",
-];
 
 export function SlotCard({
   dayId,
@@ -40,7 +29,6 @@ export function SlotCard({
   total,
   conflict,
   gearConflict,
-  heatLevel,
   performanceOrder,
 }: Props) {
   const [showSetlist, setShowSetlist] = useState(false);
@@ -105,11 +93,6 @@ export function SlotCard({
     <div
       ref={setNodeRef}
       style={rowStyle}
-      title={
-        heatLevel > 0
-          ? `タイムライン・ヒートマップ: 3枠以上の高稼働メンバーが${heatLevel}人 この枠にいます`
-          : undefined
-      }
       className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 ${
         isDragging ? "opacity-40" : ""
       } ${
@@ -120,7 +103,7 @@ export function SlotCard({
             : showAmbientEligible
               ? "border-indigo-700 bg-indigo-950/10"
               : "border-slate-700 bg-slate-800"
-      } ${HEAT_LEVEL_STYLES[Math.min(heatLevel, HEAT_LEVEL_STYLES.length - 1)]}`}
+      }`}
     >
       {previewStartTime !== null && (
         // Live preview of the start time this band would get if dropped
@@ -306,14 +289,6 @@ export function SlotCard({
                     title="この後の転換時間（個別設定）"
                   >
                     ⏱+{band.customTransitionMinutes}分
-                  </span>
-                )}
-                {heatLevel > 0 && (
-                  <span
-                    className="ml-1 rounded border border-orange-500 bg-orange-950/50 px-1 text-xs font-normal text-orange-300"
-                    title={`3枠以上の高稼働メンバーが${heatLevel}人`}
-                  >
-                    🔥{heatLevel}
                   </span>
                 )}
               </p>

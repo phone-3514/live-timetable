@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { Badge } from "./applications/Badge";
-import { TagSuggestInput } from "./TagSuggestInput";
 import type { Band, TimetableSlot } from "../types";
 
 interface Props {
@@ -24,8 +23,6 @@ interface Props {
 export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const applications = useApplicationStore((s) => s.applications);
   const updateBand = useAppStore((s) => s.updateBand);
-  const allBands = useAppStore((s) => s.bands);
-  const knownGearTags = [...new Set(allBands.flatMap((b) => b.gearTags))];
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -167,10 +164,9 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
             <dt className="font-semibold text-slate-500">共有機材タグ</dt>
             <dd className="mt-1">
               {isEditing ? (
-                <TagSuggestInput
+                <input
                   value={editGearTags}
-                  onChange={setEditGearTags}
-                  suggestions={knownGearTags}
+                  onChange={(e) => setEditGearTags(e.target.value)}
                   placeholder="カンマ区切り（例：共有キーボード）"
                   className="min-h-11 w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
                 />

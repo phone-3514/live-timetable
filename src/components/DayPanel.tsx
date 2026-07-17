@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
-  computeBandMemberFrameCounts,
-  computeSlotHeatLevel,
   getGearConflictSlotIds,
   getMemberConflictSlotIds,
   useAppStore,
@@ -44,7 +42,6 @@ export function DayPanel({ day, daysCount }: Props) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflicts = getMemberConflictSlotIds(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
-  const frameCounts = computeBandMemberFrameCounts(bands);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();
@@ -253,7 +250,6 @@ export function DayPanel({ day, daysCount }: Props) {
                       total={slots.length}
                       conflict={conflicts.has(slot.id)}
                       gearConflict={gearConflicts.has(slot.id)}
-                      heatLevel={computeSlotHeatLevel(band, frameCounts)}
                       performanceOrder={band ? order : null}
                     />
                   );
