@@ -77,6 +77,19 @@ type AppState = {
   // belongs to internally, since slot ids are globally unique — this lets
   // a band be dragged directly from one day's timetable into another's.
   assignBandToSlot: (bandId: string, slotId: string) => void;
+  // "Magnetic" placement — dropping a band onto a slot that's already
+  // filled doesn't replace what's there; it opens a new slot at that
+  // position and pushes the existing occupant (and everyone after it that
+  // day) later, the same way inserting a row does, rather than silently
+  // orphaning whoever was there back to the unplaced pool.
+  insertBandAtSlot: (bandId: string, targetSlotId: string) => void;
+  // Multi-select bulk actions from BandListPanel — appends every given
+  // band as a new slot at the end of the target day, in order. No
+  // eligibility filtering (unlike autoScheduleAllDays): this is an
+  // explicit, direct override of the user's own choosing, reversible via
+  // the same undo/redo history as everything else.
+  bulkAssignToDay: (bandIds: string[], dayId: string) => void;
+  deleteBands: (bandIds: string[]) => void;
   unassignSlot: (slotId: string) => void;
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
@@ -542,6 +555,84 @@ export const useAppStore = create<AppState>()(
       return { days };
     }),
 
+  insertBandAtSlot: (bandId, targetSlotId) =>
+    set((state) => {
+      const targetDay = state.days.find((d) =>
+        d.slots.some((s) => s.id === targetSlotId),
+      );
+      const targetSlot = targetDay?.slots.find((s) => s.id === targetSlotId);
+      const band = state.bands.find((b) => b.id === bandId);
+      if (
+        !targetDay ||
+        !targetSlot ||
+        !band ||
+        !canPlaceBandInSlot(band, targetDay, targetSlot, state.venueHours)
+      ) {
+        return state;
+      }
+      const newSlot: TimetableSlot = {
+        id: crypto.randomUUID(),
+        bandId,
+        customLabel: null,
+        customDurationMinutes: null,
+        startTime: "",
+        endTime: "",
+      };
+      const days = state.days.map((day) => {
+        // Vacate wherever this band currently sits first — same as
+        // assignBandToSlot, a band being moved leaves its old slot empty
+        // rather than deleting it. Since this only nulls bandId in place
+        // (never removes a slot), the target index computed below stays
+        // valid regardless of whether the old placement was on this same
+        // day before or after the insertion point.
+        let slots = day.slots.map((s) =>
+          s.bandId === bandId ? { ...s, bandId: null } : s,
+        );
+        if (day.id === targetDay.id) {
+          const idx = slots.findIndex((s) => s.id === targetSlotId);
+          slots = [...slots.slice(0, idx), newSlot, ...slots.slice(idx)];
+        }
+        return { ...day, slots: recomputeTimes(slots, day.settings, state.bands) };
+      });
+      return { days };
+    }),
+
+  bulkAssignToDay: (bandIds, dayId) =>
+    set((state) => {
+      const idSet = new Set(bandIds);
+      const newSlots: TimetableSlot[] = bandIds.map((bandId) => ({
+        id: crypto.randomUUID(),
+        bandId,
+        customLabel: null,
+        customDurationMinutes: null,
+        startTime: "",
+        endTime: "",
+      }));
+      const days = state.days.map((day) => {
+        let slots = day.slots.map((s) =>
+          s.bandId && idSet.has(s.bandId) ? { ...s, bandId: null } : s,
+        );
+        if (day.id === dayId) {
+          slots = [...slots, ...newSlots];
+        }
+        return { ...day, slots: recomputeTimes(slots, day.settings, state.bands) };
+      });
+      return { days };
+    }),
+
+  deleteBands: (bandIds) =>
+    set((state) => {
+      const idSet = new Set(bandIds);
+      const bands = state.bands.filter((b) => !idSet.has(b.id));
+      const days = state.days.map((day) => {
+        const slots = day.slots.map((s) =>
+          s.bandId && idSet.has(s.bandId) ? { ...s, bandId: null } : s,
+        );
+        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+      });
+      return { bands, days };
+    }),
+
   unassignSlot: (slotId) =>
     set((state) => {
       const days = state.days.map((day) => {
@@ -690,10 +781,21 @@ export const useAppStore = create<AppState>()(
               normalizeMemberName,
             ),
           );
-          const nonConflicting = eligible.filter(
+          const neighborGearTags = new Set([
+            ...(prevBand?.gearTags ?? []),
+            ...(nextBand?.gearTags ?? []),
+          ]);
+          const memberClean = eligible.filter(
             (b) => !b.members.some((m) => neighborMembers.has(normalizeMemberName(m))),
           );
-          const chosen = (nonConflicting.length > 0 ? nonConflicting : eligible)[0];
+          // Prefer a candidate that's clean on both counts; fall back to
+          // "at least no member overlap" (the more serious problem — a
+          // person literally can't be in two places) before finally
+          // accepting whatever's left rather than leaving the slot empty.
+          const fullyClean = memberClean.filter(
+            (b) => !b.gearTags.some((t) => neighborGearTags.has(t)),
+          );
+          const chosen = (fullyClean.length > 0 ? fullyClean : memberClean.length > 0 ? memberClean : eligible)[0];
 
           days = days.map((d) => {
             const slots = d.slots.map((s) => {
@@ -996,4 +1098,41 @@ export function computeMemberSchedules(
     }
     return b.entries.length - a.entries.length;
   });
+}
+
+// Total distinct-band count per member across the *whole* band pool
+// (placed and unplaced alike) — the Timetable Editor's own equivalent of
+// the Application Manager's computeMemberFrameCounts, kept separate since
+// this operates on Band.members directly rather than Application records
+// and the two tabs don't share a data model.
+export function computeBandMemberFrameCounts(bands: Band[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const band of bands) {
+    const uniqueInBand = new Set(band.members.map(normalizeMemberName).filter(Boolean));
+    for (const key of uniqueInBand) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+const HIGH_PARTICIPATION_THRESHOLD = 3;
+
+// How many of this band's members are individually "high participation"
+// (3+ bands across the whole event) — the per-slot signal the timeline
+// heatmap renders as intensity. A slot's own heat doesn't depend on its
+// neighbors; the visual effect of "this block of the day is a busy zone"
+// comes from several high-heat slots sitting next to each other, not from
+// any cross-slot computation here.
+export function computeSlotHeatLevel(
+  band: Band | undefined,
+  frameCounts: Map<string, number>,
+): number {
+  if (!band) return 0;
+  const uniqueMembers = new Set(band.members.map(normalizeMemberName).filter(Boolean));
+  let level = 0;
+  for (const m of uniqueMembers) {
+    if ((frameCounts.get(m) ?? 0) >= HIGH_PARTICIPATION_THRESHOLD) level++;
+  }
+  return level;
 }

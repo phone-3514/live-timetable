@@ -4,8 +4,10 @@ import {
   computeMemberSchedules,
   useAppStore,
 } from "../store/useAppStore";
+import { useHistoryStore } from "../store/useHistoryStore";
 import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
+import { HistoryPanel } from "./HistoryPanel";
 
 // All days render side by side (not tab-switched) so the whole event's
 // schedule is visible on one 100vh screen at once. Actions that used to be
@@ -23,6 +25,11 @@ export function Timetable() {
   );
   const bands = useAppStore((s) => s.bands);
   const [showScheduleReview, setShowScheduleReview] = useState(false);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const undo = useHistoryStore((s) => s.undo);
+  const redo = useHistoryStore((s) => s.redo);
+  const pastCount = useHistoryStore((s) => s.past.length);
+  const futureCount = useHistoryStore((s) => s.future.length);
 
   const reviewIssueCount = useMemo(() => {
     const conflictMembers = computeMemberSchedules(bands, days).filter(
@@ -55,6 +62,31 @@ export function Timetable() {
   return (
     <div className="flex flex-1 flex-col gap-2 md:min-h-0">
       <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm">
+        <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-600">
+          <button
+            onClick={undo}
+            disabled={pastCount === 0}
+            title="元に戻す（⌘Z / Ctrl+Z）"
+            className="flex min-h-11 items-center gap-1 px-2.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30 md:min-h-0 md:py-1.5"
+          >
+            ↩ {pastCount > 0 && <span className="text-[10px]">{pastCount}</span>}
+          </button>
+          <button
+            onClick={redo}
+            disabled={futureCount === 0}
+            title="やり直す（⌘⇧Z / Ctrl+Shift+Z）"
+            className="flex min-h-11 items-center gap-1 border-l border-slate-600 px-2.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30 md:min-h-0 md:py-1.5"
+          >
+            ↪ {futureCount > 0 && <span className="text-[10px]">{futureCount}</span>}
+          </button>
+          <button
+            onClick={() => setShowHistoryPanel(true)}
+            title="操作履歴から任意の時点に戻す"
+            className="flex min-h-11 items-center border-l border-slate-600 px-2.5 text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1.5"
+          >
+            🕘
+          </button>
+        </div>
         <button
           onClick={autoScheduleAllDays}
           className="min-h-11 rounded bg-emerald-600 px-3 font-medium text-white hover:bg-emerald-500 md:min-h-0 md:py-1.5"
@@ -124,6 +156,7 @@ export function Timetable() {
       {showScheduleReview && (
         <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />
       )}
+      {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
     </div>
   );
 }

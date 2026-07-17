@@ -1,5 +1,6 @@
 import type { Band } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { TagSuggestInput } from "./TagSuggestInput";
 
 type Props = { band: Band };
 
@@ -11,6 +12,9 @@ export function BandDetailsForm({ band }: Props) {
   const deleteBand = useAppStore((s) => s.deleteBand);
   const days = useAppStore((s) => s.days);
   const toggleBandDay = useAppStore((s) => s.toggleBandDay);
+  const allBands = useAppStore((s) => s.bands);
+  const knownMemberNames = [...new Set(allBands.flatMap((b) => b.members))];
+  const knownGearTags = [...new Set(allBands.flatMap((b) => b.gearTags))];
 
   return (
     <div className="space-y-1.5">
@@ -28,13 +32,14 @@ export function BandDetailsForm({ band }: Props) {
           ×
         </button>
       </div>
-      <input
+      <TagSuggestInput
         className="w-full border-b border-transparent bg-transparent text-xs text-slate-300 outline-none focus:border-slate-500"
         value={band.members.join(", ")}
+        suggestions={knownMemberNames}
         placeholder="メンバー（カンマ区切り）"
-        onChange={(e) =>
+        onChange={(text) =>
           updateBand(band.id, {
-            members: e.target.value
+            members: text
               .split(",")
               .map((m) => m.trim())
               .filter(Boolean),
@@ -84,14 +89,15 @@ export function BandDetailsForm({ band }: Props) {
           }
         />
       </div>
-      <input
+      <TagSuggestInput
         className="w-full border-b border-transparent bg-transparent text-xs text-amber-300 outline-none focus:border-slate-500"
         value={band.gearTags.join(", ")}
+        suggestions={knownGearTags}
         placeholder="共有機材タグ（カンマ区切り、例：共有キーボード）"
         title="同じタグを持つバンドが連続する枠に配置されると、機材競合として警告されます"
-        onChange={(e) =>
+        onChange={(text) =>
           updateBand(band.id, {
-            gearTags: e.target.value
+            gearTags: text
               .split(",")
               .map((t) => t.trim())
               .filter(Boolean),

@@ -7,12 +7,14 @@ type Props = {
   band: Band;
   onHoverStart: (band: Band, el: HTMLElement) => void;
   onHoverEnd: () => void;
+  selected: boolean;
+  onToggleSelect: (bandId: string) => void;
 };
 
 // Compact draggable tile for the unplaced-band grid. Full details render in
 // a single shared flyout owned by BandListPanel (see there for why) — this
 // component only reports hover in/out plus its own DOM node.
-export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
+export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSelect }: Props) {
   const deleteBand = useAppStore((s) => s.deleteBand);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `band:${band.id}`,
@@ -48,11 +50,22 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       className={`flex min-h-11 w-32 shrink-0 touch-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink ${
         isDragging ? "relative z-50 opacity-50" : ""
       } ${
-        band.parseWarning
-          ? "border-amber-600 bg-amber-950/40"
-          : "border-slate-700 bg-slate-800 hover:border-indigo-400"
+        selected
+          ? "border-indigo-400 bg-indigo-950/50"
+          : band.parseWarning
+            ? "border-amber-600 bg-amber-950/40"
+            : "border-slate-700 bg-slate-800 hover:border-indigo-400"
       }`}
     >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggleSelect(band.id)}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        title="複数選択して一括操作"
+        className="h-4 w-4 shrink-0 cursor-pointer accent-indigo-500"
+      />
       <span className="min-w-0 flex-1 truncate font-medium text-slate-100">
         {band.name}
       </span>

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
+import { useHistoryStore } from "./store/useHistoryStore";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
@@ -22,6 +23,7 @@ function App() {
   const setActiveTab = useUiStore((s) => s.setActiveTab);
   const days = useAppStore((s) => s.days);
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
+  const insertBandAtSlot = useAppStore((s) => s.insertBandAtSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
   const reorderSlots = useAppStore((s) => s.reorderSlots);
   const eventInfo = useAppStore((s) => s.eventInfo);
@@ -29,6 +31,32 @@ function App() {
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
     null,
   );
+
+  // ⌘Z / Ctrl+Z and ⌘⇧Z / Ctrl+Y (redo) for the Timetable Editor's
+  // placement history — skipped while focus is in a text input/textarea/
+  // contentEditable so it doesn't fight the browser's own native undo
+  // there (e.g. band-name or venue text fields).
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const isModifierPressed = e.metaKey || e.ctrlKey;
+      if (!isModifierPressed || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      const isTextEntry =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (isTextEntry) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        useHistoryStore.getState().redo();
+      } else {
+        useHistoryStore.getState().undo();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragData((event.active.data.current as ActiveDragData) ?? null);
@@ -49,7 +77,16 @@ function App() {
           .find((s) => s.bandId === bandId);
         if (slot) unassignSlot(slot.id);
       } else {
-        assignBandToSlot(bandId, overId);
+        // "Magnetic" drop: onto an empty slot, just fill it (unchanged
+        // behavior); onto a slot some OTHER band already occupies, insert
+        // a new slot there instead of silently bumping that band back to
+        // unplaced — it and everyone after it that day shift later instead.
+        const overSlot = days.flatMap((d) => d.slots).find((s) => s.id === overId);
+        if (overSlot?.bandId && overSlot.bandId !== bandId) {
+          insertBandAtSlot(bandId, overId);
+        } else {
+          assignBandToSlot(bandId, overId);
+        }
       }
       return;
     }
