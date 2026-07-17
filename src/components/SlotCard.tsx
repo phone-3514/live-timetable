@@ -24,6 +24,13 @@ type Props = {
    * getMemberConflictDetails. */
   conflicts: MemberConflictEntry[];
   gearConflict: boolean;
+  /** Members whose performances that day are 2+ in count and 100%
+   * concentrated in this slot's block (the stretch between breaks/custom
+   * slots — see getConcentrationWarningDetails). A milder, separate signal
+   * from `conflicts`: not "these two performances literally clash," but
+   * "this person never gets a real break." Can coexist with a conflict on
+   * the same slot. */
+  concentrationMemberNames: string[];
   performanceOrder: number | null;
 };
 
@@ -35,6 +42,7 @@ export function SlotCard({
   total,
   conflicts,
   gearConflict,
+  concentrationMemberNames,
   performanceOrder,
 }: Props) {
   const conflict = conflicts.length > 0;
@@ -44,6 +52,7 @@ export function SlotCard({
   const gapConflictNames = conflicts
     .filter((c) => c.reason === "gap")
     .map((c) => c.memberName);
+  const hasConcentrationWarning = concentrationMemberNames.length > 0;
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
@@ -230,7 +239,15 @@ export function SlotCard({
               : showAmbientEligible || showDropHighlight
                 ? "border-dashed border-indigo-500 text-xs text-indigo-300"
                 : "border-dashed border-slate-700 text-xs text-slate-500"
-          } ${conflict ? "border-rose-500 bg-rose-950/40" : gearConflict ? "border-amber-500 bg-amber-950/30" : ""} ${
+          } ${
+            conflict
+              ? "border-rose-500 bg-rose-950/40"
+              : gearConflict
+                ? "border-amber-500 bg-amber-950/30"
+                : hasConcentrationWarning
+                  ? "border-violet-500 bg-violet-950/30"
+                  : ""
+          } ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
         >
@@ -321,6 +338,11 @@ export function SlotCard({
               {!conflict && gearConflict && (
                 <p className="text-xs font-medium text-amber-400">
                   ⚙ 前後の枠と共有機材が重複
+                </p>
+              )}
+              {hasConcentrationWarning && (
+                <p className="text-xs font-medium text-violet-400">
+                  ⚠️ {concentrationMemberNames.join("、")} の出番が集中しています
                 </p>
               )}
             </div>

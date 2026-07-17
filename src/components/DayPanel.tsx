@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
+  getConcentrationWarningDetails,
   getGearConflictSlotIds,
   getMemberConflictDetails,
   useAppStore,
@@ -63,6 +64,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflictDetails = getMemberConflictDetails(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
+  const concentrationDetails = getConcentrationWarningDetails(day, bands);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();
@@ -318,6 +320,7 @@ export function DayPanel({ day, daysCount }: Props) {
                       total={slots.length}
                       conflicts={conflictDetails.get(slot.id) ?? []}
                       gearConflict={gearConflicts.has(slot.id)}
+                      concentrationMemberNames={concentrationDetails.get(slot.id) ?? []}
                       performanceOrder={band ? order : null}
                     />
                   );

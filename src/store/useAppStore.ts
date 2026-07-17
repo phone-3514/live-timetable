@@ -1004,6 +1004,9 @@ function findGroupedConflicts<T>(
 // they now share the same threshold. Returns, per conflicting slot, which
 // member(s) caused it and why, since "⚠ 前後の枠とメンバーが重複" without saying
 // *who* (and *why*) leaves the organizer to go figure it out themselves.
+// Only the EARLIER slot of each conflicting pair is included — a run of
+// N consecutive conflicting performances lights up slots 1..N-1, not all
+// N, since the last one has nothing after it to warn about.
 export type MemberConflictReason = "gap" | "same-band";
 export type MemberConflictEntry = { memberName: string; reason: MemberConflictReason };
 
@@ -1047,17 +1050,98 @@ export function getMemberConflictDetails(
       const gap = b.start - a.end;
       if (sameBand || gap <= day.settings.transitionMinutes) {
         const reason: MemberConflictReason = sameBand ? "same-band" : "gap";
-        for (const slotId of [a.slotId, b.slotId]) {
-          const list = conflictsBySlot.get(slotId) ?? [];
-          if (!list.some((c) => c.memberName === displayName)) {
-            list.push({ memberName: displayName, reason });
-          }
-          conflictsBySlot.set(slotId, list);
+        // Only the EARLIER slot in a conflicting pair gets flagged, not
+        // both — for a run of 3+ consecutive conflicting performances
+        // (entries i, i+1, i+2, ...), each middle entry is "b" of one pair
+        // and "a" of the next, so it still gets flagged via its OWN pair
+        // with whatever comes after it; only the very last entry in the
+        // chain (never an "a") ends up clear, since by then the warning
+        // on the slot(s) before it already says everything there is to
+        // say — a trailing "and this one too" on the last slot would just
+        // be redundant.
+        const list = conflictsBySlot.get(a.slotId) ?? [];
+        if (!list.some((c) => c.memberName === displayName)) {
+          list.push({ memberName: displayName, reason });
         }
+        conflictsBySlot.set(a.slotId, list);
       }
     }
   }
   return conflictsBySlot;
+}
+
+// Splits a day into chronological "blocks" divided by its non-band slots
+// (休憩・集合・リハーサルなど — anything with a customLabel, per addCustomSlot).
+// Block 0 is everything before the first such slot, block 1 is everything
+// between the first and second, and so on. Only band-performance slots get
+// an entry — the dividers themselves aren't "in" a block, and neither is
+// an empty not-yet-filled performance slot (customLabel === null but
+// bandId === null too), since it isn't a performance yet. Used only by
+// getConcentrationWarningDetails below; block index has no meaning outside
+// that.
+function computeSlotBlocks(day: TimetableDay): Map<string, number> {
+  const blockBySlotId = new Map<string, number>();
+  let block = 0;
+  for (const slot of day.slots) {
+    if (slot.customLabel !== null) {
+      block++;
+      continue;
+    }
+    if (slot.bandId) blockBySlotId.set(slot.id, block);
+  }
+  return blockBySlotId;
+}
+
+// "Performance concentration" warning: a member with 2+ performances that
+// day, all of which land in the exact same block (see computeSlotBlocks),
+// never gets a real break — they're either on stage or waiting right next
+// to it for the entire stretch between breaks, unlike someone whose sets
+// are spread across different blocks with a proper rest in between. This
+// is a milder, advisory signal — not "these two performances literally
+// conflict" (see getMemberConflictDetails) but "this person's whole day is
+// packed into one block" — so it's a separate map, checked independently,
+// and a slot can show both warnings if it happens to trigger both. Every
+// one of the member's slots that day gets flagged (not just the first),
+// since each one is equally part of the evidence for "concentrated."
+export function getConcentrationWarningDetails(
+  day: TimetableDay,
+  bands: Band[],
+): Map<string, string[]> {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const blockBySlotId = computeSlotBlocks(day);
+  const byMember = new Map<
+    string,
+    { displayName: string; slotIds: string[]; blocks: Set<number> }
+  >();
+
+  for (const slot of day.slots) {
+    if (!slot.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band) continue;
+    const block = blockBySlotId.get(slot.id);
+    if (block === undefined) continue;
+    const seenInThisSlot = new Set<string>();
+    for (const rawName of band.members) {
+      const key = normalizeMemberName(rawName);
+      if (!key || seenInThisSlot.has(key)) continue;
+      seenInThisSlot.add(key);
+      const entry = byMember.get(key) ?? { displayName: rawName, slotIds: [], blocks: new Set() };
+      entry.slotIds.push(slot.id);
+      entry.blocks.add(block);
+      byMember.set(key, entry);
+    }
+  }
+
+  const warningsBySlot = new Map<string, string[]>();
+  for (const { displayName, slotIds, blocks } of byMember.values()) {
+    if (slotIds.length < 2 || blocks.size !== 1) continue;
+    for (const slotId of slotIds) {
+      const list = warningsBySlot.get(slotId) ?? [];
+      if (!list.includes(displayName)) list.push(displayName);
+      warningsBySlot.set(slotId, list);
+    }
+  }
+  return warningsBySlot;
 }
 
 // Same idea as getMemberConflictSlotIds above, but for shared physical gear
