@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type { Application, Band } from "../types";
 import { parseApplications } from "../utils/parseApplications";
 import { detectHasKeyboard } from "../utils/parseBands";
+import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { useAppStore } from "./useAppStore";
 
 type ApplicationState = {
@@ -124,11 +125,18 @@ export const useApplicationStore = create<ApplicationState>()(
  * Number of bands each member (by name) currently applies with. A member
  * playing different parts in different bands is still one person with one
  * frame count, so the identity key is the name alone, not name+part.
+ *
+ * Names are compared via normalizeMemberName so "鈴木 啓大朗" and
+ * "鈴木啓大朗" (or full-width vs half-width spacing/characters) count as
+ * the same person instead of silently under-counting them — see
+ * normalizeMemberName.ts. The map key (and what's shown to the user) is
+ * the normalized form; the first-seen raw spelling isn't preserved since
+ * with multiple spellings in play there's no single "correct" one to pick.
  */
 export function computeMemberFrameCounts(applications: Application[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const app of applications) {
-    const namesInApp = new Set(app.members.map((m) => m.name));
+    const namesInApp = new Set(app.members.map((m) => normalizeMemberName(m.name)));
     for (const name of namesInApp) {
       counts.set(name, (counts.get(name) ?? 0) + 1);
     }
@@ -139,14 +147,21 @@ export function computeMemberFrameCounts(applications: Application[]): Map<strin
 /**
  * For each member of `app`, the number of *other* applications (excluding
  * `app` itself) they would still perform in if `app` were rejected/deleted.
+ * Matching is name-normalized for the same reason as computeMemberFrameCounts
+ * above; the returned `name` stays as originally written on `app` itself
+ * (this band's own member list), only the cross-application match uses the
+ * normalized comparison.
  */
 export function remainingCountsIfRemoved(
   applications: Application[],
   app: Application,
 ): { name: string; part: string; remaining: number }[] {
   return app.members.map((member) => {
+    const normalizedTarget = normalizeMemberName(member.name);
     const remaining = applications.filter(
-      (a) => a.id !== app.id && a.members.some((m) => m.name === member.name),
+      (a) =>
+        a.id !== app.id &&
+        a.members.some((m) => normalizeMemberName(m.name) === normalizedTarget),
     ).length;
     return { name: member.name, part: member.part, remaining };
   });

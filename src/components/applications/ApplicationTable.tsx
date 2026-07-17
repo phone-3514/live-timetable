@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Application } from "../../types";
+import { normalizeMemberName } from "../../utils/normalizeMemberName";
 
 type SortKey =
   | "applicantName"
@@ -39,12 +40,25 @@ export function ApplicationTable({
   const filtered = useMemo(() => {
     const q = filterText.trim().toLowerCase();
     if (!q) return applications;
+    // Member names are matched name-normalized (see normalizeMemberName) so
+    // clicking a member chip — or just typing their name with different
+    // spacing than a particular application recorded — still finds every
+    // band they're in, not only the ones spelled exactly like the query.
+    const normalizedQuery = normalizeMemberName(q);
     return applications.filter((a) => {
-      const memberNames = a.members.map((m) => m.name).join(" ").toLowerCase();
+      const memberTextMatch = a.members
+        .map((m) => m.name)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+      const memberNormalizedMatch = a.members.some((m) =>
+        normalizeMemberName(m.name).toLowerCase().includes(normalizedQuery),
+      );
       return (
         a.bandName.toLowerCase().includes(q) ||
         a.applicantName.toLowerCase().includes(q) ||
-        memberNames.includes(q) ||
+        memberTextMatch ||
+        memberNormalizedMatch ||
         a.desiredDateTime.toLowerCase().includes(q)
       );
     });
@@ -123,8 +137,19 @@ export function ApplicationTable({
         <span className="text-xs text-slate-500">{sorted.length}件</span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-700">
-        <table className="w-full min-w-max border-collapse text-xs">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-700">
+        <table className="w-full table-fixed border-collapse text-xs">
+          <colgroup>
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[19%]" />
+            <col className="w-[19%]" />
+            <col className="w-[6%]" />
+            <col className="w-[7%]" />
+            <col className="w-[9%]" />
+            <col className="w-[7%]" />
+          </colgroup>
           <thead className="sticky top-0 border-b border-slate-700 bg-slate-900">
             <tr>
               <th className={headerClass} onClick={() => toggleSort("applicantName")}>
@@ -158,11 +183,13 @@ export function ApplicationTable({
                   app.approved ? "bg-emerald-950/20" : ""
                 }`}
               >
-                <td className="px-2 py-1.5 text-slate-300">{app.applicantName || "-"}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-slate-300">
+                <td className="break-words px-2 py-1.5 text-slate-300">
+                  {app.applicantName || "-"}
+                </td>
+                <td className="break-words px-2 py-1.5 text-slate-300">
                   {app.applicationDateTime || "-"}
                 </td>
-                <td className="px-2 py-1.5 font-medium text-slate-100">
+                <td className="break-words px-2 py-1.5 font-medium text-slate-100">
                   {app.bandName}
                   {app.parseWarning && (
                     <p className="mt-0.5 text-[10px] font-normal text-amber-400">
@@ -170,7 +197,7 @@ export function ApplicationTable({
                     </p>
                   )}
                 </td>
-                <td className="px-2 py-1.5 text-slate-300">
+                <td className="break-words px-2 py-1.5 text-slate-300">
                   <ul className="space-y-0.5">
                     {app.setlist.map((s, i) => (
                       <li key={i}>
@@ -180,18 +207,22 @@ export function ApplicationTable({
                     ))}
                   </ul>
                 </td>
-                <td className="px-2 py-1.5 text-slate-300">
+                <td className="break-words px-2 py-1.5 text-slate-300">
                   <ul className="space-y-0.5">
                     {app.members.map((m, i) => (
                       <li key={i}>{memberLabel(m)}</li>
                     ))}
                   </ul>
                 </td>
-                <td className="px-2 py-1.5 text-slate-300">{app.hasSync ? "あり" : "なし"}</td>
-                <td className="px-2 py-1.5 text-slate-300">
+                <td className="break-words px-2 py-1.5 text-slate-300">
+                  {app.hasSync ? "あり" : "なし"}
+                </td>
+                <td className="break-words px-2 py-1.5 text-slate-300">
                   {app.durationMinutes != null ? `${app.durationMinutes}分` : "-"}
                 </td>
-                <td className="px-2 py-1.5 text-slate-300">{app.desiredDateTime || "-"}</td>
+                <td className="break-words px-2 py-1.5 text-slate-300">
+                  {app.desiredDateTime || "-"}
+                </td>
                 <td className="px-2 py-1.5">
                   <div className="flex flex-col gap-1">
                     <button

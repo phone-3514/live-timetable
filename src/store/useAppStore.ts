@@ -15,6 +15,7 @@ import {
   type VenueHours,
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
+import { normalizeMemberName } from "../utils/normalizeMemberName";
 
 // Snapshot kept for one undo step after deleteBand — restores both the
 // band data and (if it was placed) the exact slot it occupied.
@@ -674,12 +675,13 @@ export const useAppStore = create<AppState>((set) => ({
 
           const prevBand = bandInSlot(currentDay.slots[i - 1], state.bands);
           const nextBand = bandInSlot(currentDay.slots[i + 1], state.bands);
-          const neighborMembers = new Set([
-            ...(prevBand?.members ?? []),
-            ...(nextBand?.members ?? []),
-          ]);
+          const neighborMembers = new Set(
+            [...(prevBand?.members ?? []), ...(nextBand?.members ?? [])].map(
+              normalizeMemberName,
+            ),
+          );
           const nonConflicting = eligible.filter(
-            (b) => !b.members.some((m) => neighborMembers.has(m)),
+            (b) => !b.members.some((m) => neighborMembers.has(normalizeMemberName(m))),
           );
           const chosen = (nonConflicting.length > 0 ? nonConflicting : eligible)[0];
 
@@ -746,7 +748,8 @@ export function getMemberConflictSlotIds(
     const bandA = bandMap.get(a.bandId);
     const bandB = bandMap.get(b.bandId);
     if (!bandA || !bandB) continue;
-    const shared = bandA.members.some((m) => bandB.members.includes(m));
+    const bandBNormalized = new Set(bandB.members.map(normalizeMemberName));
+    const shared = bandA.members.some((m) => bandBNormalized.has(normalizeMemberName(m)));
     if (shared) {
       conflicts.add(a.id);
       conflicts.add(b.id);

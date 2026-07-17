@@ -28,13 +28,16 @@ export function normalizeApplicationText(text: string): string {
 
 // ---------- Fuzzy heading matching (Levenshtein distance) ----------
 //
-// Bracketed headings ("【バンド名】") are common Discord-form typo targets
-// ("【バイト名】", "【出演可農時間】"). A small edit-distance check lets a
-// label with 1-2 character mistakes still resolve to its intended field
-// without a dedicated regex per typo. Colon headings ("バンド名：...") stay
-// exact-match only — without the bracket delimiters there's no safe way to
-// isolate "the label" from ordinary prose that happens to contain a colon,
-// so fuzzy-matching there risks misreading unrelated text as a heading.
+// Both bracketed ("【バンド名】") and colon ("バンド名：...") headings get
+// typo tolerance — real examples include "【バイト名】"/"バイド名：",
+// "【出演可農時間】", and "バン名：". splitHeadingLine already isolates the
+// label the same way for both forms (a short, space-free run immediately
+// before the delimiter), so the two aren't meaningfully different in how
+// safe fuzzy-matching is. Colon headings do get a tighter edit-distance
+// budget than bracketed ones, though: "【...】" is an unambiguous "this is
+// a heading" signal a typo can't accidentally produce, while a bare
+// "text:" shape is common enough in ordinary prose that a looser tolerance
+// would risk misreading unrelated lines as a heading.
 function levenshtein(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
     new Array(b.length + 1).fill(0),
@@ -52,13 +55,14 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
-const FUZZY_MAX_DISTANCE = 2;
+const BRACKET_FUZZY_MAX_DISTANCE = 2;
+const COLON_FUZZY_MAX_DISTANCE = 1;
 
-function fuzzyIncludes(label: string, keywords: string[]): boolean {
+function fuzzyIncludes(label: string, keywords: string[], maxDistance: number): boolean {
   return keywords.some((kw) => {
     if (label === kw) return true;
-    if (Math.abs(label.length - kw.length) > FUZZY_MAX_DISTANCE) return false;
-    return levenshtein(label, kw) <= FUZZY_MAX_DISTANCE;
+    if (Math.abs(label.length - kw.length) > maxDistance) return false;
+    return levenshtein(label, kw) <= maxDistance;
   });
 }
 
@@ -80,13 +84,12 @@ function splitHeadingLine(
   return null;
 }
 
-// Bracketed headings get typo tolerance; colon headings require an exact
-// keyword match (see the module comment above for why).
 export function matchHeadingField(line: string, keywords: string[]): string | null {
   const split = splitHeadingLine(line);
   if (!split) return null;
   const exact = keywords.some((kw) => split.label === kw);
-  const matched = exact || (split.isBracket && fuzzyIncludes(split.label, keywords));
+  const maxDistance = split.isBracket ? BRACKET_FUZZY_MAX_DISTANCE : COLON_FUZZY_MAX_DISTANCE;
+  const matched = exact || fuzzyIncludes(split.label, keywords, maxDistance);
   return matched ? split.value : null;
 }
 
@@ -277,10 +280,17 @@ export function detectHasKeyboard(text: string): boolean {
 
 // ---------- Format detection ----------
 
-const CHAT_LOG_BAND_NAME_RE = /^(?:バンド名\s*[:：]|【\s*バンド名\s*】)/m;
-
+// Delegates to matchBandNameLine (defined below, in the chat-log section)
+// per-line rather than testing a single whole-text regex, so a message
+// whose *only* band-name heading has a typo ("バイド名：", "【バン名】")
+// still gets routed to the typo-tolerant chat-log parser instead of
+// silently falling through to the column-based table parser, which would
+// misparse free-text Discord messages entirely.
 export function detectFormat(rawText: string): "chatlog" | "table" {
-  return CHAT_LOG_BAND_NAME_RE.test(rawText) ? "chatlog" : "table";
+  const isChatLog = rawText
+    .split("\n")
+    .some((line) => matchBandNameLine(line.trim()) !== null);
+  return isChatLog ? "chatlog" : "table";
 }
 
 // ---------- Table (spreadsheet paste) format ----------
