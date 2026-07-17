@@ -6,6 +6,7 @@ import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { THEMES, getSetlistPalette } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -37,6 +38,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
   const eventInfo = useAppStore((s) => s.eventInfo);
   const isSingleDay = useAppStore((s) => s.days.length === 1);
   const applications = useApplicationStore((s) => s.applications);
+  useEscapeKey(onClose);
   const entries = useMemo(
     () => computeSetlistEntries(day, bands, applications),
     [day, bands, applications],

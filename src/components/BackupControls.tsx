@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
 import { hasUnsavedProgress, parseBackupFile, restoreBackup, type BackupData } from "../utils/backup";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { BackupExportDialog } from "./BackupExportDialog";
 
 // Compact pair of buttons living in the header nav row (not a large
@@ -17,6 +18,14 @@ export function BackupControls() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<BackupData | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Escape always cancels this confirm dialog, never confirms it — a
+  // dismiss key must never be able to trigger the destructive overwrite.
+  // The listener stays attached for BackupControls' whole lifetime (it's
+  // never unmounted itself), so it just no-ops whenever pendingRestore is
+  // null instead of being conditionally attached/detached.
+  useEscapeKey(() => {
+    if (pendingRestore) setPendingRestore(null);
+  });
 
   async function handleFile(file: File) {
     if (!file.name.toLowerCase().endsWith(".json")) {

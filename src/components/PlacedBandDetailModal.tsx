@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Badge } from "./applications/Badge";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
@@ -45,6 +46,18 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   );
   const [editGearTags, setEditGearTags] = useState(band.gearTags.join(", "));
   const [editMembers, setEditMembers] = useState<BandMemberDetail[]>([]);
+
+  // Escape cancels an in-progress edit first (same as clicking
+  // "キャンセル"), rather than immediately closing the whole modal out from
+  // under unsaved changes — only closes the modal outright once there's no
+  // edit in progress to lose.
+  useEscapeKey(() => {
+    if (isEditing) {
+      setIsEditing(false);
+    } else {
+      onClose();
+    }
+  });
 
   const desiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "未設定";
   const setlist = linkedApp

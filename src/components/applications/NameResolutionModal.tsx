@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { MemberFrameCount } from "../../store/useApplicationStore";
 import { useApplicationStore } from "../../store/useApplicationStore";
 import { findNearDuplicateNames } from "../../utils/nameResolution";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface Props {
   frameCounts: Map<string, MemberFrameCount>;
@@ -19,6 +20,7 @@ export function NameResolutionModal({ frameCounts, onClose }: Props) {
   // existing in frameCounts; "keep separate" is a softer "not right now",
   // not a permanent decision worth persisting.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  useEscapeKey(onClose);
 
   const pairs = useMemo(() => findNearDuplicateNames(frameCounts), [frameCounts]);
   const visiblePairs = pairs.filter((p) => !dismissed.has(pairKey(p.nameA, p.nameB)));

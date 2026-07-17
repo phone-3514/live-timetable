@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { getPlacedBandIds, useAppStore } from "../store/useAppStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { BandChip } from "./BandChip";
 import { BandDetailsForm } from "./BandDetailsForm";
 import type { Band } from "../types";
@@ -24,6 +25,12 @@ export function BandListPanel() {
     null,
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Same always-attached, no-op-when-closed pattern as BackupControls'
+  // pendingRestore listener — this panel itself is never unmounted, only
+  // the popover's `hover` state toggles.
+  useEscapeKey(() => {
+    if (hover) setHover(null);
+  });
 
   // If the hovered band gets placed into a slot (or deleted) while its
   // popover is open, its chip disappears from the DOM without ever firing

@@ -1,5 +1,6 @@
 import type { Application } from "../../types";
 import { remainingCountsIfRemoved } from "../../store/useApplicationStore";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface Props {
   app: Application;
@@ -11,6 +12,10 @@ interface Props {
 export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }: Props) {
   const remaining = remainingCountsIfRemoved(allApplications, app);
   const zeroedOut = remaining.filter((r) => r.remaining === 0);
+  // Escape always maps to the cancel action here, never onConfirm — a
+  // dismiss key must never be able to trigger a destructive action
+  // (removing a band, potentially zeroing out a member's remaining slots).
+  useEscapeKey(onCancel);
 
   return (
     <div

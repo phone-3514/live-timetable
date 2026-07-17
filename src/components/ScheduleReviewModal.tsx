@@ -4,6 +4,7 @@ import {
   computeMemberSchedules,
   useAppStore,
 } from "../store/useAppStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   onClose: () => void;
@@ -18,6 +19,7 @@ interface Props {
 export function ScheduleReviewModal({ onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
   const days = useAppStore((s) => s.days);
+  useEscapeKey(onClose);
 
   const memberSchedules = useMemo(() => computeMemberSchedules(bands, days), [bands, days]);
   const gearConflicts = useMemo(() => computeGearConflictDetails(days, bands), [days, bands]);

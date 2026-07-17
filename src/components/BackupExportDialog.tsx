@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { buildBackupFilename, downloadBackupFile } from "../utils/backup";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   liveName: string;
@@ -8,6 +9,7 @@ interface Props {
 
 export function BackupExportDialog({ liveName, onClose }: Props) {
   const [filename, setFilename] = useState(() => buildBackupFilename(liveName));
+  useEscapeKey(onClose);
 
   function handleSave() {
     const finalName = filename.trim() || buildBackupFilename(liveName);

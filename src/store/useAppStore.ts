@@ -973,20 +973,27 @@ function findGroupedConflicts<T>(
   return conflictsByKey;
 }
 
-// Strict member-conflict detection: a member is flagged when two of their
-// OWN performances that day are either (a) genuinely back-to-back or
-// overlapping — gap <= 0 minutes between one performance's end and the
-// next's start — or (b) the exact same band, regardless of the gap between
-// them. (b) exists because a member's next performance being the identical
-// band (not just a shared member) means either a duplicate placement or a
-// genuine back-to-back set for the same act — worth flagging even across a
-// perfectly normal transition gap, since "gap <= 0" alone would miss it.
-// Deliberately separate from findGroupedConflicts above (which gear
-// conflicts still use, comparing against the day's configured transition
-// time instead) because member scheduling and gear changeover aren't the
-// same kind of "conflict": a person simply performing multiple times in a
-// day, or having a completely normal gap between two different bands, is
-// not a problem worth warning about. Returns, per conflicting slot, which
+// Member-conflict detection: a member is flagged when two of their OWN
+// performances that day are either (a) too close together — gap <= the
+// day's configured transition time between one performance's end and the
+// next's start, which also naturally catches gap <= 0 (overlap/exactly
+// back-to-back) since that's just the low end of the same range — or (b)
+// the exact same band, regardless of the gap between them. (a) is
+// deliberately scoped to the member's own chronologically-ADJACENT
+// performances only (not "any two of their performances within N
+// minutes"), so a large real gap elsewhere in the day never gets compared
+// against a small one — being in two DIFFERENT bands that are scheduled
+// back-to-back with nothing but the standard changeover between them is
+// itself the problem being flagged (no time to strike one band's gear and
+// set up/warm up for a completely different one), even though technically
+// "enough" transition time exists on paper. (b) exists because a member's
+// next performance being the identical band (not just a shared member)
+// means either a duplicate placement or a genuine back-to-back set for the
+// same act — worth flagging even across a longer-than-usual gap, since (a)
+// alone would miss it. Deliberately separate from findGroupedConflicts
+// above (which gear conflicts still use) because member scheduling and
+// gear changeover aren't quite the same kind of "conflict," even though
+// they now share the same threshold. Returns, per conflicting slot, which
 // member(s) caused it and why, since "⚠ 前後の枠とメンバーが重複" without saying
 // *who* (and *why*) leaves the organizer to go figure it out themselves.
 export type MemberConflictReason = "gap" | "same-band";
@@ -1030,7 +1037,7 @@ export function getMemberConflictDetails(
       const b = entries[i + 1];
       const sameBand = a.bandId === b.bandId;
       const gap = b.start - a.end;
-      if (sameBand || gap <= 0) {
+      if (sameBand || gap <= day.settings.transitionMinutes) {
         const reason: MemberConflictReason = sameBand ? "same-band" : "gap";
         for (const slotId of [a.slotId, b.slotId]) {
           const list = conflictsBySlot.get(slotId) ?? [];

@@ -4,6 +4,7 @@ import { ShareTimetableTemplate } from "./ShareTimetableTemplate";
 import { THEMES } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -12,6 +13,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
   const bands = useAppStore((s) => s.bands);
   const eventInfo = useAppStore((s) => s.eventInfo);
   const isSingleDay = useAppStore((s) => s.days.length === 1);
+  useEscapeKey(onClose);
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);

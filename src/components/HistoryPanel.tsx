@@ -1,4 +1,5 @@
 import { useHistoryStore } from "../store/useHistoryStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   onClose: () => void;
@@ -12,6 +13,7 @@ interface Props {
 export function HistoryPanel({ onClose }: Props) {
   const past = useHistoryStore((s) => s.past);
   const jumpToPast = useHistoryStore((s) => s.jumpToPast);
+  useEscapeKey(onClose);
 
   return (
     <div
