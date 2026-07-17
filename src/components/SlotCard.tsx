@@ -7,7 +7,7 @@ import {
   computeDropPreviewStartTime,
   useAppStore,
 } from "../store/useAppStore";
-import type { MemberConflictEntry } from "../store/useAppStore";
+import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
@@ -24,13 +24,14 @@ type Props = {
    * getMemberConflictDetails. */
   conflicts: MemberConflictEntry[];
   gearConflict: boolean;
-  /** Members whose performances that day are 2+ in count and 100%
-   * concentrated in this slot's block (the stretch between breaks/custom
-   * slots — see getConcentrationWarningDetails). A milder, separate signal
-   * from `conflicts`: not "these two performances literally clash," but
-   * "this person never gets a real break." Can coexist with a conflict on
-   * the same slot. */
-  concentrationMemberNames: string[];
+  /** Members whose performances that day are 2+ in count and mostly or
+   * entirely concentrated in this slot's block (the stretch between
+   * breaks/custom slots — see getConcentrationWarningDetails), each tagged
+   * "full" (100%) or "partial" (majority) with the underlying counts. A
+   * milder, separate signal from `conflicts`: not "these two performances
+   * literally clash," but "this person barely gets a real break." Can
+   * coexist with a conflict on the same slot. */
+  concentrationEntries: ConcentrationEntry[];
   performanceOrder: number | null;
 };
 
@@ -42,7 +43,7 @@ export function SlotCard({
   total,
   conflicts,
   gearConflict,
-  concentrationMemberNames,
+  concentrationEntries,
   performanceOrder,
 }: Props) {
   const conflict = conflicts.length > 0;
@@ -52,7 +53,8 @@ export function SlotCard({
   const gapConflictNames = conflicts
     .filter((c) => c.reason === "gap")
     .map((c) => c.memberName);
-  const hasConcentrationWarning = concentrationMemberNames.length > 0;
+  const hasConcentrationWarning = concentrationEntries.length > 0;
+  const hasFullConcentration = concentrationEntries.some((c) => c.level === "full");
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
@@ -244,9 +246,11 @@ export function SlotCard({
               ? "border-rose-500 bg-rose-950/40"
               : gearConflict
                 ? "border-amber-500 bg-amber-950/30"
-                : hasConcentrationWarning
+                : hasFullConcentration
                   ? "border-violet-500 bg-violet-950/30"
-                  : ""
+                  : hasConcentrationWarning
+                    ? "border-violet-700 border-dashed bg-violet-950/10"
+                    : ""
           } ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
@@ -340,11 +344,18 @@ export function SlotCard({
                   ⚙ 前後の枠と共有機材が重複
                 </p>
               )}
-              {hasConcentrationWarning && (
-                <p className="text-xs font-medium text-violet-400">
-                  ⚠️ {concentrationMemberNames.join("、")} の出番が集中しています
+              {concentrationEntries.map((c) => (
+                <p
+                  key={c.memberName}
+                  className={`text-xs font-medium ${
+                    c.level === "full" ? "text-violet-400" : "text-violet-400/70"
+                  }`}
+                >
+                  {c.level === "full"
+                    ? `⚠️ ${c.memberName} の全出番（${c.totalSlots}枠中${c.totalSlots}枠）が同ブロックに集中しています`
+                    : `⚠️ ${c.memberName} の出番が集中しています（${c.totalSlots}枠中${c.maxBlockSlots}枠が同ブロック）`}
                 </p>
-              )}
+              ))}
             </div>
           ) : (
             <span>

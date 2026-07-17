@@ -1093,25 +1093,51 @@ function computeSlotBlocks(day: TimetableDay): Map<string, number> {
 }
 
 // "Performance concentration" warning: a member with 2+ performances that
-// day, all of which land in the exact same block (see computeSlotBlocks),
-// never gets a real break — they're either on stage or waiting right next
-// to it for the entire stretch between breaks, unlike someone whose sets
-// are spread across different blocks with a proper rest in between. This
-// is a milder, advisory signal — not "these two performances literally
-// conflict" (see getMemberConflictDetails) but "this person's whole day is
-// packed into one block" — so it's a separate map, checked independently,
-// and a slot can show both warnings if it happens to trigger both. Every
-// one of the member's slots that day gets flagged (not just the first),
-// since each one is equally part of the evidence for "concentrated."
-export function getConcentrationWarningDetails(
+// day, most or all of which land in the exact same block (see
+// computeSlotBlocks), never gets a real break — they're either on stage or
+// waiting right next to it for the entire stretch between breaks, unlike
+// someone whose sets are spread across different blocks with a proper rest
+// in between. This is a milder, advisory signal — not "these two
+// performances literally conflict" (see getMemberConflictDetails) but
+// "this person's day is (mostly) packed into one block" — so it's tracked
+// independently, and a slot can show both warnings if it happens to
+// trigger both.
+//
+// "Full" means every one of the member's performances that day falls in
+// one block; "partial" means a strict majority (more than half) do, which
+// is still worth surfacing but less severe. A block with only half or
+// fewer of the member's slots isn't "concentration" — that's just a
+// normal spread with one slightly busier stretch.
+export type ConcentrationLevel = "full" | "partial";
+export type ConcentrationEntry = {
+  memberName: string;
+  level: ConcentrationLevel;
+  /** Total performances this member has on this day. */
+  totalSlots: number;
+  /** How many of those land in the single most-crowded block. */
+  maxBlockSlots: number;
+};
+
+type ConcentrationStat = {
+  displayName: string;
+  totalSlots: number;
+  maxBlockSlots: number;
+  maxBlockSlotIds: string[];
+  level: ConcentrationLevel;
+};
+
+// Shared by getConcentrationWarningDetails (per-slot, for SlotCard) and
+// computeConcentrationSummary (per-day, for the Schedule Confirmation
+// modal) so both surfaces agree on exactly the same numbers.
+function computeDayConcentrationStats(
   day: TimetableDay,
   bands: Band[],
-): Map<string, string[]> {
+): Map<string, ConcentrationStat> {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const blockBySlotId = computeSlotBlocks(day);
   const byMember = new Map<
     string,
-    { displayName: string; slotIds: string[]; blocks: Set<number> }
+    { displayName: string; slotsByBlock: Map<number, string[]> }
   >();
 
   for (const slot of day.slots) {
@@ -1125,23 +1151,92 @@ export function getConcentrationWarningDetails(
       const key = normalizeMemberName(rawName);
       if (!key || seenInThisSlot.has(key)) continue;
       seenInThisSlot.add(key);
-      const entry = byMember.get(key) ?? { displayName: rawName, slotIds: [], blocks: new Set() };
-      entry.slotIds.push(slot.id);
-      entry.blocks.add(block);
+      const entry =
+        byMember.get(key) ?? { displayName: rawName, slotsByBlock: new Map() };
+      const slotIds = entry.slotsByBlock.get(block) ?? [];
+      slotIds.push(slot.id);
+      entry.slotsByBlock.set(block, slotIds);
       byMember.set(key, entry);
     }
   }
 
-  const warningsBySlot = new Map<string, string[]>();
-  for (const { displayName, slotIds, blocks } of byMember.values()) {
-    if (slotIds.length < 2 || blocks.size !== 1) continue;
-    for (const slotId of slotIds) {
+  const stats = new Map<string, ConcentrationStat>();
+  for (const [key, { displayName, slotsByBlock }] of byMember) {
+    const totalSlots = [...slotsByBlock.values()].reduce(
+      (sum, ids) => sum + ids.length,
+      0,
+    );
+    if (totalSlots < 2) continue;
+    let maxBlockSlotIds: string[] = [];
+    for (const ids of slotsByBlock.values()) {
+      if (ids.length > maxBlockSlotIds.length) maxBlockSlotIds = ids;
+    }
+    const maxBlockSlots = maxBlockSlotIds.length;
+    if (maxBlockSlots < 2) continue;
+    const ratio = maxBlockSlots / totalSlots;
+    const level: ConcentrationLevel | null =
+      ratio === 1 ? "full" : ratio > 0.5 ? "partial" : null;
+    if (!level) continue;
+    stats.set(key, { displayName, totalSlots, maxBlockSlots, maxBlockSlotIds, level });
+  }
+  return stats;
+}
+
+// Only the slots making up the crowded block get flagged (for a "full"
+// case that's every slot the member has that day, since by definition
+// they're all in the one block; for "partial" it's specifically the
+// slots causing the concentration, not the ones outside it).
+export function getConcentrationWarningDetails(
+  day: TimetableDay,
+  bands: Band[],
+): Map<string, ConcentrationEntry[]> {
+  const stats = computeDayConcentrationStats(day, bands);
+  const warningsBySlot = new Map<string, ConcentrationEntry[]>();
+  for (const { displayName, totalSlots, maxBlockSlots, maxBlockSlotIds, level } of stats.values()) {
+    for (const slotId of maxBlockSlotIds) {
       const list = warningsBySlot.get(slotId) ?? [];
-      if (!list.includes(displayName)) list.push(displayName);
+      list.push({ memberName: displayName, level, totalSlots, maxBlockSlots });
       warningsBySlot.set(slotId, list);
     }
   }
   return warningsBySlot;
+}
+
+export type ConcentrationSummaryEntry = {
+  memberName: string;
+  dayId: string;
+  dayLabel: string;
+  level: ConcentrationLevel;
+  totalSlots: number;
+  maxBlockSlots: number;
+};
+
+// Day-by-day summary for the Schedule Confirmation modal — concentration is
+// inherently a per-day notion (blocks don't span days), so a member can
+// show up once per day they're concentrated on, not once per event.
+export function computeConcentrationSummary(
+  days: TimetableDay[],
+  bands: Band[],
+): ConcentrationSummaryEntry[] {
+  const result: ConcentrationSummaryEntry[] = [];
+  for (const day of days) {
+    const stats = computeDayConcentrationStats(day, bands);
+    for (const { displayName, totalSlots, maxBlockSlots, level } of stats.values()) {
+      result.push({
+        memberName: displayName,
+        dayId: day.id,
+        dayLabel: day.label,
+        level,
+        totalSlots,
+        maxBlockSlots,
+      });
+    }
+  }
+  // Full concentration is the more severe case — surface it first.
+  return result.sort((a, b) => {
+    if (a.level !== b.level) return a.level === "full" ? -1 : 1;
+    return a.memberName.localeCompare(b.memberName, "ja");
+  });
 }
 
 // Same idea as getMemberConflictSlotIds above, but for shared physical gear

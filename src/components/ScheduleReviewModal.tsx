@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  computeConcentrationSummary,
   computeGearConflictDetails,
   computeMemberSchedules,
   useAppStore,
@@ -23,6 +24,10 @@ export function ScheduleReviewModal({ onClose }: Props) {
 
   const memberSchedules = useMemo(() => computeMemberSchedules(bands, days), [bands, days]);
   const gearConflicts = useMemo(() => computeGearConflictDetails(days, bands), [days, bands]);
+  const concentrationSummary = useMemo(
+    () => computeConcentrationSummary(days, bands),
+    [days, bands],
+  );
 
   const conflictMemberCount = memberSchedules.filter((m) => m.hasAdjacentConflict).length;
 
@@ -138,6 +143,60 @@ export function ScheduleReviewModal({ onClose }: Props) {
                     </p>
                     <p className="mt-1 text-[11px] text-amber-300">
                       共有タグ: {c.sharedTags.join("、")}（転換時間 {c.transitionMinutes}分）
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold text-slate-300">
+              🎯 出番の集中
+              {concentrationSummary.length > 0 && (
+                <span className="ml-2 rounded-full bg-violet-950/60 px-2 py-0.5 text-[11px] font-semibold text-violet-300">
+                  {concentrationSummary.length}件
+                </span>
+              )}
+            </h3>
+            <p className="mt-1 text-[11px] text-slate-500">
+              連続枠（重大）とは別に、出番が同じブロックに偏っているメンバーを注意喚起として表示します。
+            </p>
+            {concentrationSummary.length === 0 ? (
+              <p className="mt-2 rounded-md border border-slate-700 px-3 py-4 text-center text-xs text-slate-500">
+                出番が同じブロックに集中しているメンバーはいません
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {concentrationSummary.map((c) => (
+                  <li
+                    key={`${c.dayId}-${c.memberName}`}
+                    className={`rounded-md border p-2.5 ${
+                      c.level === "full"
+                        ? "border-violet-600 bg-violet-950/25"
+                        : "border-violet-800 border-dashed bg-violet-950/10"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-slate-200">
+                      {c.memberName}
+                      <span className="ml-1.5 font-normal text-slate-500">
+                        （{c.dayLabel}）
+                      </span>
+                      <span
+                        className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          c.level === "full"
+                            ? "bg-violet-900/60 text-violet-200"
+                            : "bg-violet-900/30 text-violet-300"
+                        }`}
+                      >
+                        {c.level === "full" ? "完全集中" : "部分集中"}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-violet-300">
+                      ⚠️{" "}
+                      {c.level === "full"
+                        ? `全出番（${c.totalSlots}枠中${c.totalSlots}枠）が同ブロックに集中しています`
+                        : `出番が集中しています（${c.totalSlots}枠中${c.maxBlockSlots}枠が同ブロック）`}
                     </p>
                   </li>
                 ))}

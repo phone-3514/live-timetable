@@ -149,7 +149,7 @@ export function Timetable() {
           onClick={handleExportRoster}
           disabled={exportingRoster}
           className="min-h-11 rounded border border-teal-600 bg-teal-950/30 px-3 font-medium text-teal-300 hover:bg-teal-900/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:py-1.5"
-          title="配置済みの全メンバーを学年・氏名・パートで重複なくまとめ、受付・機材確認チェック欄付きのExcel名簿を出力します"
+          title="配置済みの全メンバーを学年・氏名・パートで重複なくまとめ、受付・振り込み確認チェック欄付きのExcel名簿を出力します"
         >
           {exportingRoster ? "名簿を生成中…" : "📇 参加者名簿を出力 (Excel)"}
         </button>

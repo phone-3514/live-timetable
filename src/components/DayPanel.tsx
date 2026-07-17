@@ -320,7 +320,7 @@ export function DayPanel({ day, daysCount }: Props) {
                       total={slots.length}
                       conflicts={conflictDetails.get(slot.id) ?? []}
                       gearConflict={gearConflicts.has(slot.id)}
-                      concentrationMemberNames={concentrationDetails.get(slot.id) ?? []}
+                      concentrationEntries={concentrationDetails.get(slot.id) ?? []}
                       performanceOrder={band ? order : null}
                     />
                   );

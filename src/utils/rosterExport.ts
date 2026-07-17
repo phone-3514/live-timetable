@@ -103,7 +103,7 @@ export async function downloadMemberRosterExcel(
     { header: "氏名", key: "name", width: 18 },
     { header: "パート", key: "parts", width: 16 },
     { header: "受付", key: "reception", width: 8 },
-    { header: "機材確認", key: "gearCheck", width: 10 },
+    { header: "振り込み確認", key: "paymentCheck", width: 14 },
     { header: "備考", key: "notes", width: 24 },
   ];
 
@@ -128,7 +128,7 @@ export async function downloadMemberRosterExcel(
       name: entry.name,
       parts: entry.parts,
       reception: "",
-      gearCheck: "",
+      paymentCheck: "",
       notes: "",
     });
     row.height = 20;
