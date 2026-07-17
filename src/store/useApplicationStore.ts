@@ -13,6 +13,10 @@ type ApplicationState = {
   parseAndAddFromRawText: () => void;
   approveApplication: (id: string) => void;
   unapproveApplication: (id: string) => void;
+  /** Approves every application not already approved, in one batched
+   * timetable update (a single addBands call) rather than looping
+   * approveApplication and triggering N separate store updates. */
+  approveAllPending: () => void;
   /** Removes the application outright (used by the reject/delete flow,
    * after the UI has already surfaced the 0-slots safety warning). Also
    * removes the linked Band from the timetable if it had been approved. */
@@ -63,6 +67,20 @@ export const useApplicationStore = create<ApplicationState>()(
           applications: state.applications.map((a) =>
             a.id === id ? { ...a, approved: true, linkedBandId: band.id } : a,
           ),
+        }));
+      },
+
+      approveAllPending: () => {
+        const pending = get().applications.filter((a) => !a.approved);
+        if (pending.length === 0) return;
+        const converted = pending.map((app) => ({ appId: app.id, band: applicationToBand(app) }));
+        useAppStore.getState().addBands(converted.map((c) => c.band));
+        const linkedBandIdByAppId = new Map(converted.map((c) => [c.appId, c.band.id]));
+        set((state) => ({
+          applications: state.applications.map((a) => {
+            const linkedBandId = linkedBandIdByAppId.get(a.id);
+            return linkedBandId ? { ...a, approved: true, linkedBandId } : a;
+          }),
         }));
       },
 

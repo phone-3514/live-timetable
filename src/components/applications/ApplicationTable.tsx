@@ -16,6 +16,8 @@ interface Props {
   onApprove: (id: string) => void;
   onUnapprove: (id: string) => void;
   onRequestReject: (app: Application) => void;
+  filterText: string;
+  onFilterTextChange: (text: string) => void;
 }
 
 function memberLabel(m: Application["members"][number]): string {
@@ -28,10 +30,11 @@ export function ApplicationTable({
   onApprove,
   onUnapprove,
   onRequestReject,
+  filterText,
+  onFilterTextChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("applicationDateTime");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [filterText, setFilterText] = useState("");
 
   const filtered = useMemo(() => {
     const q = filterText.trim().toLowerCase();
@@ -104,10 +107,19 @@ export function ApplicationTable({
         <input
           type="text"
           value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
+          onChange={(e) => onFilterTextChange(e.target.value)}
           placeholder="バンド名・申請者・メンバー名・希望日時で絞り込み"
           className="w-full max-w-sm rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500"
         />
+        {filterText && (
+          <button
+            type="button"
+            onClick={() => onFilterTextChange("")}
+            className="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+          >
+            絞り込みを解除
+          </button>
+        )}
         <span className="text-xs text-slate-500">{sorted.length}件</span>
       </div>
 
@@ -193,7 +205,7 @@ export function ApplicationTable({
                           : "rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-800"
                       }
                     >
-                      {app.approved ? "✓ 承認済み" : "承認"}
+                      {app.approved ? "✓ キャンセル" : "承認"}
                     </button>
                     <button
                       type="button"
