@@ -36,8 +36,8 @@ export function DayPanel({ day, daysCount }: Props) {
   const slots = day.slots;
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const conflicts = getMemberConflictSlotIds(slots, bands);
-  const gearConflicts = getGearConflictSlotIds(slots, bands);
+  const conflicts = getMemberConflictSlotIds(day, bands);
+  const gearConflicts = getGearConflictSlotIds(day, bands);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();

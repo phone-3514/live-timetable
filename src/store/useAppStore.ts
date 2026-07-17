@@ -768,59 +768,76 @@ export function getPlacedBandIds(days: TimetableDay[]): Set<string> {
   return ids;
 }
 
-export function getMemberConflictSlotIds(
-  slots: TimetableSlot[],
+// Groups every slot in a day that's keyed by some grouping value (a
+// member's normalized name, a gear tag) into per-key chronological lists,
+// then flags a pair within the same group as a conflict when the real gap
+// between them (in minutes) is at or below the day's own baseline
+// transition time. This — not literal array-index adjacency — is what
+// getMemberConflictSlotIds and getGearConflictSlotIds both need: being
+// *next to each other in the slots array* is not a reliable proxy for
+// *close together in time*. Unplaced/empty slots and a band's own
+// customTransitionMinutes override can each push real hours between two
+// slots that still happen to sit at consecutive array indices — the
+// concrete bug this fixes was a band with a large customTransitionMinutes
+// making its literal next slot register as "conflicting" with a member 5
+// hours later, even though there was ample time between them. Grouping by
+// actual start time and comparing against the day's own configured
+// transitionMinutes (the organizer's own definition of "a normal
+// changeover") catches genuinely tight back-to-back scheduling while
+// correctly ignoring gaps that just happen to be array-adjacent.
+function findGroupedConflicts<T>(
+  day: TimetableDay,
   bands: Band[],
-): Set<string> {
+  keysFor: (band: Band) => T[],
+): Map<T, string[]> {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const conflicts = new Set<string>();
+  const byKey = new Map<T, { slotId: string; start: number; end: number }[]>();
 
-  for (let i = 0; i < slots.length - 1; i++) {
-    const a = slots[i];
-    const b = slots[i + 1];
-    if (!a.bandId || !b.bandId) continue;
-    const bandA = bandMap.get(a.bandId);
-    const bandB = bandMap.get(b.bandId);
-    if (!bandA || !bandB) continue;
-    const bandBNormalized = new Set(bandB.members.map(normalizeMemberName));
-    const shared = bandA.members.some((m) => bandBNormalized.has(normalizeMemberName(m)));
-    if (shared) {
-      conflicts.add(a.id);
-      conflicts.add(b.id);
+  for (const slot of day.slots) {
+    if (!slot.bandId || !slot.startTime || !slot.endTime) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band) continue;
+    const start = timeToMinutes(slot.startTime);
+    const end = timeToMinutes(slot.endTime);
+    for (const key of keysFor(band)) {
+      const list = byKey.get(key) ?? [];
+      list.push({ slotId: slot.id, start, end });
+      byKey.set(key, list);
     }
   }
 
-  return conflicts;
+  const threshold = day.settings.transitionMinutes;
+  const conflictsByKey = new Map<T, string[]>();
+  for (const [key, entries] of byKey) {
+    entries.sort((a, b) => a.start - b.start);
+    for (let i = 0; i < entries.length - 1; i++) {
+      const gap = entries[i + 1].start - entries[i].end;
+      if (gap <= threshold) {
+        const pair = conflictsByKey.get(key) ?? [];
+        pair.push(entries[i].slotId, entries[i + 1].slotId);
+        conflictsByKey.set(key, pair);
+      }
+    }
+  }
+  return conflictsByKey;
 }
 
-// Same shape as getMemberConflictSlotIds above, but for shared physical
-// gear (see Band.gearTags) instead of shared members — two bands tagged
-// with the same piece of equipment back-to-back means someone has to
-// physically move it across the stage in whatever transition time is set,
-// which is exactly the kind of thing that's easy to miss scanning a long
-// timetable but obvious once flagged.
-export function getGearConflictSlotIds(
-  slots: TimetableSlot[],
-  bands: Band[],
-): Set<string> {
-  const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const conflicts = new Set<string>();
+export function getMemberConflictSlotIds(day: TimetableDay, bands: Band[]): Set<string> {
+  const byMember = findGroupedConflicts(day, bands, (band) => [
+    ...new Set(band.members.map(normalizeMemberName).filter(Boolean)),
+  ]);
+  return new Set([...byMember.values()].flat());
+}
 
-  for (let i = 0; i < slots.length - 1; i++) {
-    const a = slots[i];
-    const b = slots[i + 1];
-    if (!a.bandId || !b.bandId) continue;
-    const bandA = bandMap.get(a.bandId);
-    const bandB = bandMap.get(b.bandId);
-    if (!bandA || !bandB || bandA.gearTags.length === 0) continue;
-    const shared = bandA.gearTags.some((tag) => bandB.gearTags.includes(tag));
-    if (shared) {
-      conflicts.add(a.id);
-      conflicts.add(b.id);
-    }
-  }
-
-  return conflicts;
+// Same idea as getMemberConflictSlotIds above, but for shared physical gear
+// (see Band.gearTags) instead of shared members — two bands tagged with the
+// same piece of equipment close together means someone has to physically
+// move it across the stage in whatever transition time is actually
+// available, which is exactly the kind of thing that's easy to miss
+// scanning a long timetable but obvious once flagged.
+export function getGearConflictSlotIds(day: TimetableDay, bands: Band[]): Set<string> {
+  const byTag = findGroupedConflicts(day, bands, (band) => band.gearTags);
+  return new Set([...byTag.values()].flat());
 }
 
 export type GearConflictDetail = {
@@ -844,27 +861,35 @@ export function computeGearConflictDetails(
   const details: GearConflictDetail[] = [];
 
   for (const day of days) {
-    const slots = day.slots;
-    for (let i = 0; i < slots.length - 1; i++) {
-      const a = slots[i];
-      const b = slots[i + 1];
-      if (!a.bandId || !b.bandId) continue;
-      const bandA = bandMap.get(a.bandId);
-      const bandB = bandMap.get(b.bandId);
-      if (!bandA || !bandB || bandA.gearTags.length === 0) continue;
-      const sharedTags = bandA.gearTags.filter((tag) => bandB.gearTags.includes(tag));
-      if (sharedTags.length === 0) continue;
-      const transitionMinutes = Math.max(
-        0,
-        timeToMinutes(b.startTime) - timeToMinutes(a.endTime),
-      );
-      details.push({
-        dayLabel: day.label,
-        bandAName: bandA.name,
-        bandBName: bandB.name,
-        sharedTags,
-        transitionMinutes,
-      });
+    const threshold = day.settings.transitionMinutes;
+    const byTag = new Map<string, { bandName: string; start: number; end: number }[]>();
+
+    for (const slot of day.slots) {
+      if (!slot.bandId || !slot.startTime || !slot.endTime) continue;
+      const band = bandMap.get(slot.bandId);
+      if (!band || band.gearTags.length === 0) continue;
+      const start = timeToMinutes(slot.startTime);
+      const end = timeToMinutes(slot.endTime);
+      for (const tag of band.gearTags) {
+        const list = byTag.get(tag) ?? [];
+        list.push({ bandName: band.name, start, end });
+        byTag.set(tag, list);
+      }
+    }
+
+    for (const [tag, entries] of byTag) {
+      entries.sort((a, b) => a.start - b.start);
+      for (let i = 0; i < entries.length - 1; i++) {
+        const gap = entries[i + 1].start - entries[i].end;
+        if (gap > threshold) continue;
+        details.push({
+          dayLabel: day.label,
+          bandAName: entries[i].bandName,
+          bandBName: entries[i + 1].bandName,
+          sharedTags: [tag],
+          transitionMinutes: Math.max(0, gap),
+        });
+      }
     }
   }
 
@@ -916,7 +941,7 @@ export function computeMemberSchedules(
   >();
   const conflictSlotIdsByDay = new Map<string, Set<string>>();
   for (const day of days) {
-    conflictSlotIdsByDay.set(day.id, getMemberConflictSlotIds(day.slots, bands));
+    conflictSlotIdsByDay.set(day.id, getMemberConflictSlotIds(day, bands));
     for (const slot of day.slots) {
       if (slot.bandId) {
         placementByBandId.set(slot.bandId, {
