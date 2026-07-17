@@ -725,7 +725,28 @@ export const useAppStore = create<AppState>()(
       days: state.days.map((day) => ({ ...day, slots: [] })),
     })),
     }),
-    { name: "live-timetable-app" },
+    {
+      name: "live-timetable-app",
+      // Pre-existing localStorage data predates the gearTags field (added
+      // for the gear-conflict checker) — every band saved before that
+      // shipped is missing it entirely. Without this backfill,
+      // getGearConflictSlotIds/computeGearConflictDetails crash the whole
+      // app on load (`gearTags.length` on undefined) the instant two of a
+      // user's existing bands land in adjacent slots, which is the normal
+      // case for anyone who's actually used this app, not an edge case.
+      // merge (unlike migrate) runs on every rehydration regardless of
+      // version, so this protects data already sitting in someone's
+      // browser right now, not just newly-created bands going forward.
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<AppState>) ?? {};
+        const bands = persisted.bands ?? currentState.bands;
+        return {
+          ...currentState,
+          ...persisted,
+          bands: bands.map((b) => ({ ...b, gearTags: b.gearTags ?? [] })),
+        };
+      },
+    },
   ),
 );
 
