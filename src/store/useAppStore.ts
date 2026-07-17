@@ -1130,6 +1130,65 @@ export function computeConcentrationSummary(
   });
 }
 
+export type MemberBlockUsage = {
+  dayId: string;
+  dayLabel: string;
+  /** 0-based, per computeSlotBlocks — display as block+1. */
+  block: number;
+  count: number;
+};
+
+// Per-member, per-day-and-block slot counts — the raw material for the
+// Schedule Confirmation modal's "ブロック1: 2枠 | ブロック2: 1枠" breakdown.
+// Unlike computeConcentrationSummary (which only reports the single
+// most-crowded block once a concentration threshold is crossed), this
+// returns every block the member has ANY slot in, so the modal can show
+// the full distribution even for members with no warning at all.
+export function computeMemberBlockBreakdown(
+  days: TimetableDay[],
+  bands: Band[],
+): Map<string, MemberBlockUsage[]> {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const countByMemberAndCell = new Map<string, Map<string, number>>();
+
+  for (const day of days) {
+    const blockBySlotId = computeSlotBlocks(day);
+    for (const slot of day.slots) {
+      if (!slot.bandId) continue;
+      const band = bandMap.get(slot.bandId);
+      if (!band) continue;
+      const block = blockBySlotId.get(slot.id);
+      if (block === undefined) continue;
+      const cellKey = `${day.id}:${block}`;
+      const seenInThisSlot = new Set<string>();
+      for (const rawName of band.members) {
+        const key = normalizeMemberName(rawName);
+        if (!key || seenInThisSlot.has(key)) continue;
+        seenInThisSlot.add(key);
+        const perMember = countByMemberAndCell.get(key) ?? new Map<string, number>();
+        perMember.set(cellKey, (perMember.get(cellKey) ?? 0) + 1);
+        countByMemberAndCell.set(key, perMember);
+      }
+    }
+  }
+
+  const dayIndex = new Map(days.map((d, i) => [d.id, i]));
+  const result = new Map<string, MemberBlockUsage[]>();
+  for (const [memberKey, perMember] of countByMemberAndCell) {
+    const usages = [...perMember.entries()].map(([cellKey, count]) => {
+      const [dayId, blockStr] = cellKey.split(":");
+      const day = days.find((d) => d.id === dayId)!;
+      return { dayId, dayLabel: day.label, block: Number(blockStr), count };
+    });
+    usages.sort((a, b) => {
+      const dayDiff = (dayIndex.get(a.dayId) ?? 0) - (dayIndex.get(b.dayId) ?? 0);
+      return dayDiff !== 0 ? dayDiff : a.block - b.block;
+    });
+    result.set(memberKey, usages);
+  }
+  return result;
+}
+
 // Same idea as getMemberConflictSlotIds above, but for shared physical gear
 // (see Band.gearTags) instead of shared members — two bands tagged with the
 // same piece of equipment close together means someone has to physically
