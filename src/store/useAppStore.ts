@@ -10,12 +10,19 @@ import type {
 import {
   DEFAULT_VENUE_HOURS,
   extractDayOfMonthHints,
-  extractTimeRange,
-  type TimeRange,
   type VenueHours,
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
+import { recomputeTimes } from "../utils/scheduleTimes";
+import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
+import { solveDayAssignment } from "../utils/autoScheduleSolver";
+
+// Re-exported so existing importers (e.g. SlotCard's drag-eligibility
+// check) don't need to know this moved to a standalone utils module —
+// canPlaceBandInSlot is pure and has no store dependency, but this is
+// still its most natural "front door" for the rest of the app.
+export { canPlaceBandInSlot };
 
 // Snapshot kept for one undo step after deleteBand — restores both the
 // band data and (if it was placed) the exact slot it occupied.
@@ -138,39 +145,6 @@ function makeBlankSlot(): TimetableSlot {
   };
 }
 
-// A band's own durationMinutes (parsed from e.g. "演奏時間：10分") overrides
-// the timetable's default performance duration for its slot. Custom rows
-// (休憩・集合・リハーサル) use their own customDurationMinutes instead. The
-// transition AFTER a slot only applies when that slot is an actual band
-// performance — a transition exists to cover equipment strike/setup between
-// bands, so a break/gathering/rehearsal row (or an empty unplaced slot)
-// shouldn't add one after it. A band's transition falls back to the day's
-// default unless it has its own customTransitionMinutes (e.g. a keyboard or
-// sync-track band that needs longer to strike/set up gear).
-function recomputeTimes(
-  slots: TimetableSlot[],
-  settings: TimetableSettings,
-  bands: Band[],
-): TimetableSlot[] {
-  const bandMap = new Map(bands.map((b) => [b.id, b]));
-  let cursor = timeToMinutes(settings.startTime);
-  return slots.map((slot) => {
-    let duration = settings.performanceMinutes;
-    let transitionAfter = 0;
-    if (slot.bandId) {
-      const band = bandMap.get(slot.bandId);
-      duration = band?.durationMinutes ?? settings.performanceMinutes;
-      transitionAfter = band?.customTransitionMinutes ?? settings.transitionMinutes;
-    } else if (slot.customLabel !== null) {
-      duration = slot.customDurationMinutes ?? settings.performanceMinutes;
-    }
-    const start = cursor;
-    const end = start + duration;
-    cursor = end + transitionAfter;
-    return { ...slot, startTime: minutesToTime(start), endTime: minutesToTime(end) };
-  });
-}
-
 // Live preview of the start time a dragged band would get if dropped at
 // targetSlotId right now. Walks the day's slots the same way recomputeTimes
 // does, but treats the dragged band's OWN current slot (if it has one in
@@ -216,50 +190,6 @@ function updateDaySlots(
     const slots = recomputeTimes(updater(day.slots), day.settings, bands);
     return { ...day, slots };
   });
-}
-
-// A null bound in a TimeRange means "unbounded on that side" (e.g. "14時
-//以降" has no end). Treating null as ±Infinity lets the same overlap check
-// handle closed and open-ended ranges uniformly.
-function slotOverlapsRange(
-  slotStart: number,
-  slotEnd: number,
-  range: TimeRange,
-): boolean {
-  const rangeStart = range.startMinutes ?? -Infinity;
-  const rangeEnd = range.endMinutes ?? Infinity;
-  return slotStart < rangeEnd && rangeStart < slotEnd;
-}
-
-// Combined date + time-of-day eligibility check, used both to guard
-// assignBandToSlot and to drive the "can't drop here" highlight while
-// dragging. desiredTime constrains to an inclusion window; ngTime
-// constrains to an exclusion window; allowedDayIds constrains which days.
-export function canPlaceBandInSlot(
-  band: Band,
-  day: TimetableDay,
-  slot: TimetableSlot,
-  venue: VenueHours = DEFAULT_VENUE_HOURS,
-): boolean {
-  if (slot.customLabel !== null) return false;
-  if (band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
-    return false;
-  }
-  if (!slot.startTime || !slot.endTime) return true;
-  const slotStart = timeToMinutes(slot.startTime);
-  const slotEnd = timeToMinutes(slot.endTime);
-
-  const ngRange = extractTimeRange(band.ngTime, venue);
-  if (ngRange && slotOverlapsRange(slotStart, slotEnd, ngRange)) {
-    return false;
-  }
-
-  const desiredRange = extractTimeRange(band.desiredTime, venue);
-  if (desiredRange && !slotOverlapsRange(slotStart, slotEnd, desiredRange)) {
-    return false;
-  }
-
-  return true;
 }
 
 // Resolves a band's desiredTime/ngTime day-of-month hints ("13日") into
@@ -740,7 +670,7 @@ export const useAppStore = create<AppState>()(
       }),
     })),
 
-  // Greedy best-effort scheduler across ALL days at once. Two phases:
+  // Best-effort scheduler across ALL days at once. Two phases:
   //
   // 1. Balance: split the unplaced pool across days so each ends up with
   //    as close to an equal band count as possible, without violating a
@@ -751,15 +681,19 @@ export const useAppStore = create<AppState>()(
   //    performance-slot count is then topped up or trimmed to match its
   //    target, per the request to add/remove slots automatically.
   //
-  // 2. Fill: same per-day greedy fill as before (eligibility +
-  //    neighbor-conflict avoidance), run once per day using only that
-  //    day's balanced target list. Re-reads each slot's time fresh every
-  //    iteration since an earlier assignment's duration can cascade and
-  //    shift later slots.
+  // 2. Solve: for each day, hand its balanced target list to
+  //    solveDayAssignment — a small CSP solver (simulated annealing over
+  //    random swaps, bounded to a fixed iteration budget so this can't
+  //    stall the UI) that searches for the ordering with the lowest total
+  //    penalty across three constraints: a member double-booked back to
+  //    back (heavy), a member's whole day concentrated in one block
+  //    (medium), and the same artist appearing in two adjacent slots
+  //    (medium). See utils/autoScheduleSolver for the scoring details.
   //
   // Bands with no eligible day, or that don't fit any slot's time window
-  // on their assigned day, simply stay unplaced — this never forces a bad
-  // placement to hit a perfectly even split.
+  // on their assigned day even in the best arrangement the solver finds,
+  // simply stay unplaced — this never forces a bad placement to hit a
+  // perfectly even split.
   autoScheduleAllDays: () =>
     set((state) => {
       if (state.days.length === 0) return state;
@@ -819,51 +753,16 @@ export const useAppStore = create<AppState>()(
       }
 
       for (const dayId of dayIds) {
-        let dayPool = targetByDay.get(dayId) ?? [];
-        const slotCount = days.find((d) => d.id === dayId)!.slots.length;
-        for (let i = 0; i < slotCount; i++) {
-          const currentDay = days.find((d) => d.id === dayId)!;
-          const slot = currentDay.slots[i];
-          if (slot.bandId !== null || slot.customLabel !== null) continue;
-
-          const eligible = dayPool.filter((b) =>
-            canPlaceBandInSlot(b, currentDay, slot, state.venueHours),
-          );
-          if (eligible.length === 0) continue;
-
-          const prevBand = bandInSlot(currentDay.slots[i - 1], state.bands);
-          const nextBand = bandInSlot(currentDay.slots[i + 1], state.bands);
-          const neighborMembers = new Set(
-            [...(prevBand?.members ?? []), ...(nextBand?.members ?? [])].map(
-              normalizeMemberName,
-            ),
-          );
-          const neighborGearTags = new Set([
-            ...(prevBand?.gearTags ?? []),
-            ...(nextBand?.gearTags ?? []),
-          ]);
-          const memberClean = eligible.filter(
-            (b) => !b.members.some((m) => neighborMembers.has(normalizeMemberName(m))),
-          );
-          // Prefer a candidate that's clean on both counts; fall back to
-          // "at least no member overlap" (the more serious problem — a
-          // person literally can't be in two places) before finally
-          // accepting whatever's left rather than leaving the slot empty.
-          const fullyClean = memberClean.filter(
-            (b) => !b.gearTags.some((t) => neighborGearTags.has(t)),
-          );
-          const chosen = (fullyClean.length > 0 ? fullyClean : memberClean.length > 0 ? memberClean : eligible)[0];
-
-          days = days.map((d) => {
-            const slots = d.slots.map((s) => {
-              if (d.id === dayId && s.id === slot.id) return { ...s, bandId: chosen.id };
-              if (s.bandId === chosen.id) return { ...s, bandId: null };
-              return s;
-            });
-            return { ...d, slots: recomputeTimes(slots, d.settings, state.bands) };
-          });
-          dayPool = dayPool.filter((b) => b.id !== chosen.id);
-        }
+        const dayPool = targetByDay.get(dayId) ?? [];
+        if (dayPool.length === 0) continue;
+        const currentDay = days.find((d) => d.id === dayId)!;
+        const solvedSlots = solveDayAssignment(
+          currentDay,
+          dayPool,
+          state.bands,
+          state.venueHours,
+        );
+        days = days.map((d) => (d.id === dayId ? { ...d, slots: solvedSlots } : d));
       }
 
       return { days };
@@ -908,14 +807,6 @@ export const useAppStore = create<AppState>()(
     },
   ),
 );
-
-function bandInSlot(
-  slot: TimetableSlot | undefined,
-  bands: Band[],
-): Band | undefined {
-  if (!slot?.bandId) return undefined;
-  return bands.find((b) => b.id === slot.bandId);
-}
 
 export function getPlacedBandIds(days: TimetableDay[]): Set<string> {
   const ids = new Set<string>();
