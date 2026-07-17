@@ -2,7 +2,7 @@ import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   getGearConflictSlotIds,
-  getMemberConflictSlotIds,
+  getMemberConflictDetails,
   useAppStore,
 } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
@@ -61,7 +61,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const slots = day.slots;
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const conflicts = getMemberConflictSlotIds(day, bands);
+  const conflictDetails = getMemberConflictDetails(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
 
   const handleAddCustomNamed = () => {
@@ -316,7 +316,7 @@ export function DayPanel({ day, daysCount }: Props) {
                       band={band}
                       index={i}
                       total={slots.length}
-                      conflict={conflicts.has(slot.id)}
+                      conflictMemberNames={conflictDetails.get(slot.id) ?? []}
                       gearConflict={gearConflicts.has(slot.id)}
                       performanceOrder={band ? order : null}
                     />

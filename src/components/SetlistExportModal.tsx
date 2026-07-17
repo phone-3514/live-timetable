@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toCanvas, toPng } from "html-to-image";
-import { SetlistExportTemplate } from "./SetlistExportTemplate";
+import { SetlistExportTemplate, PAGE_WIDTH } from "./SetlistExportTemplate";
 import { computeSetlistEntries } from "../utils/setlistExport";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
@@ -11,9 +11,20 @@ type Props = { day: TimetableDay; onClose: () => void };
 // A4 at 96dpi — must match SetlistExportTemplate's own PAGE_WIDTH so the
 // mm-per-pixel conversion below (used to slice the rendered canvas into
 // real A4-height pages for the PDF) is accurate.
-const PAGE_WIDTH_PX = 794;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
+const PDF_PIXEL_RATIO = 2;
+
+// The PNG export is meant to stay readable as one flat image (Discord,
+// LINE, printed and pinned to a board) rather than a multi-page document,
+// so a long day goes wider instead of scrolling forever — 2 columns once
+// there's more than a handful of bands, 3 once there's enough to make a
+// 2-column image awkwardly tall regardless.
+function computeColumnCount(entryCount: number): number {
+  if (entryCount <= 1) return 1;
+  if (entryCount <= 8) return 2;
+  return 3;
+}
 
 // This is an entirely separate export flow from SharePreviewModal/
 // ShareTimetableTemplate (the existing timetable image export) — different
@@ -27,10 +38,16 @@ export function SetlistExportModal({ day, onClose }: Props) {
     () => computeSetlistEntries(day, bands, applications),
     [day, bands, applications],
   );
+  const pngColumns = computeColumnCount(entries.length);
 
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const captureRef = useRef<HTMLDivElement>(null);
+  // Two separate off-screen capture sources: PDF stays single-column
+  // portrait (real A4 proportions, sliced into pages), PNG is the
+  // landscape multi-column layout — different DOM shapes, so each needs
+  // its own render rather than sharing one node.
+  const capturePortraitRef = useRef<HTMLDivElement>(null);
+  const captureLandscapeRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
@@ -63,7 +80,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
       : 1;
 
   async function handleDownloadPng() {
-    const el = captureRef.current;
+    const el = captureLandscapeRef.current;
     if (!el) return;
     setBusy("png");
     try {
@@ -78,7 +95,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
   }
 
   async function handleDownloadPdf() {
-    const el = captureRef.current;
+    const el = capturePortraitRef.current;
     if (!el) return;
     setBusy("pdf");
     try {
@@ -90,24 +107,61 @@ export function SetlistExportModal({ day, onClose }: Props) {
       // pixelRatio 2 keeps text crisp on both screen and paper without
       // ballooning file size the way a much higher ratio would on a
       // document that's mostly flat color and text.
-      const canvas = await toCanvas(el, { pixelRatio: 2, backgroundColor: "#ffffff" });
+      const canvas = await toCanvas(el, { pixelRatio: PDF_PIXEL_RATIO, backgroundColor: "#ffffff" });
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       const pxPerMm = canvas.width / A4_WIDTH_MM;
       const pageHeightPx = Math.floor(A4_HEIGHT_MM * pxPerMm);
-      const totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
 
-      for (let page = 0; page < totalPages; page++) {
+      // Measure every row's vertical bounds in the SAME pixel space as the
+      // canvas (CSS px * pixelRatio), so a page break can be pulled back to
+      // a row's top edge instead of landing inside it — a band's time,
+      // name, setlist, and members always stay together on one page.
+      const containerTop = el.getBoundingClientRect().top;
+      const rowBounds = Array.from(el.querySelectorAll<HTMLElement>("[data-setlist-row]")).map(
+        (row) => {
+          const r = row.getBoundingClientRect();
+          return {
+            top: (r.top - containerTop) * PDF_PIXEL_RATIO,
+            bottom: (r.bottom - containerTop) * PDF_PIXEL_RATIO,
+          };
+        },
+      );
+
+      const pageBreaks: number[] = [0];
+      let cursor = 0;
+      while (cursor < canvas.height) {
+        let next = cursor + pageHeightPx;
+        if (next >= canvas.height) break;
+        // A row currently straddling this cut gets pulled back to the
+        // page before it in full, rather than being split across pages —
+        // unless doing so would produce an empty page (a single row taller
+        // than one whole page), which the `> cursor` guard falls back
+        // from to avoid looping forever on a page that can never close.
+        const straddling = rowBounds.find((r) => r.top < next && r.bottom > next);
+        if (straddling && straddling.top > cursor) {
+          next = straddling.top;
+        }
+        pageBreaks.push(next);
+        cursor = next;
+      }
+
+      for (let page = 0; page < pageBreaks.length; page++) {
+        const start = pageBreaks[page];
+        const end = page + 1 < pageBreaks.length ? pageBreaks[page + 1] : canvas.height;
+        const sliceHeight = end - start;
+        if (sliceHeight <= 0) continue;
+
         const sliceCanvas = document.createElement("canvas");
         sliceCanvas.width = canvas.width;
-        sliceCanvas.height = Math.min(pageHeightPx, canvas.height - page * pageHeightPx);
+        sliceCanvas.height = sliceHeight;
         const ctx = sliceCanvas.getContext("2d");
         if (!ctx) continue;
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, -page * pageHeightPx);
+        ctx.drawImage(canvas, 0, -start);
 
         if (page > 0) pdf.addPage();
-        const sliceHeightMm = sliceCanvas.height / pxPerMm;
+        const sliceHeightMm = sliceHeight / pxPerMm;
         // jsPDF's PNG path re-encodes through its own embedder rather than
         // reusing the browser's already-compressed PNG bytes, which for a
         // page like this (small, but every pixel individually specified)
@@ -145,7 +199,8 @@ export function SetlistExportModal({ day, onClose }: Props) {
           <div>
             <h2 className="text-sm font-semibold text-slate-100">セットリスト出力プレビュー</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              A4サイズ・印刷/PDF向けレイアウト（{entries.length}バンド）
+              {entries.length}バンド・PDFはA4縦（ページ内でバンド情報は分割されません）／PNGは横向き{pngColumns}
+              段組で出力されます
             </p>
           </div>
           <button
@@ -169,8 +224,11 @@ export function SetlistExportModal({ day, onClose }: Props) {
             className="overflow-hidden rounded-lg shadow-lg"
           >
             {/* Scaled-down view for on-screen preview only — the off-screen
-                always-natural-size copy below is what actually gets
-                captured, same reasoning as SharePreviewModal. */}
+                always-natural-size copies below are what actually get
+                captured, same reasoning as SharePreviewModal. This shows
+                the PDF's portrait layout, since that's the print
+                reference; the PNG button produces the wider multi-column
+                layout described above instead. */}
             <div
               ref={previewRef}
               style={{
@@ -196,26 +254,41 @@ export function SetlistExportModal({ day, onClose }: Props) {
             disabled={busy !== null}
             className="min-h-11 rounded border border-indigo-500 px-3 text-sm font-medium text-indigo-300 hover:bg-indigo-950/50 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {busy === "png" ? "画像を生成中…" : "画像として保存 (PNG)"}
+            {busy === "png" ? "画像を生成中…" : "画像として保存 (PNG・横向き)"}
           </button>
           <button
             onClick={handleDownloadPdf}
             disabled={busy !== null}
             className="min-h-11 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {busy === "pdf" ? "PDFを生成中…" : "PDFとして保存"}
+            {busy === "pdf" ? "PDFを生成中…" : "PDFとして保存 (A4縦)"}
           </button>
         </div>
       </div>
 
       {/* Off-screen, always at natural full-resolution size and never
-          transformed — the actual capture source for both PNG and PDF. */}
+          transformed — the actual capture sources. Two separate layouts:
+          portrait single-column for the PDF, landscape multi-column for
+          the PNG. */}
       <div
-        style={{ position: "fixed", top: 0, left: -10000, pointerEvents: "none", width: PAGE_WIDTH_PX }}
+        style={{ position: "fixed", top: 0, left: -20000, pointerEvents: "none", width: PAGE_WIDTH }}
         aria-hidden="true"
       >
-        <div ref={captureRef}>
-          <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} />
+        <div ref={capturePortraitRef}>
+          <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} columns={1} />
+        </div>
+      </div>
+      <div
+        style={{ position: "fixed", top: 0, left: -40000, pointerEvents: "none" }}
+        aria-hidden="true"
+      >
+        <div ref={captureLandscapeRef}>
+          <SetlistExportTemplate
+            day={day}
+            eventInfo={eventInfo}
+            entries={entries}
+            columns={pngColumns}
+          />
         </div>
       </div>
     </div>

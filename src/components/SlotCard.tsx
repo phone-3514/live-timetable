@@ -16,7 +16,10 @@ type Props = {
   band: Band | undefined;
   index: number;
   total: number;
-  conflict: boolean;
+  /** Members whose own performances are strictly back-to-back or
+   * overlapping with this slot's band (gap <= 0 minutes) — empty when
+   * there's no conflict. See getMemberConflictDetails. */
+  conflictMemberNames: string[];
   gearConflict: boolean;
   performanceOrder: number | null;
 };
@@ -27,10 +30,11 @@ export function SlotCard({
   band,
   index,
   total,
-  conflict,
+  conflictMemberNames,
   gearConflict,
   performanceOrder,
 }: Props) {
+  const conflict = conflictMemberNames.length > 0;
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
@@ -297,7 +301,7 @@ export function SlotCard({
               </p>
               {conflict && (
                 <p className="text-xs font-medium text-rose-400">
-                  ⚠ 前後の枠とメンバーが重複
+                  ⚠️ {conflictMemberNames.join("、")} が連続しています
                 </p>
               )}
               {!conflict && gearConflict && (

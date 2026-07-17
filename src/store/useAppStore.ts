@@ -973,11 +973,61 @@ function findGroupedConflicts<T>(
   return conflictsByKey;
 }
 
-export function getMemberConflictSlotIds(day: TimetableDay, bands: Band[]): Set<string> {
-  const byMember = findGroupedConflicts(day, bands, (band) => [
-    ...new Set(band.members.map(normalizeMemberName).filter(Boolean)),
-  ]);
-  return new Set([...byMember.values()].flat());
+// Strict member-conflict detection: a member is only flagged when two of
+// their OWN performances that day are genuinely back-to-back or
+// overlapping — gap <= 0 minutes between one performance's end and the
+// next's start, nothing looser. Deliberately separate from
+// findGroupedConflicts above (which gear conflicts still use, comparing
+// against the day's configured transition time instead) because member
+// scheduling and gear changeover aren't the same kind of "conflict": a
+// person simply performing multiple times in a day, or having a completely
+// normal gap between two sets, is not a problem worth warning about — only
+// literally not having time to be in two places is. Returns, per
+// conflicting slot, which member(s) caused it, since "⚠ 前後の枠とメンバーが
+// 重複" without saying *who* leaves the organizer to go figure it out
+// themselves.
+export function getMemberConflictDetails(
+  day: TimetableDay,
+  bands: Band[],
+): Map<string, string[]> {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const byMember = new Map<
+    string,
+    { displayName: string; entries: { slotId: string; start: number; end: number }[] }
+  >();
+
+  for (const slot of day.slots) {
+    if (!slot.bandId || !slot.startTime || !slot.endTime) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band) continue;
+    const start = timeToMinutes(slot.startTime);
+    const end = timeToMinutes(slot.endTime);
+    const seenInThisSlot = new Set<string>();
+    for (const rawName of band.members) {
+      const key = normalizeMemberName(rawName);
+      if (!key || seenInThisSlot.has(key)) continue;
+      seenInThisSlot.add(key);
+      const entry = byMember.get(key) ?? { displayName: rawName, entries: [] };
+      entry.entries.push({ slotId: slot.id, start, end });
+      byMember.set(key, entry);
+    }
+  }
+
+  const conflictsBySlot = new Map<string, string[]>();
+  for (const { displayName, entries } of byMember.values()) {
+    entries.sort((a, b) => a.start - b.start);
+    for (let i = 0; i < entries.length - 1; i++) {
+      const gap = entries[i + 1].start - entries[i].end;
+      if (gap <= 0) {
+        for (const slotId of [entries[i].slotId, entries[i + 1].slotId]) {
+          const names = conflictsBySlot.get(slotId) ?? [];
+          if (!names.includes(displayName)) names.push(displayName);
+          conflictsBySlot.set(slotId, names);
+        }
+      }
+    }
+  }
+  return conflictsBySlot;
 }
 
 // Same idea as getMemberConflictSlotIds above, but for shared physical gear
@@ -1092,7 +1142,7 @@ export function computeMemberSchedules(
   >();
   const conflictSlotIdsByDay = new Map<string, Set<string>>();
   for (const day of days) {
-    conflictSlotIdsByDay.set(day.id, getMemberConflictSlotIds(day, bands));
+    conflictSlotIdsByDay.set(day.id, new Set(getMemberConflictDetails(day, bands).keys()));
     for (const slot of day.slots) {
       if (slot.bandId) {
         placementByBandId.set(slot.bandId, {

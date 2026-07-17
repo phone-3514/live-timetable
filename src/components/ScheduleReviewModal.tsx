@@ -84,7 +84,7 @@ export function ScheduleReviewModal({ onClose }: Props) {
                       </span>
                       {m.hasAdjacentConflict && (
                         <span className="ml-1.5 text-[11px] font-medium text-rose-400">
-                          ⚠ 転換時間なしで連続する枠があります
+                          ⚠️ {m.name} が連続しています
                         </span>
                       )}
                     </p>
