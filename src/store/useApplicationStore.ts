@@ -121,10 +121,21 @@ export const useApplicationStore = create<ApplicationState>()(
   ),
 );
 
+export type MemberFrameCount = {
+  count: number;
+  /** Most common non-empty grade ("3年" etc.) seen across this member's
+   * applications; "" if none of their entries had a grade prefix. A person
+   * should have one consistent grade, but a stray typo/omission in one
+   * submission shouldn't flip the badge — the majority vote wins, ties
+   * broken by whichever grade was seen first. */
+  grade: string;
+};
+
 /**
- * Number of bands each member (by name) currently applies with. A member
- * playing different parts in different bands is still one person with one
- * frame count, so the identity key is the name alone, not name+part.
+ * Number of bands each member (by name) currently applies with, plus their
+ * (majority-vote) grade for display. A member playing different parts in
+ * different bands is still one person with one frame count, so the
+ * identity key is the name alone, not name+part.
  *
  * Names are compared via normalizeMemberName so "鈴木 啓大朗" and
  * "鈴木啓大朗" (or full-width vs half-width spacing/characters) count as
@@ -133,15 +144,46 @@ export const useApplicationStore = create<ApplicationState>()(
  * the normalized form; the first-seen raw spelling isn't preserved since
  * with multiple spellings in play there's no single "correct" one to pick.
  */
-export function computeMemberFrameCounts(applications: Application[]): Map<string, number> {
+export function computeMemberFrameCounts(
+  applications: Application[],
+): Map<string, MemberFrameCount> {
   const counts = new Map<string, number>();
+  const gradeVotes = new Map<string, Map<string, number>>();
+
   for (const app of applications) {
-    const namesInApp = new Set(app.members.map((m) => normalizeMemberName(m.name)));
-    for (const name of namesInApp) {
+    // Dedup within this application first (same as before), keeping
+    // whichever grade was recorded for that name in this band.
+    const membersInApp = new Map<string, string>();
+    for (const m of app.members) {
+      const name = normalizeMemberName(m.name);
+      membersInApp.set(name, m.grade || membersInApp.get(name) || "");
+    }
+    for (const [name, grade] of membersInApp) {
       counts.set(name, (counts.get(name) ?? 0) + 1);
+      if (grade) {
+        const votes = gradeVotes.get(name) ?? new Map<string, number>();
+        votes.set(grade, (votes.get(grade) ?? 0) + 1);
+        gradeVotes.set(name, votes);
+      }
     }
   }
-  return counts;
+
+  const result = new Map<string, MemberFrameCount>();
+  for (const [name, count] of counts) {
+    const votes = gradeVotes.get(name);
+    let grade = "";
+    let bestVotes = -1;
+    if (votes) {
+      for (const [g, v] of votes) {
+        if (v > bestVotes) {
+          bestVotes = v;
+          grade = g;
+        }
+      }
+    }
+    result.set(name, { count, grade });
+  }
+  return result;
 }
 
 /**

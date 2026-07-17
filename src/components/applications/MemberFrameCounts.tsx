@@ -11,7 +11,9 @@ interface Props {
 export function MemberFrameCounts({ applications, selectedMember, onSelectMember }: Props) {
   const counts = useMemo(() => {
     const map = computeMemberFrameCounts(applications);
-    return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"));
+    return [...map.entries()].sort(
+      (a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0], "ja"),
+    );
   }, [applications]);
 
   if (counts.length === 0) return null;
@@ -25,7 +27,7 @@ export function MemberFrameCounts({ applications, selectedMember, onSelectMember
         </span>
       </h2>
       <ul className="flex flex-wrap gap-1.5">
-        {counts.map(([name, count]) => {
+        {counts.map(([name, { count, grade }]) => {
           const isSelected = name === selectedMember;
           return (
             <li key={name}>
@@ -35,13 +37,29 @@ export function MemberFrameCounts({ applications, selectedMember, onSelectMember
                 aria-pressed={isSelected}
                 className={
                   isSelected
-                    ? "rounded-full border border-indigo-400 bg-indigo-600 px-2.5 py-0.5 text-xs text-white"
+                    ? "inline-flex items-center gap-1 rounded-full border border-indigo-400 bg-indigo-600 px-2.5 py-0.5 text-xs text-white"
                     : count >= 3
-                      ? "rounded-full border border-amber-600 bg-amber-950/40 px-2.5 py-0.5 text-xs text-amber-300 hover:border-amber-400"
-                      : "rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-300 hover:border-slate-500"
+                      ? "inline-flex items-center gap-1 rounded-full border border-amber-600 bg-amber-950/40 px-2.5 py-0.5 text-xs text-amber-300 hover:border-amber-400"
+                      : "inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs text-slate-300 hover:border-slate-500"
                 }
               >
-                {name}: {count}
+                {/* Small, visually subtle grade tag — inline with the name
+                    rather than a separate row/section, so grouping by
+                    grade never costs extra vertical space. */}
+                {grade && (
+                  <span
+                    className={
+                      isSelected
+                        ? "rounded bg-indigo-800/60 px-1 text-[9px] font-medium leading-[14px] text-indigo-200"
+                        : "rounded bg-slate-700 px-1 text-[9px] font-medium leading-[14px] text-slate-400"
+                    }
+                  >
+                    {grade}
+                  </span>
+                )}
+                <span>
+                  {name}: {count}
+                </span>
               </button>
             </li>
           );
