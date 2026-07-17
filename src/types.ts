@@ -30,6 +30,50 @@ export type Band = {
   parseWarning?: string;
 };
 
+// ---------- Application Manager ----------
+//
+// A richer, separate model from Band — the Application Manager tab logs raw
+// Discord submissions (including sender/timestamp metadata that Band has no
+// place for) before a lottery decision is made. An "approved" application
+// is converted into a plain Band (see applicationToBand) and pushed into
+// the Timetable Editor's unplaced pool; the Application record itself keeps
+// existing (linkedBandId tracks the conversion) so approve/reject stays a
+// reversible toggle instead of a one-way action.
+
+export type ApplicationSetlistItem = {
+  title: string;
+  artist: string;
+};
+
+export type ApplicationMember = {
+  name: string;
+  part: string;
+  /** e.g. "3年" — empty when the source line had no grade prefix. */
+  grade: string;
+};
+
+export type Application = {
+  id: string;
+  /** 申請者氏名 — the Discord message sender, from the copy-pasted header. */
+  applicantName: string;
+  /** 申請日時 — the Discord message timestamp, from the copy-pasted header. */
+  applicationDateTime: string;
+  bandName: string;
+  setlist: ApplicationSetlistItem[];
+  members: ApplicationMember[];
+  hasSync: boolean;
+  durationMinutes: number | null;
+  /** 出演希望日 — free text, may list multiple preferred slots/dates. */
+  desiredDateTime: string;
+  raw: string;
+  createdAt: number;
+  approved: boolean;
+  /** Set once approved — the Band this application was converted into, so
+   * un-approving or clearing can remove exactly that Band and nothing else. */
+  linkedBandId: string | null;
+  parseWarning?: string;
+};
+
 export type TimetableSlot = {
   id: string;
   bandId: string | null;

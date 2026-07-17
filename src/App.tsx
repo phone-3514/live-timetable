@@ -8,13 +8,17 @@ import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
 import { BandDragPreview } from "./components/BandDragPreview";
 import { SlotDragPreview } from "./components/SlotDragPreview";
+import { ApplicationManagerTab } from "./components/applications/ApplicationManagerTab";
 import type { Band, TimetableSlot } from "./types";
 
 type ActiveDragData =
   | { type: "band"; band: Band }
   | { type: "slot"; slot: TimetableSlot; band: Band | undefined };
 
+type AppTab = "timetable" | "applications";
+
 function App() {
+  const [activeTab, setActiveTab] = useState<AppTab>("timetable");
   const days = useAppStore((s) => s.days);
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
@@ -66,41 +70,76 @@ function App() {
           <h1 className="shrink-0 text-lg font-bold text-slate-100">
             軽音ライブ タイムテーブル作成
           </h1>
+          <nav className="flex shrink-0 gap-1" role="tablist" aria-label="表示切り替え">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "timetable"}
+              onClick={() => setActiveTab("timetable")}
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                activeTab === "timetable"
+                  ? "bg-indigo-600 text-white"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+            >
+              タイムテーブル編集
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "applications"}
+              onClick={() => setActiveTab("applications")}
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                activeTab === "applications"
+                  ? "bg-indigo-600 text-white"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+            >
+              出演申し込み管理
+            </button>
+          </nav>
           {/* Event-wide details (not per-day) — shown on the share image's
-              header (live name/venue) and footer (organization name). */}
-          <div className="flex flex-1 flex-wrap items-center gap-2">
-            <input
-              value={eventInfo.liveName}
-              onChange={(e) => updateEventInfo({ liveName: e.target.value })}
-              placeholder="ライブ名（例：軽音祭 vol.5）"
-              aria-label="ライブ名"
-              className="w-48 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
-            />
-            <input
-              value={eventInfo.venue}
-              onChange={(e) => updateEventInfo({ venue: e.target.value })}
-              placeholder="会場"
-              aria-label="会場名"
-              className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
-            />
-            <input
-              value={eventInfo.organizationName}
-              onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
-              placeholder="団体名"
-              aria-label="団体名"
-              className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
-            />
-          </div>
+              header (live name/venue) and footer (organization name). Only
+              relevant to the Timetable Editor. */}
+          {activeTab === "timetable" && (
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <input
+                value={eventInfo.liveName}
+                onChange={(e) => updateEventInfo({ liveName: e.target.value })}
+                placeholder="ライブ名（例：軽音祭 vol.5）"
+                aria-label="ライブ名"
+                className="w-48 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+              />
+              <input
+                value={eventInfo.venue}
+                onChange={(e) => updateEventInfo({ venue: e.target.value })}
+                placeholder="会場"
+                aria-label="会場名"
+                className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+              />
+              <input
+                value={eventInfo.organizationName}
+                onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
+                placeholder="団体名"
+                aria-label="団体名"
+                className="w-36 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500"
+              />
+            </div>
+          )}
         </header>
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_1fr]">
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
-            <TextImportPanel />
-            <BandListPanel />
-          </div>
-          <div className="flex min-h-0 flex-col overflow-hidden">
-            <Timetable />
-          </div>
-        </main>
+        {activeTab === "timetable" ? (
+          <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_1fr]">
+            <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+              <TextImportPanel />
+              <BandListPanel />
+            </div>
+            <div className="flex min-h-0 flex-col overflow-hidden">
+              <Timetable />
+            </div>
+          </main>
+        ) : (
+          <ApplicationManagerTab />
+        )}
         <DeleteUndoToast />
       </div>
       <DragOverlay>

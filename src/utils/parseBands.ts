@@ -82,7 +82,7 @@ function splitHeadingLine(
 
 // Bracketed headings get typo tolerance; colon headings require an exact
 // keyword match (see the module comment above for why).
-function matchHeadingField(line: string, keywords: string[]): string | null {
+export function matchHeadingField(line: string, keywords: string[]): string | null {
   const split = splitHeadingLine(line);
   if (!split) return null;
   const exact = keywords.some((kw) => split.label === kw);
@@ -395,52 +395,94 @@ function parseTableBands(rawText: string): Band[] {
 // Blocks are anchored on "バンド名：" lines so the submitter/timestamp
 // header line is never mistaken for a band.
 
-const BAND_NAME_KEYWORDS = ["バンド名"];
-const SCHEDULE_HEADING_KEYWORDS = ["希望日程", "希望日", "出演希望日", "参加可能日"];
-const TIME_HEADING_KEYWORDS = ["希望時間", "出演可能時間", "時間帯", "出演時間帯"];
+export const BAND_NAME_KEYWORDS = ["バンド名"];
+export const SCHEDULE_HEADING_KEYWORDS = ["希望日程", "希望日", "出演希望日", "参加可能日"];
+export const TIME_HEADING_KEYWORDS = ["希望時間", "出演可能時間", "時間帯", "出演時間帯"];
 
-function matchBandNameLine(line: string): string | null {
+export function matchBandNameLine(line: string): string | null {
   return matchHeadingField(line, BAND_NAME_KEYWORDS);
 }
 
 // Numbered setlist line ("1.桜の時/aiko"). The prefix is stripped before
 // storing so the setlist shows clean "曲名/アーティスト" entries.
-const SETLIST_LINE_RE = /^\d+[.．]/;
-function stripSetlistPrefix(line: string): string {
+export const SETLIST_LINE_RE = /^\d+[.．]/;
+export function stripSetlistPrefix(line: string): string {
   return line.replace(/^\d+[.．]\s*/, "").trim();
 }
 // A standalone "希望順位"/slot-preference note ("3枠目", "第2希望"). Not
 // useful data once parsed — discarded entirely rather than stored anywhere.
-const SLOT_RANK_LINE_RE = /^\d+\s*枠目|^第\s*\d+\s*希望/;
-const SYNC_LINE_RE = /^同期演奏/;
-const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分/;
+export const SLOT_RANK_LINE_RE = /^\d+\s*枠目|^第\s*\d+\s*希望/;
+export const SYNC_LINE_RE = /^同期演奏/;
+export const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分/;
 // The next band's "submitter — timestamp" header line can fall inside the
 // current band's block range (it appears right before the next バンド名
 // line), so it must be filtered out explicitly rather than assumed absent.
-const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$/;
+export const HEADER_LINE_RE = /—\s*\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*$/;
 
 // A "part label" is the instrument abbreviation prefixed to a member's
 // name, e.g. "Gt.Vo.", "Ba.", "Key./Vo.". Members are always written as
 // "<grade> <part label><name>", so taking everything after the LAST
 // such label on the line isolates the name regardless of spacing style.
-const PART_LABEL_RE = /[A-Za-z]+(?:[.\/][A-Za-z]+)*\.?/g;
+export const PART_LABEL_RE = /[A-Za-z]+(?:[.\/][A-Za-z]+)*\.?/g;
 
 // A slot-preference note is sometimes appended to a member's own name in
 // parentheses instead of sitting on its own line ("篠原麟一(3枠目)",
 // "田中（第2希望）") — half-width and full-width parens both occur. This
 // strips it so only the bare name is stored.
-const SLOT_RANK_PAREN_RE = /[（(]\s*(?:\d+\s*枠目|第\s*\d+\s*希望)\s*[）)]\s*$/;
+export const SLOT_RANK_PAREN_RE = /[（(]\s*(?:\d+\s*枠目|第\s*\d+\s*希望)\s*[）)]\s*$/;
 
-function extractMemberName(line: string): string {
+// Instrument/part label plus, separately, the grade prefix ("2年") and the
+// bare name — used by the Application Manager, which (unlike the Timetable
+// Editor) wants the part/grade kept instead of discarded. The name
+// computation is byte-for-byte identical to the original extractMemberName
+// logic below (grade digits never match PART_LABEL_RE, so stripping/not
+// stripping the grade first doesn't change which match is "last" or the
+// resulting slice).
+export function extractMemberDetails(line: string): {
+  name: string;
+  part: string;
+  grade: string;
+} {
+  const gradeMatch = GRADE_PREFIX_RE.exec(line);
+  const grade = gradeMatch ? gradeMatch[0].replace(/\s+/g, "") : "";
+
   const matches = [...line.matchAll(PART_LABEL_RE)];
+  const last = matches.length > 0 ? matches[matches.length - 1] : null;
+  // A multi-part label like "Vo./Ba." or "Key./Vo." doesn't match
+  // PART_LABEL_RE as one run (the dot right after each abbreviation breaks
+  // the "[.\/][A-Za-z]+" chain) — it comes back as separate adjacent
+  // matches ("Vo.", "Ba."). Walk backward from the last match and fold in
+  // any earlier match separated only by whitespace/"."/"/" so those still
+  // combine into one part label instead of only the last one surviving.
+  let clusterStart = matches.length - 1;
+  while (clusterStart > 0) {
+    const prevEnd =
+      (matches[clusterStart - 1].index ?? 0) + matches[clusterStart - 1][0].length;
+    const curStart = matches[clusterStart].index ?? 0;
+    if (!/^[\s　./]*$/.test(line.slice(prevEnd, curStart))) break;
+    clusterStart--;
+  }
+  const part =
+    last === null ? "" : normalizePartLabel(matches.slice(clusterStart).map((m) => m[0]).join(""));
   const name =
     matches.length === 0
       ? line.trim()
-      : line.slice(
-          (matches[matches.length - 1].index ?? 0) +
-            matches[matches.length - 1][0].length,
-        ).trim() || line.trim();
-  return name.replace(SLOT_RANK_PAREN_RE, "").trim();
+      : line.slice((last!.index ?? 0) + last![0].length).trim() || line.trim();
+
+  return { name: name.replace(SLOT_RANK_PAREN_RE, "").trim(), part, grade };
+}
+
+// "Gt.Vo." -> "Gt/Vo", "Key./Vo." -> "Key/Vo", "Ba." -> "Ba".
+function normalizePartLabel(raw: string): string {
+  return raw
+    .split(/[./]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+export function extractMemberName(line: string): string {
+  return extractMemberDetails(line).name;
 }
 
 // Setlist entries aren't always numbered ("桜の時/aiko" or "SUMMER SONG /
@@ -452,11 +494,11 @@ function extractMemberName(line: string): string {
 // or, when the grade is omitted, as a known instrument abbreviation at the
 // very start of the line ("Gt.未定"). A song line's "/" separated title and
 // artist never start that way.
-const GRADE_PREFIX_RE = /^(?:\d{1,2}|\?)\s*年/;
-const KNOWN_INSTRUMENT_PREFIX_RE =
+export const GRADE_PREFIX_RE = /^(?:\d{1,2}|\?)\s*年/;
+export const KNOWN_INSTRUMENT_PREFIX_RE =
   /^[\s　]*(?:Vo|Gt|Ba|Dr|Key|Cho|Perc|Sax|Pf|Tp|Tb|DJ|MC)\.?/i;
 
-function looksLikeMemberLine(line: string): boolean {
+export function looksLikeMemberLine(line: string): boolean {
   return GRADE_PREFIX_RE.test(line) || KNOWN_INSTRUMENT_PREFIX_RE.test(line);
 }
 

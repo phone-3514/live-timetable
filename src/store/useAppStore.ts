@@ -43,6 +43,10 @@ type AppState = {
   updateVenueHours: (partial: Partial<VenueHours>) => void;
   updateEventInfo: (partial: Partial<EventInfo>) => void;
   parseFromRawText: () => void;
+  // Appends bands rather than replacing the pool — used by the Application
+  // Manager tab to push an approved band into the timetable's unplaced list
+  // without disturbing anything already parsed/placed there.
+  addBands: (bands: Band[]) => void;
   updateBand: (id: string, partial: Partial<Band>) => void;
   deleteBand: (id: string) => void;
   undoDeleteBand: () => void;
@@ -316,6 +320,16 @@ export const useAppStore = create<AppState>((set) => ({
       const parsed = parseBands(state.rawText);
       const bands = autoResolveBandDays(parsed, state.days);
       return { bands };
+    }),
+
+  addBands: (newBands) =>
+    set((state) => {
+      // Only resolve day-hints for the newly added bands — re-running
+      // autoResolveBandDays over the whole pool would also recompute
+      // allowedDayIds for existing bands, silently discarding any manual
+      // per-band day-toggle overrides already made on them.
+      const resolvedNew = autoResolveBandDays(newBands, state.days);
+      return { bands: [...state.bands, ...resolvedNew] };
     }),
 
   updateBand: (id, partial) =>
