@@ -8,6 +8,7 @@ import {
   useAppStore,
 } from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
+import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
 type Props = {
   dayId: string;
@@ -29,6 +30,7 @@ export function SlotCard({
   performanceOrder,
 }: Props) {
   const [showSetlist, setShowSetlist] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
@@ -317,6 +319,28 @@ export function SlotCard({
           ▼
         </button>
       </div>
+      {band && (
+        // Deliberately kept at a full 44x44px touch target on every
+        // breakpoint (unlike the move/delete buttons above, which shrink on
+        // desktop) — this is the one control on a placed band's card meant
+        // to be reachable without any precision, on mobile or desktop
+        // alike. It sits outside the bandDraggable-wrapped div above, so it
+        // was never going to pick up drag listeners by accident anyway;
+        // stopPropagation on both handlers is still added defensively so
+        // that stays true even if the drag wiring ever moves.
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDetails(true);
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-lg leading-none text-slate-400 hover:bg-slate-700 hover:text-slate-100 active:bg-slate-600"
+          title="バンドの詳細を表示"
+        >
+          ⋮
+        </button>
+      )}
       <button
         onClick={() => removeSlot(dayId, slot.id)}
         className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70 md:h-6 md:w-6"
@@ -324,6 +348,9 @@ export function SlotCard({
       >
         ×
       </button>
+      {band && showDetails && (
+        <PlacedBandDetailModal band={band} onClose={() => setShowDetails(false)} />
+      )}
     </div>
   );
 }

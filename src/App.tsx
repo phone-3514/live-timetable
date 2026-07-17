@@ -3,7 +3,6 @@ import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
-import { TextImportPanel } from "./components/TextImportPanel";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
@@ -139,11 +138,14 @@ function App() {
           // but the same pattern visibly breaks as a stray gap in
           // ApplicationManagerTab, so it's fixed the same way in both
           // places rather than relying on that coincidence.
-          <main className="grid flex-1 content-start grid-cols-1 gap-4 p-3 md:min-h-0 md:overflow-hidden md:p-4 lg:content-normal lg:grid-cols-[340px_1fr]">
-            <div className="flex flex-col gap-3 md:min-h-0 md:overflow-hidden">
-              <TextImportPanel />
-              <BandListPanel />
-            </div>
+          //
+          // The sidebar column is deliberately narrow (180px, down from the
+          // old 340px that also had to fit the now-removed raw-paste
+          // textarea) — the timetable canvas is what users actually spend
+          // their time in, so unplaced bands get just enough width for a
+          // compact single-column list and everything else goes to 1fr.
+          <main className="grid flex-1 content-start grid-cols-1 gap-3 p-3 md:min-h-0 md:overflow-hidden md:p-4 lg:content-normal lg:grid-cols-[180px_1fr] lg:gap-4">
+            <BandListPanel />
             <div className="flex flex-col md:min-h-0 md:overflow-hidden">
               <Timetable />
             </div>

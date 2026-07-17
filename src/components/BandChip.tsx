@@ -42,7 +42,10 @@ export function BandChip({ band, onHoverStart, onHoverEnd }: Props) {
       // handled by the drag sensor instead of being swallowed as a page
       // scroll gesture.
       onClick={() => elRef.current && onHoverStart(band, elRef.current)}
-      className={`flex min-h-11 touch-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing md:min-h-0 ${
+      // Fixed width + shrink-0 below lg (a horizontal-scroll strip needs
+      // each chip to keep its own width instead of collapsing to fit);
+      // lg+ switches to a full-width row in the narrow vertical sidebar.
+      className={`flex min-h-11 w-32 shrink-0 touch-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink ${
         isDragging ? "relative z-50 opacity-50" : ""
       } ${
         band.parseWarning

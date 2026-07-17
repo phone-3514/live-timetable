@@ -72,22 +72,29 @@ export function BandListPanel() {
         setNodeRef(el);
         containerRef.current = el;
       }}
-      className={`flex min-h-0 flex-1 flex-col rounded-lg border-2 border-dashed p-2 ${
+      // Below lg this is a fixed-height horizontal strip (shrink-0, flex-row)
+      // so it stays out of the timetable canvas's way on mobile instead of
+      // stacking a whole vertical list above it; at lg+ it becomes the
+      // narrow vertical sidebar, filling the grid column's full height.
+      className={`flex shrink-0 flex-row items-center gap-2 overflow-hidden rounded-lg border-2 border-dashed p-2 lg:min-h-0 lg:flex-1 lg:shrink lg:flex-col lg:items-stretch ${
         isOver ? "border-indigo-400 bg-indigo-950/40" : "border-slate-700"
       }`}
     >
-      <h2 className="mb-1 shrink-0 text-xs font-semibold text-slate-400">
-        未配置のバンド（{unplaced.length}）
+      <h2 className="shrink-0 whitespace-nowrap text-xs font-semibold text-slate-400 lg:mb-1">
+        <span className="lg:hidden">未配置（{unplaced.length}）</span>
+        <span className="hidden lg:inline">未配置のバンド（{unplaced.length}）</span>
       </h2>
       {bands.length === 0 && (
-        <p className="text-xs text-slate-500">
-          左上のテキストエリアに貼り付けて「解析してリスト化」を押してください
+        <p className="shrink-0 text-xs text-slate-500 lg:shrink lg:whitespace-normal">
+          「出演申し込み管理」タブで申請を承認するとここに表示されます
         </p>
       )}
       {bands.length > 0 && unplaced.length === 0 && (
-        <p className="text-xs text-slate-500">全てのバンドが配置済みです</p>
+        <p className="shrink-0 text-xs text-slate-500 lg:shrink lg:whitespace-normal">
+          全てのバンドが配置済みです
+        </p>
       )}
-      <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto pb-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:items-stretch lg:gap-1 lg:overflow-x-visible lg:overflow-y-auto lg:pb-1">
         {unplaced.map((band) => (
           <BandChip
             key={band.id}

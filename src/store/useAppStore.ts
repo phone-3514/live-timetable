@@ -11,7 +11,6 @@ import {
   DEFAULT_VENUE_HOURS,
   extractDayOfMonthHints,
   extractTimeRange,
-  parseBands,
   type TimeRange,
   type VenueHours,
 } from "../utils/parseBands";
@@ -34,17 +33,14 @@ export type EventInfo = {
 };
 
 type AppState = {
-  rawText: string;
   bands: Band[];
   days: TimetableDay[];
   venueHours: VenueHours;
   eventInfo: EventInfo;
   lastDeleted: DeletedBandSnapshot | null;
 
-  setRawText: (text: string) => void;
   updateVenueHours: (partial: Partial<VenueHours>) => void;
   updateEventInfo: (partial: Partial<EventInfo>) => void;
-  parseFromRawText: () => void;
   // Appends bands rather than replacing the pool — used by the Application
   // Manager tab to push an approved band into the timetable's unplaced list
   // without disturbing anything already parsed/placed there.
@@ -306,25 +302,16 @@ const initialDays = [makeDay("1日目"), makeDay("2日目")];
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-  rawText: "",
   bands: [],
   days: initialDays,
   venueHours: DEFAULT_VENUE_HOURS,
   eventInfo: { liveName: "", venue: "", organizationName: "" },
   lastDeleted: null,
 
-  setRawText: (text) => set({ rawText: text }),
   updateVenueHours: (partial) =>
     set((state) => ({ venueHours: { ...state.venueHours, ...partial } })),
   updateEventInfo: (partial) =>
     set((state) => ({ eventInfo: { ...state.eventInfo, ...partial } })),
-
-  parseFromRawText: () =>
-    set((state) => {
-      const parsed = parseBands(state.rawText);
-      const bands = autoResolveBandDays(parsed, state.days);
-      return { bands };
-    }),
 
   addBands: (newBands) =>
     set((state) => {

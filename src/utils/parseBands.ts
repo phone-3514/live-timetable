@@ -308,7 +308,7 @@ function splitColumns(line: string): string[] {
 function splitMembers(cell: string): string[] {
   return cell
     .split(/[、,・\/\n]+/)
-    .map((m) => m.replace(SLOT_RANK_PAREN_RE, "").trim())
+    .map((m) => stripFrameCountAnnotation(m))
     .filter(Boolean);
 }
 
@@ -437,9 +437,16 @@ export const PART_LABEL_RE = /[A-Za-z]+(?:[.\/][A-Za-z]+)*\.?/g;
 
 // A slot-preference note is sometimes appended to a member's own name in
 // parentheses instead of sitting on its own line ("篠原麟一(3枠目)",
-// "田中（第2希望）") — half-width and full-width parens both occur. This
-// strips it so only the bare name is stored.
-export const SLOT_RANK_PAREN_RE = /[（(]\s*(?:\d+\s*枠目|第\s*\d+\s*希望)\s*[）)]\s*$/;
+// "田中（第2希望）", "蛯名了一 （３枠目） ") — half-width and full-width
+// parens *and* digits both occur (the digit class below matches both, since
+// plain \d never matches ０-９), so this strips it regardless of which
+// width someone happened to type in.
+export const SLOT_RANK_PAREN_RE =
+  /[（(]\s*(?:[0-9０-９]+\s*枠目|第\s*[0-9０-９]+\s*希望)\s*[）)]\s*$/;
+
+export function stripFrameCountAnnotation(name: string): string {
+  return name.replace(SLOT_RANK_PAREN_RE, "").trim();
+}
 
 // Instrument/part label plus, separately, the grade prefix ("2年") and the
 // bare name — used by the Application Manager, which (unlike the Timetable
@@ -479,7 +486,7 @@ export function extractMemberDetails(line: string): {
       ? line.trim()
       : line.slice((last!.index ?? 0) + last![0].length).trim() || line.trim();
 
-  return { name: name.replace(SLOT_RANK_PAREN_RE, "").trim(), part, grade };
+  return { name: stripFrameCountAnnotation(name), part, grade };
 }
 
 // "Gt.Vo." -> "Gt/Vo", "Key./Vo." -> "Key/Vo", "Ba." -> "Ba".
