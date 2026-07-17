@@ -2,23 +2,25 @@ import { useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
+import { useUiStore } from "./store/useUiStore";
 import { TextImportPanel } from "./components/TextImportPanel";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
+import { Toast } from "./components/Toast";
 import { BandDragPreview } from "./components/BandDragPreview";
 import { SlotDragPreview } from "./components/SlotDragPreview";
 import { ApplicationManagerTab } from "./components/applications/ApplicationManagerTab";
+import { BackupControls } from "./components/BackupControls";
 import type { Band, TimetableSlot } from "./types";
 
 type ActiveDragData =
   | { type: "band"; band: Band }
   | { type: "slot"; slot: TimetableSlot; band: Band | undefined };
 
-type AppTab = "timetable" | "applications";
-
 function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>("timetable");
+  const activeTab = useUiStore((s) => s.activeTab);
+  const setActiveTab = useUiStore((s) => s.setActiveTab);
   const days = useAppStore((s) => s.days);
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
@@ -98,6 +100,7 @@ function App() {
               出演申し込み管理
             </button>
           </nav>
+          <BackupControls />
           {/* Event-wide details (not per-day) — shown on the share image's
               header (live name/venue) and footer (organization name). Only
               relevant to the Timetable Editor. */}
@@ -149,6 +152,7 @@ function App() {
           <ApplicationManagerTab />
         )}
         <DeleteUndoToast />
+        <Toast />
       </div>
       <DragOverlay>
         {activeDragData?.type === "band" && (

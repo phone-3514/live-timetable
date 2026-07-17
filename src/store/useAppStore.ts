@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { arrayMove } from "@dnd-kit/sortable";
 import type {
   Band,
@@ -302,7 +303,9 @@ function clearDisallowedPlacements(
 
 const initialDays = [makeDay("1日目"), makeDay("2日目")];
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
   rawText: "",
   bands: [],
   days: initialDays,
@@ -714,7 +717,10 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       days: state.days.map((day) => ({ ...day, slots: [] })),
     })),
-}));
+    }),
+    { name: "live-timetable-app" },
+  ),
+);
 
 function bandInSlot(
   slot: TimetableSlot | undefined,

@@ -12,6 +12,10 @@ type ApplicationState = {
 
   setRawText: (text: string) => void;
   parseAndAddFromRawText: () => void;
+  /** Appends already-parsed applications (used by the batch chat-export
+   * file upload flow, which parses off the main paste-and-parse path so it
+   * can run its own noise-filtering pass first — see parseChatExportFile). */
+  addApplications: (applications: Application[]) => void;
   approveApplication: (id: string) => void;
   unapproveApplication: (id: string) => void;
   /** Approves every application not already approved, in one batched
@@ -58,6 +62,11 @@ export const useApplicationStore = create<ApplicationState>()(
           if (parsed.length === 0) return state;
           return { applications: [...state.applications, ...parsed], rawText: "" };
         }),
+
+      addApplications: (newApplications) =>
+        set((state) => ({
+          applications: [...state.applications, ...newApplications],
+        })),
 
       approveApplication: (id) => {
         const app = get().applications.find((a) => a.id === id);

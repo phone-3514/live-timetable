@@ -40,6 +40,15 @@ const BARE_DATE_TIME_LINE_RE = new RegExp(`^${DATE_TIME_VALUE_SRC}$`);
 const INLINE_HEADER_RE = new RegExp(`^(.+?)\\s*—\\s*(${DATE_TIME_VALUE_SRC})\\s*$`);
 const DASH_TRIM_RE = /\s*—\s*$/;
 
+// DiscordChatExporter's plain-text export writes each message as
+// "[28-Jun-21 12:00 AM] Username" immediately followed by the message body
+// — a different shape from the "Username — 2026/06/19 18:02" header above
+// (which is what Discord's own in-client "copy text" produces), so batch
+// file uploads of a DiscordChatExporter .txt need this as a second,
+// independent header pattern rather than a variant of the first.
+const EXPORTER_BRACKET_HEADER_RE =
+  /^\[(\d{1,2}-[A-Za-z]{3}-\d{2,4}\s+\d{1,2}:\d{2}\s*[AP]M)\]\s*(.+)$/;
+
 type Header = {
   applicantName: string;
   applicationDateTime: string;
@@ -67,6 +76,16 @@ function findHeaderBefore(lines: string[], beforeIndex: number): Header | null {
     };
   }
 
+  const bracket = EXPORTER_BRACKET_HEADER_RE.exec(lines[i]);
+  if (bracket) {
+    return {
+      applicantName: bracket[2].trim(),
+      applicationDateTime: bracket[1].trim(),
+      lineStart: i,
+      lineEnd: i,
+    };
+  }
+
   if (BARE_DATE_TIME_LINE_RE.test(lines[i])) {
     const timestampLine = i;
     let j = i - 1;
@@ -88,6 +107,42 @@ function splitSetlistEntry(entry: string): ApplicationSetlistItem {
   const slash = entry.match(/^(.+?)\s*[/／]\s*(.+)$/);
   if (slash) return { title: slash[1].trim(), artist: slash[2].trim() };
   return { title: entry.trim(), artist: "" };
+}
+
+// Splits raw chat-export text into one string per detected message (header
+// line(s) + everything up to the next header), for callers that want to
+// drop non-application messages *before* handing text to parseApplications
+// — parseApplications only ever excludes a header that sits immediately
+// before the *next* バンド名 anchor, so a chatter message sitting between
+// two applications (with no anchor of its own) would otherwise be silently
+// absorbed into the preceding application's setlist/member fields instead
+// of being dropped. Used by parseChatExportFile.ts for the batch
+// file-upload flow's noise filtering, and doubles as the "N messages
+// processed" count for its summary toast.
+export function splitIntoMessageSegments(rawText: string): string[] {
+  const normalized = normalizeApplicationText(rawText);
+  const lines = normalized.split("\n").map((l) => l.trim());
+
+  const headerStarts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (INLINE_HEADER_RE.test(lines[i]) || EXPORTER_BRACKET_HEADER_RE.test(lines[i])) {
+      headerStarts.push(i);
+      continue;
+    }
+    if (BARE_DATE_TIME_LINE_RE.test(lines[i]) && i > 0 && lines[i - 1].length > 0) {
+      headerStarts.push(i - 1);
+    }
+  }
+  if (headerStarts.length === 0) return rawText.trim() ? [rawText] : [];
+
+  const segments: string[] = [];
+  for (let i = 0; i < headerStarts.length; i++) {
+    const start = headerStarts[i];
+    const end = i + 1 < headerStarts.length ? headerStarts[i + 1] : lines.length;
+    if (end <= start) continue;
+    segments.push(lines.slice(start, end).join("\n"));
+  }
+  return segments;
 }
 
 export function parseApplications(rawText: string): Application[] {
