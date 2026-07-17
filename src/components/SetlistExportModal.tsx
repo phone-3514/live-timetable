@@ -4,6 +4,8 @@ import { SetlistExportTemplate, PAGE_WIDTH } from "./SetlistExportTemplate";
 import { computeSetlistEntries } from "../utils/setlistExport";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
+import { THEMES, getSetlistPalette } from "../utils/shareThemes";
+import type { ThemeId } from "../utils/shareThemes";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -39,6 +41,12 @@ export function SetlistExportModal({ day, onClose }: Props) {
     [day, bands, applications],
   );
   const pngColumns = computeColumnCount(entries.length);
+  // Same theme system as the Timetable share-image export (shareThemes.ts)
+  // — this modal has its own independent selection rather than mirroring
+  // SharePreviewModal's, since an organizer may want the setlist handed to
+  // the sound crew looking different from the audience-facing timetable
+  // image, but both draw from the identical theme list.
+  const [themeId, setThemeId] = useState<ThemeId>("standard");
 
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -62,7 +70,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, applications, entries.length]);
+  }, [day, bands, applications, entries.length, themeId]);
 
   useLayoutEffect(() => {
     const el = previewAreaRef.current;
@@ -84,9 +92,9 @@ export function SetlistExportModal({ day, onClose }: Props) {
     if (!el) return;
     setBusy("png");
     try {
-      const dataUrl = await toPng(el, { pixelRatio: 2, backgroundColor: "#ffffff" });
+      const dataUrl = await toPng(el, { pixelRatio: 2 });
       const link = document.createElement("a");
-      link.download = `setlist-${day.label}.png`;
+      link.download = `setlist-${day.label}-${themeId}.png`;
       link.href = dataUrl;
       link.click();
     } finally {
@@ -104,10 +112,11 @@ export function SetlistExportModal({ day, onClose }: Props) {
       // actually clicks this button, not into the main app bundle every
       // visitor downloads just to use the timetable editor.
       const { jsPDF } = await import("jspdf");
+      const pageFill = getSetlistPalette(THEMES[themeId]).pageFillSolid;
       // pixelRatio 2 keeps text crisp on both screen and paper without
       // ballooning file size the way a much higher ratio would on a
       // document that's mostly flat color and text.
-      const canvas = await toCanvas(el, { pixelRatio: PDF_PIXEL_RATIO, backgroundColor: "#ffffff" });
+      const canvas = await toCanvas(el, { pixelRatio: PDF_PIXEL_RATIO, backgroundColor: pageFill });
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       const pxPerMm = canvas.width / A4_WIDTH_MM;
       const pageHeightPx = Math.floor(A4_HEIGHT_MM * pxPerMm);
@@ -156,11 +165,20 @@ export function SetlistExportModal({ day, onClose }: Props) {
         sliceCanvas.height = sliceHeight;
         const ctx = sliceCanvas.getContext("2d");
         if (!ctx) continue;
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = pageFill;
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
         ctx.drawImage(canvas, 0, -start);
 
         if (page > 0) pdf.addPage();
+        // A page's captured content is usually shorter than the full A4
+        // height (rows get pulled back to avoid splitting one across
+        // pages), leaving real page area below the image — jsPDF's own
+        // page background is always white, which would show as a stray
+        // white band under a dark theme. Filling the whole page with the
+        // theme's solid color first means that gap reads as intentional
+        // margin instead.
+        pdf.setFillColor(pageFill);
+        pdf.rect(0, 0, A4_WIDTH_MM, A4_HEIGHT_MM, "F");
         const sliceHeightMm = sliceHeight / pxPerMm;
         // jsPDF's PNG path re-encodes through its own embedder rather than
         // reusing the browser's already-compressed PNG bytes, which for a
@@ -180,7 +198,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
         );
       }
 
-      pdf.save(`setlist-${day.label}.pdf`);
+      pdf.save(`setlist-${day.label}-${themeId}.pdf`);
     } finally {
       setBusy(null);
     }
@@ -212,6 +230,35 @@ export function SetlistExportModal({ day, onClose }: Props) {
           </button>
         </div>
 
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3">
+          <div className="grid grid-cols-3 gap-2 min-[420px]:grid-cols-4 sm:grid-cols-5 md:grid-cols-7">
+            {Object.values(THEMES).map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => setThemeId(theme.id)}
+                title={theme.subtitle}
+                className={`min-h-11 rounded-lg border px-2 py-1.5 text-left transition-colors md:min-h-0 ${
+                  themeId === theme.id
+                    ? "border-emerald-400 bg-emerald-950/40"
+                    : "border-slate-700 bg-slate-800 hover:border-slate-500"
+                }`}
+              >
+                <span
+                  className="mb-1 block h-3 w-full rounded-full"
+                  style={{ background: theme.pageBackground }}
+                />
+                <span
+                  className={`block text-[11px] font-semibold leading-tight ${
+                    themeId === theme.id ? "text-emerald-200" : "text-slate-300"
+                  }`}
+                >
+                  {theme.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div
           ref={previewAreaRef}
           className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4"
@@ -237,7 +284,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
                 transformOrigin: "top left",
               }}
             >
-              <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} />
+              <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} themeId={themeId} />
             </div>
           </div>
         </div>
@@ -275,7 +322,13 @@ export function SetlistExportModal({ day, onClose }: Props) {
         aria-hidden="true"
       >
         <div ref={capturePortraitRef}>
-          <SetlistExportTemplate day={day} eventInfo={eventInfo} entries={entries} columns={1} />
+          <SetlistExportTemplate
+            day={day}
+            eventInfo={eventInfo}
+            entries={entries}
+            columns={1}
+            themeId={themeId}
+          />
         </div>
       </div>
       <div
@@ -288,6 +341,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             eventInfo={eventInfo}
             entries={entries}
             columns={pngColumns}
+            themeId={themeId}
           />
         </div>
       </div>

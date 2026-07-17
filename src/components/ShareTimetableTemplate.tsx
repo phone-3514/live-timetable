@@ -97,6 +97,18 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
         />
       ))}
 
+      {theme.watermarkPattern && (
+        // Opacity is baked into the SVG's own stroke-opacity (see
+        // shareThemes.ts), so this layer just needs to sit above the page
+        // background and below the actual content — never intercepting
+        // clicks (there are none here, but consistent with every other
+        // decorative layer in this template).
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: theme.watermarkPattern, backgroundRepeat: "repeat" }}
+        />
+      )}
+
       <div className="relative flex flex-col" style={{ gap: 36 }}>
         <header className="flex flex-col items-center text-center">
           <span

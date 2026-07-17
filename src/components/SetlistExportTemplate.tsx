@@ -1,6 +1,8 @@
 import type { TimetableDay } from "../types";
 import type { EventInfo } from "../store/useAppStore";
 import type { SetlistBandEntry } from "../utils/setlistExport";
+import { THEMES, getSetlistPalette } from "../utils/shareThemes";
+import type { ThemeId } from "../utils/shareThemes";
 
 // A4 at 96dpi for the single-column (PDF/print) layout. The multi-column
 // (PNG) layout ignores this and sizes itself from COLUMN_WIDTH * columns
@@ -21,6 +23,11 @@ type Props = {
    * 2, ...); each column keeps entries in performance order, just as a
    * newspaper-style column layout would. */
   columns?: number;
+  /** Shares the same theme system as the Timetable share-image export
+   * (shareThemes.ts) — see getSetlistPalette for how a ShareTheme's fields
+   * map onto this table's color roles. Defaults to "standard" (white
+   * background, print-friendly), same as before themes existed here. */
+  themeId?: ThemeId;
 };
 
 function formatDate(iso: string | null): string | null {
@@ -35,31 +42,17 @@ function formatDate(iso: string | null): string | null {
   }).format(d);
 }
 
-// Muted slate/navy on white — chosen for print (no ink-heavy dark
-// backgrounds) and to stay legible if printed in black & white, unlike the
-// share image's saturated theme palette.
-const COLORS = {
-  kicker: "#64748b", // slate-500
-  title: "#1e293b", // slate-800
-  subtitle: "#475569", // slate-600
-  headerBg: "#1e293b", // slate-800
-  headerText: "#e2e8f0", // slate-200
-  rowBorder: "#e2e8f0", // slate-200
-  zebra: "#f8fafc", // slate-50
-  bandName: "#0f172a", // slate-900
-  song: "#334155", // slate-700
-  memberName: "#1e293b", // slate-800
-  chipBg: "#eef2f7",
-  chipText: "#475569",
-  orderBadgeBg: "#1e293b",
-  orderBadgeText: "#f8fafc",
-};
-
 // The header + row rendering is identical whether it's the single wide
 // column (PDF) or one of several narrower side-by-side columns (PNG) — only
 // the container width around it differs, so this is shared rather than
 // duplicated per layout mode.
-function SetlistTable({ entries }: { entries: SetlistBandEntry[] }) {
+function SetlistTable({
+  entries,
+  COLORS,
+}: {
+  entries: SetlistBandEntry[];
+  COLORS: ReturnType<typeof getSetlistPalette>;
+}) {
   return (
     <div>
       <div
@@ -221,7 +214,14 @@ function SetlistTable({ entries }: { entries: SetlistBandEntry[] }) {
   );
 }
 
-export function SetlistExportTemplate({ day, eventInfo, entries, columns = 1 }: Props) {
+export function SetlistExportTemplate({
+  day,
+  eventInfo,
+  entries,
+  columns = 1,
+  themeId = "standard",
+}: Props) {
+  const COLORS = getSetlistPalette(THEMES[themeId]);
   const dateLabel = formatDate(day.date);
   const isMultiColumn = columns > 1;
   const contentWidth = isMultiColumn
@@ -242,13 +242,28 @@ export function SetlistExportTemplate({ day, eventInfo, entries, columns = 1 }: 
   return (
     <div
       style={{
+        position: "relative",
+        // z-index: 0 (not just position: relative) is load-bearing: it's
+        // what makes this div its OWN stacking context. Without it, the
+        // watermark's z-index: -1 below resolves against a much higher
+        // ancestor instead of this element, which puts it behind THIS
+        // div's own opaque background too — i.e. fully hidden — rather
+        // than behind just the header/table content sitting on top of it.
+        zIndex: 0,
         width: contentWidth + PAGE_PADDING * 2,
         padding: PAGE_PADDING,
-        background: "#ffffff",
+        background: COLORS.pageBackground,
         fontFamily:
           '"Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif',
+        overflow: "hidden",
       }}
     >
+      {COLORS.watermarkPattern && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: COLORS.watermarkPattern, backgroundRepeat: "repeat", zIndex: -1 }}
+        />
+      )}
       <header style={{ marginBottom: 18 }}>
         <div
           style={{
@@ -287,12 +302,12 @@ export function SetlistExportTemplate({ day, eventInfo, entries, columns = 1 }: 
         <div style={{ display: "flex", alignItems: "flex-start", gap: COLUMN_GAP }}>
           {columnGroups.map((group, gi) => (
             <div key={gi} style={{ width: COLUMN_WIDTH, flexShrink: 0 }}>
-              <SetlistTable entries={group} />
+              <SetlistTable entries={group} COLORS={COLORS} />
             </div>
           ))}
         </div>
       ) : (
-        <SetlistTable entries={entries} />
+        <SetlistTable entries={entries} COLORS={COLORS} />
       )}
 
       <footer style={{ marginTop: 16, textAlign: "center", fontSize: 8.5, color: COLORS.kicker }}>

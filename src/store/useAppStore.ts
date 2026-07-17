@@ -973,27 +973,36 @@ function findGroupedConflicts<T>(
   return conflictsByKey;
 }
 
-// Strict member-conflict detection: a member is only flagged when two of
-// their OWN performances that day are genuinely back-to-back or
+// Strict member-conflict detection: a member is flagged when two of their
+// OWN performances that day are either (a) genuinely back-to-back or
 // overlapping — gap <= 0 minutes between one performance's end and the
-// next's start, nothing looser. Deliberately separate from
-// findGroupedConflicts above (which gear conflicts still use, comparing
-// against the day's configured transition time instead) because member
-// scheduling and gear changeover aren't the same kind of "conflict": a
-// person simply performing multiple times in a day, or having a completely
-// normal gap between two sets, is not a problem worth warning about — only
-// literally not having time to be in two places is. Returns, per
-// conflicting slot, which member(s) caused it, since "⚠ 前後の枠とメンバーが
-// 重複" without saying *who* leaves the organizer to go figure it out
-// themselves.
+// next's start — or (b) the exact same band, regardless of the gap between
+// them. (b) exists because a member's next performance being the identical
+// band (not just a shared member) means either a duplicate placement or a
+// genuine back-to-back set for the same act — worth flagging even across a
+// perfectly normal transition gap, since "gap <= 0" alone would miss it.
+// Deliberately separate from findGroupedConflicts above (which gear
+// conflicts still use, comparing against the day's configured transition
+// time instead) because member scheduling and gear changeover aren't the
+// same kind of "conflict": a person simply performing multiple times in a
+// day, or having a completely normal gap between two different bands, is
+// not a problem worth warning about. Returns, per conflicting slot, which
+// member(s) caused it and why, since "⚠ 前後の枠とメンバーが重複" without saying
+// *who* (and *why*) leaves the organizer to go figure it out themselves.
+export type MemberConflictReason = "gap" | "same-band";
+export type MemberConflictEntry = { memberName: string; reason: MemberConflictReason };
+
 export function getMemberConflictDetails(
   day: TimetableDay,
   bands: Band[],
-): Map<string, string[]> {
+): Map<string, MemberConflictEntry[]> {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const byMember = new Map<
     string,
-    { displayName: string; entries: { slotId: string; start: number; end: number }[] }
+    {
+      displayName: string;
+      entries: { slotId: string; bandId: string; start: number; end: number }[];
+    }
   >();
 
   for (const slot of day.slots) {
@@ -1008,21 +1017,27 @@ export function getMemberConflictDetails(
       if (!key || seenInThisSlot.has(key)) continue;
       seenInThisSlot.add(key);
       const entry = byMember.get(key) ?? { displayName: rawName, entries: [] };
-      entry.entries.push({ slotId: slot.id, start, end });
+      entry.entries.push({ slotId: slot.id, bandId: band.id, start, end });
       byMember.set(key, entry);
     }
   }
 
-  const conflictsBySlot = new Map<string, string[]>();
+  const conflictsBySlot = new Map<string, MemberConflictEntry[]>();
   for (const { displayName, entries } of byMember.values()) {
     entries.sort((a, b) => a.start - b.start);
     for (let i = 0; i < entries.length - 1; i++) {
-      const gap = entries[i + 1].start - entries[i].end;
-      if (gap <= 0) {
-        for (const slotId of [entries[i].slotId, entries[i + 1].slotId]) {
-          const names = conflictsBySlot.get(slotId) ?? [];
-          if (!names.includes(displayName)) names.push(displayName);
-          conflictsBySlot.set(slotId, names);
+      const a = entries[i];
+      const b = entries[i + 1];
+      const sameBand = a.bandId === b.bandId;
+      const gap = b.start - a.end;
+      if (sameBand || gap <= 0) {
+        const reason: MemberConflictReason = sameBand ? "same-band" : "gap";
+        for (const slotId of [a.slotId, b.slotId]) {
+          const list = conflictsBySlot.get(slotId) ?? [];
+          if (!list.some((c) => c.memberName === displayName)) {
+            list.push({ memberName: displayName, reason });
+          }
+          conflictsBySlot.set(slotId, list);
         }
       }
     }
@@ -1109,6 +1124,11 @@ export type MemberSchedule = {
   name: string;
   entries: MemberScheduleEntry[];
   hasAdjacentConflict: boolean;
+  /** Why hasAdjacentConflict is true — "same-band" takes priority over
+   * "gap" when a member has conflicts of both kinds across their days,
+   * since it's the more specific/severe case. null when there's no
+   * conflict. */
+  conflictReason: MemberConflictReason | null;
   unplacedCount: number;
 };
 
@@ -1140,9 +1160,9 @@ export function computeMemberSchedules(
     string,
     { dayLabel: string; startTime: string; endTime: string }
   >();
-  const conflictSlotIdsByDay = new Map<string, Set<string>>();
+  const conflictDetailsByDay = new Map<string, Map<string, MemberConflictEntry[]>>();
   for (const day of days) {
-    conflictSlotIdsByDay.set(day.id, new Set(getMemberConflictDetails(day, bands).keys()));
+    conflictDetailsByDay.set(day.id, getMemberConflictDetails(day, bands));
     for (const slot of day.slots) {
       if (slot.bandId) {
         placementByBandId.set(slot.bandId, {
@@ -1173,12 +1193,16 @@ export function computeMemberSchedules(
       .sort((a, b) => `${a.dayLabel}${a.startTime}`.localeCompare(`${b.dayLabel}${b.startTime}`));
 
     let hasAdjacentConflict = false;
+    let conflictReason: MemberConflictReason | null = null;
     for (const day of days) {
-      const conflictSlotIds = conflictSlotIdsByDay.get(day.id);
-      if (!conflictSlotIds) continue;
+      const conflictMap = conflictDetailsByDay.get(day.id);
+      if (!conflictMap) continue;
       for (const slot of day.slots) {
-        if (slot.bandId && bandIds.has(slot.bandId) && conflictSlotIds.has(slot.id)) {
+        if (!slot.bandId || !bandIds.has(slot.bandId)) continue;
+        const match = conflictMap.get(slot.id)?.find((c) => c.memberName === displayName);
+        if (match) {
           hasAdjacentConflict = true;
+          if (conflictReason !== "same-band") conflictReason = match.reason;
         }
       }
     }
@@ -1187,6 +1211,7 @@ export function computeMemberSchedules(
       name: displayName,
       entries,
       hasAdjacentConflict,
+      conflictReason,
       unplacedCount: entries.filter((e) => !e.startTime).length,
     });
   }

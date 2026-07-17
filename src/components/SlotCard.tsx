@@ -7,6 +7,7 @@ import {
   computeDropPreviewStartTime,
   useAppStore,
 } from "../store/useAppStore";
+import type { MemberConflictEntry } from "../store/useAppStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
@@ -16,10 +17,12 @@ type Props = {
   band: Band | undefined;
   index: number;
   total: number;
-  /** Members whose own performances are strictly back-to-back or
-   * overlapping with this slot's band (gap <= 0 minutes) — empty when
-   * there's no conflict. See getMemberConflictDetails. */
-  conflictMemberNames: string[];
+  /** Members whose own performances conflict with this slot's band, each
+   * tagged with why — "gap" (back-to-back/overlapping, <= 0 minutes) or
+   * "same-band" (their next performance is the identical band, regardless
+   * of the transition gap). Empty when there's no conflict. See
+   * getMemberConflictDetails. */
+  conflicts: MemberConflictEntry[];
   gearConflict: boolean;
   performanceOrder: number | null;
 };
@@ -30,11 +33,17 @@ export function SlotCard({
   band,
   index,
   total,
-  conflictMemberNames,
+  conflicts,
   gearConflict,
   performanceOrder,
 }: Props) {
-  const conflict = conflictMemberNames.length > 0;
+  const conflict = conflicts.length > 0;
+  const sameBandConflictNames = conflicts
+    .filter((c) => c.reason === "same-band")
+    .map((c) => c.memberName);
+  const gapConflictNames = conflicts
+    .filter((c) => c.reason === "gap")
+    .map((c) => c.memberName);
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
@@ -299,9 +308,14 @@ export function SlotCard({
               <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
-              {conflict && (
+              {sameBandConflictNames.length > 0 && (
                 <p className="text-xs font-medium text-rose-400">
-                  ⚠️ {conflictMemberNames.join("、")} が連続しています
+                  ⚠️ {sameBandConflictNames.join("、")} が同じバンドで連続出演しています
+                </p>
+              )}
+              {gapConflictNames.length > 0 && (
+                <p className="text-xs font-medium text-rose-400">
+                  ⚠️ {gapConflictNames.join("、")} が連続しています
                 </p>
               )}
               {!conflict && gearConflict && (

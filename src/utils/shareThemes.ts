@@ -16,7 +16,11 @@ export type ThemeId =
   | "christmas"
   | "winter"
   | "graduation"
-  | "minimal";
+  | "minimal"
+  | "metal"
+  | "pop"
+  | "jazz"
+  | "instruments";
 
 type BadgeStyle = { bg: string; border: string; text: string };
 type GlowSpot = { background: string; top?: string; bottom?: string; left?: string; right?: string; size: number };
@@ -47,7 +51,19 @@ export type ShareTheme = {
   breakBg: string;
   breakText: string;
   footerColor: string;
+  /** CSS `background-image` value (a tiled data-URI SVG), rendered as a
+   * low-opacity full-bleed layer behind the content on both the Timetable
+   * and Setlist exports. Undefined for every theme except "instruments" —
+   * every other theme renders exactly as before. */
+  watermarkPattern?: string;
 };
+
+// Faint line-art guitar/mic/drum-kit/keyboard silhouettes, tiled — the
+// opacity is baked into the SVG's own stroke-opacity (not a CSS opacity on
+// the wrapping element) so it never has to fight with, or accidentally
+// affect, anything stacked above it.
+const INSTRUMENTS_WATERMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><g fill="none" stroke="#ffffff" stroke-width="2" stroke-opacity="0.07" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(20,20)"><circle cx="20" cy="55" r="18"/><circle cx="20" cy="30" r="11"/><line x1="20" y1="12" x2="20" y2="-6"/><line x1="14" y1="-6" x2="26" y2="-6"/></g><g transform="translate(140,14)"><rect x="6" y="0" width="16" height="26" rx="8"/><path d="M0 20a14 14 0 0 0 28 0"/><line x1="14" y1="34" x2="14" y2="50"/></g><g transform="translate(30,140)"><ellipse cx="30" cy="16" rx="30" ry="10"/><line x1="0" y1="16" x2="0" y2="46"/><line x1="60" y1="16" x2="60" y2="46"/><ellipse cx="30" cy="46" rx="30" ry="10"/></g><g transform="translate(140,150)"><rect x="0" y="0" width="70" height="24"/><line x1="10" y1="0" x2="10" y2="24"/><line x1="20" y1="0" x2="20" y2="16"/><line x1="30" y1="0" x2="30" y2="24"/><line x1="40" y1="0" x2="40" y2="16"/><line x1="50" y1="0" x2="50" y2="24"/><line x1="60" y1="0" x2="60" y2="16"/></g></g></svg>`;
+const INSTRUMENTS_WATERMARK = `url("data:image/svg+xml,${encodeURIComponent(INSTRUMENTS_WATERMARK_SVG)}")`;
 
 // Non-band rows (休憩・集合・リハーサルなど) deliberately use the OPPOSITE
 // color polarity from band cards on every theme below — light solid bg +
@@ -441,4 +457,189 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
     breakText: "#18181b",
     footerColor: "#a1a1aa",
   },
+  metal: {
+    id: "metal",
+    name: "Metal / Gothic",
+    subtitle: "漆黒×深紅×シルバーのハイコントラストなハードコア",
+    pageBackground: "linear-gradient(to bottom, #09090b, #171717, #09090b)",
+    glowSpots: [
+      { background: "rgba(220,38,38,0.22)", top: "-6rem", right: "-6rem", size: 340 },
+      { background: "rgba(115,115,115,0.12)", bottom: "-8rem", left: "-6rem", size: 300 },
+    ],
+    kickerColor: "rgba(248,113,113,0.85)",
+    dayTitleGradient: "linear-gradient(to right, #dc2626, #f4f4f5, #dc2626)",
+    dayTitleColor: "#f4f4f5",
+    dateColor: "#a3a3a3",
+    dividerBackground: "linear-gradient(to right, transparent, rgba(220,38,38,0.7), transparent)",
+    cardBg: "rgba(220,38,38,0.05)",
+    cardBorder: "rgba(220,38,38,0.3)",
+    cardShadow: "none",
+    numberBadgeBackground: "linear-gradient(to bottom right, #7f1d1d, #dc2626)",
+    numberBadgeText: "#f4f4f5",
+    timeColor: "#f87171",
+    bandNameColor: "#f4f4f5",
+    setlistColor: "#a3a3a3",
+    setlistItalic: false,
+    syncBadge: { bg: "rgba(220,38,38,0.15)", border: "rgba(220,38,38,0.4)", text: "#fca5a5" },
+    keyBadge: { bg: "rgba(115,115,115,0.15)", border: "rgba(163,163,163,0.4)", text: "#d4d4d4" },
+    breakBorder: "#dc2626",
+    breakBg: "#d4d4d4",
+    breakText: "#0a0a0a",
+    footerColor: "#525252",
+  },
+  pop: {
+    id: "pop",
+    name: "Pop",
+    subtitle: "パステルグラデーション×丸ゴシックで元気にポップ",
+    pageBackground: "linear-gradient(135deg, #fbcfe8, #bfdbfe, #fef08a)",
+    glowSpots: [
+      { background: "rgba(244,114,182,0.30)", top: "-6rem", left: "-6rem", size: 340 },
+      { background: "rgba(96,165,250,0.25)", bottom: "-6rem", right: "-6rem", size: 320 },
+    ],
+    kickerColor: "rgba(219,39,119,0.85)",
+    dayTitleGradient: "linear-gradient(to right, #ec4899, #8b5cf6, #3b82f6)",
+    dayTitleColor: "#831843",
+    dateColor: "#7c3aed",
+    dividerBackground: "linear-gradient(to right, transparent, rgba(236,72,153,0.6), transparent)",
+    cardBg: "rgba(255,255,255,0.85)",
+    cardBorder: "rgba(251,207,232,0.9)",
+    cardShadow: "0 4px 14px rgba(219,39,119,0.12)",
+    numberBadgeBackground: "linear-gradient(to bottom right, #f472b6, #a78bfa)",
+    numberBadgeText: "#ffffff",
+    timeColor: "#db2777",
+    bandNameColor: "#581c87",
+    setlistColor: "#7c3aed",
+    setlistItalic: false,
+    syncBadge: { bg: "#fce7f3", border: "#f9a8d4", text: "#9d174d" },
+    keyBadge: { bg: "#ede9fe", border: "#c4b5fd", text: "#5b21b6" },
+    breakBorder: "#f472b6",
+    breakBg: "#fef08a",
+    breakText: "#831843",
+    footerColor: "#a78bda",
+  },
+  jazz: {
+    id: "jazz",
+    name: "Jazz",
+    subtitle: "ネイビー×ワインレッドの上品でミニマルな大人ムード",
+    pageBackground: "linear-gradient(to bottom, #0f1115, #1a1420, #0f1115)",
+    glowSpots: [
+      { background: "rgba(124,45,58,0.28)", top: "-6rem", right: "-4rem", size: 320 },
+      { background: "rgba(184,147,95,0.14)", bottom: "-8rem", left: "-6rem", size: 300 },
+    ],
+    kickerColor: "rgba(184,147,95,0.8)",
+    dayTitleGradient: "linear-gradient(to right, #7c2d3a, #b8935f, #7c2d3a)",
+    dayTitleColor: "#e8dcc8",
+    dateColor: "#9c8f7e",
+    dividerBackground: "linear-gradient(to right, transparent, rgba(184,147,95,0.5), transparent)",
+    cardBg: "rgba(184,147,95,0.06)",
+    cardBorder: "rgba(184,147,95,0.2)",
+    cardShadow: "none",
+    numberBadgeBackground: "linear-gradient(to bottom right, #7c2d3a, #4a3728)",
+    numberBadgeText: "#e8dcc8",
+    timeColor: "#c9a876",
+    bandNameColor: "#e8dcc8",
+    setlistColor: "#9c8f7e",
+    setlistItalic: true,
+    syncBadge: { bg: "rgba(124,45,58,0.18)", border: "rgba(184,110,120,0.4)", text: "#dba8ae" },
+    keyBadge: { bg: "rgba(184,147,95,0.15)", border: "rgba(184,147,95,0.4)", text: "#d4bd94" },
+    breakBorder: "#b8935f",
+    breakBg: "#d4bd94",
+    breakText: "#2a1810",
+    footerColor: "#6b6255",
+  },
+  instruments: {
+    id: "instruments",
+    name: "Band Instruments",
+    subtitle: "楽器のラインアート透かし入り、チャコール×ステージ照明",
+    pageBackground: "linear-gradient(to bottom, #18181b, #27272a, #18181b)",
+    glowSpots: [
+      { background: "rgba(251,191,36,0.20)", top: "-6rem", left: "-6rem", size: 340 },
+      { background: "rgba(251,191,36,0.10)", bottom: "-6rem", right: "-6rem", size: 300 },
+    ],
+    kickerColor: "rgba(251,191,36,0.8)",
+    dayTitleGradient: "linear-gradient(to right, #fbbf24, #f4f4f5, #fbbf24)",
+    dayTitleColor: "#f4f4f5",
+    dateColor: "#a1a1aa",
+    dividerBackground: "linear-gradient(to right, transparent, rgba(251,191,36,0.6), transparent)",
+    cardBg: "rgba(255,255,255,0.05)",
+    cardBorder: "rgba(251,191,36,0.2)",
+    cardShadow: "none",
+    numberBadgeBackground: "linear-gradient(to bottom right, #fbbf24, #78350f)",
+    numberBadgeText: "#18181b",
+    timeColor: "#fbbf24",
+    bandNameColor: "#f4f4f5",
+    setlistColor: "#a1a1aa",
+    setlistItalic: false,
+    syncBadge: { bg: "rgba(251,191,36,0.15)", border: "rgba(251,191,36,0.4)", text: "#fde68a" },
+    keyBadge: { bg: "rgba(161,161,170,0.15)", border: "rgba(161,161,170,0.4)", text: "#d4d4d8" },
+    breakBorder: "#fbbf24",
+    breakBg: "#fde68a",
+    breakText: "#3f2d0a",
+    footerColor: "#71717a",
+    watermarkPattern: INSTRUMENTS_WATERMARK,
+  },
 };
+
+export type SetlistPalette = {
+  pageBackground: string;
+  kicker: string;
+  title: string;
+  subtitle: string;
+  headerBg: string;
+  headerText: string;
+  rowBorder: string;
+  zebra: string;
+  bandName: string;
+  song: string;
+  memberName: string;
+  chipBg: string;
+  chipText: string;
+  orderBadgeBg: string;
+  orderBadgeText: string;
+  watermarkPattern?: string;
+  /** Solid (non-gradient) approximation of pageBackground, safe to use
+   * anywhere a real CSS gradient can't be — e.g. filling a jsPDF page rect
+   * behind a captured page image that's shorter than the full A4 height. */
+  pageFillSolid: string;
+};
+
+function isLightHex(hex: string): boolean {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
+
+// Derives the Setlist export's color roles from a ShareTheme instead of
+// maintaining a second, parallel palette per theme — a new theme only ever
+// gets defined once (above) and both exports pick it up automatically,
+// which is also what keeps them looking like the same visual identity
+// rather than two independently-themed documents. zebra striping has no
+// dedicated field: whether bandNameColor reads light-on-dark tells us which
+// direction a subtle row overlay needs to go to stay visible against that
+// theme's own page background, computed rather than hand-tuned per theme.
+export function getSetlistPalette(theme: ShareTheme): SetlistPalette {
+  const dark = isLightHex(theme.bandNameColor);
+  return {
+    pageBackground: theme.pageBackground,
+    kicker: theme.kickerColor,
+    title: theme.dayTitleColor,
+    subtitle: theme.dateColor,
+    headerBg: theme.numberBadgeBackground,
+    headerText: theme.numberBadgeText,
+    rowBorder: theme.cardBorder,
+    zebra: dark ? "rgba(255,255,255,0.045)" : "rgba(15,23,42,0.035)",
+    bandName: theme.bandNameColor,
+    song: theme.setlistColor,
+    memberName: theme.bandNameColor,
+    chipBg: theme.syncBadge.bg,
+    chipText: theme.syncBadge.text,
+    orderBadgeBg: theme.numberBadgeBackground,
+    orderBadgeText: theme.numberBadgeText,
+    watermarkPattern: theme.watermarkPattern,
+    pageFillSolid: dark ? "#111112" : "#ffffff",
+  };
+}

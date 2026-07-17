@@ -84,7 +84,10 @@ export function ScheduleReviewModal({ onClose }: Props) {
                       </span>
                       {m.hasAdjacentConflict && (
                         <span className="ml-1.5 text-[11px] font-medium text-rose-400">
-                          ⚠️ {m.name} が連続しています
+                          ⚠️ {m.name}{" "}
+                          {m.conflictReason === "same-band"
+                            ? "が同じバンドで連続出演しています"
+                            : "が連続しています"}
                         </span>
                       )}
                     </p>

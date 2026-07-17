@@ -316,7 +316,7 @@ export function DayPanel({ day, daysCount }: Props) {
                       band={band}
                       index={i}
                       total={slots.length}
-                      conflictMemberNames={conflictDetails.get(slot.id) ?? []}
+                      conflicts={conflictDetails.get(slot.id) ?? []}
                       gearConflict={gearConflicts.has(slot.id)}
                       performanceOrder={band ? order : null}
                     />
