@@ -4,7 +4,9 @@ import {
   computeMemberSchedules,
   useAppStore,
 } from "../store/useAppStore";
+import { useApplicationStore } from "../store/useApplicationStore";
 import { useHistoryStore } from "../store/useHistoryStore";
+import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
@@ -24,8 +26,11 @@ export function Timetable() {
     (s) => s.autoDetectDayRestrictions,
   );
   const bands = useAppStore((s) => s.bands);
+  const eventInfo = useAppStore((s) => s.eventInfo);
+  const applications = useApplicationStore((s) => s.applications);
   const [showScheduleReview, setShowScheduleReview] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [exportingRoster, setExportingRoster] = useState(false);
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
   const pastCount = useHistoryStore((s) => s.past.length);
@@ -56,6 +61,17 @@ export function Timetable() {
       )
     ) {
       clearAllSlots();
+    }
+  };
+
+  const handleExportRoster = async () => {
+    setExportingRoster(true);
+    try {
+      const entries = computeMemberRoster(days, bands, applications);
+      const eventLabel = eventInfo.liveName.trim() || "ライブ";
+      await downloadMemberRosterExcel(entries, `参加者名簿-${eventLabel}.xlsx`);
+    } finally {
+      setExportingRoster(false);
     }
   };
 
@@ -128,6 +144,14 @@ export function Timetable() {
               {reviewIssueCount}
             </span>
           )}
+        </button>
+        <button
+          onClick={handleExportRoster}
+          disabled={exportingRoster}
+          className="min-h-11 rounded border border-teal-600 bg-teal-950/30 px-3 font-medium text-teal-300 hover:bg-teal-900/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:py-1.5"
+          title="配置済みの全メンバーを学年・氏名・パートで重複なくまとめ、受付・機材確認チェック欄付きのExcel名簿を出力します"
+        >
+          {exportingRoster ? "名簿を生成中…" : "📇 参加者名簿を出力 (Excel)"}
         </button>
         <button
           onClick={autoDetectDayRestrictions}
