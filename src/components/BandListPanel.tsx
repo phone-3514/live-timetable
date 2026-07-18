@@ -11,8 +11,8 @@ const POPOVER_EST_HEIGHT = 260;
 const CLOSE_DELAY_MS = 150;
 
 export function BandListPanel() {
-  const bands = useAppStore((s) => s.bands);
-  const days = useAppStore((s) => s.days);
+  const bands = useAppStore((s) => s.bands) ?? [];
+  const days = useAppStore((s) => s.days) ?? [];
   const bulkAssignToDay = useAppStore((s) => s.bulkAssignToDay);
   const deleteBands = useAppStore((s) => s.deleteBands);
   const placedIds = getPlacedBandIds(days);

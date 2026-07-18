@@ -35,7 +35,7 @@ type ActiveDragData =
 function App() {
   const activeTab = useUiStore((s) => s.activeTab);
   const setActiveTab = useUiStore((s) => s.setActiveTab);
-  const days = useAppStore((s) => s.days);
+  const days = useAppStore((s) => s.days) ?? [];
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const insertBandAtSlot = useAppStore((s) => s.insertBandAtSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);

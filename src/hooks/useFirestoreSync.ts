@@ -118,7 +118,21 @@ export function useFirestoreDocSync<T extends DocumentData>(
   const commit = useCallback(
     (next: T, immediate: boolean) => {
       if (!path || !db) return;
-      const write = () => setDoc(doc(db!, path), next, { merge: true }).catch(() => setStatus("error"));
+      const write = () =>
+        setDoc(doc(db!, path), next, { merge: true }).catch((err) => {
+          // Was a silent catch — a write failure (e.g. the
+          // "Unsupported field value: undefined" class of bug; see
+          // firebase.ts's ignoreUndefinedProperties comment) looked
+          // identical to a successful sync from the UI's perspective:
+          // the optimistic local state already showed the change, so
+          // nothing appeared wrong until another collaborator asked
+          // "where did my edit go." Logging it doesn't fix a write
+          // failure, but it turns "silently never synced" into
+          // "visibly failed," which is what actually gets bugs like
+          // that reported with enough detail to fix.
+          console.error(`[useFirestoreDocSync] write to ${path} failed:`, err);
+          setStatus("error");
+        });
       if (immediate) {
         flush(path, write);
       } else {

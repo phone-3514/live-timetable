@@ -13,6 +13,16 @@ import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
+import type { TimetableDay } from "../types";
+
+// Stable (never-reallocated) fallbacks for the ?? below — an inline `?? []`
+// would hand useMemo/useEffect a fresh array reference on every render
+// where the store value is unexpectedly falsy, defeating their dependency
+// comparisons (and tripping the exhaustive-deps lint rule, which is what
+// flagged this). Only matters in the edge case this whole defense exists
+// for in the first place — see applyRoomDocToStore in useCollabRoom.ts.
+const EMPTY_BANDS: Band[] = [];
+const EMPTY_DAYS: TimetableDay[] = [];
 
 // All days render side by side (not tab-switched) so the whole event's
 // schedule is visible on one 100vh screen at once. Actions that used to be
@@ -20,7 +30,13 @@ import { FuriganaImportModal } from "./FuriganaImportModal";
 // export) or genuinely global (auto-schedule, reset — both operate across
 // every day at once).
 export function Timetable() {
-  const days = useAppStore((s) => s.days);
+  // ?? [] defends against days ever being undefined/null at runtime — the
+  // store's own type says TimetableDay[], but data arriving from outside
+  // normal store actions (a Firestore room doc via useCollabRoom) isn't
+  // guaranteed to match that type, only trusted to. See
+  // applyRoomDocToStore in useCollabRoom.ts for the write-side half of
+  // this same defense.
+  const days = useAppStore((s) => s.days) ?? EMPTY_DAYS;
   const addDay = useAppStore((s) => s.addDay);
   const autoScheduleAllDays = useAppStore((s) => s.autoScheduleAllDays);
   const resetAllPlacements = useAppStore((s) => s.resetAllPlacements);
@@ -28,7 +44,7 @@ export function Timetable() {
   const autoDetectDayRestrictions = useAppStore(
     (s) => s.autoDetectDayRestrictions,
   );
-  const bands = useAppStore((s) => s.bands);
+  const bands = useAppStore((s) => s.bands) ?? EMPTY_BANDS;
   const eventInfo = useAppStore((s) => s.eventInfo);
   const applications = useApplicationStore((s) => s.applications);
   const furiganaByKey = useFuriganaStore((s) => s.furiganaByKey);
@@ -151,6 +167,8 @@ export function Timetable() {
       setExportingRoster(false);
     }
   };
+
+  console.log("Current Timetable State:", { days, bandsCount: bands.length });
 
   return (
     <div className="flex flex-1 flex-col gap-2 md:min-h-0">
@@ -292,14 +310,32 @@ export function Timetable() {
           day columns on a phone screen. --day-count carries the desktop
           column count through so the md: grid still expands/contracts with
           the actual number of days. */}
-      <div
-        className="grid flex-1 grid-cols-1 gap-2 md:min-h-0 md:[grid-template-columns:repeat(var(--day-count),minmax(0,1fr))]"
-        style={{ "--day-count": days.length } as CSSProperties}
-      >
-        {days.map((day) => (
-          <DayPanel key={day.id} day={day} daysCount={days.length} />
-        ))}
-      </div>
+      {days.length === 0 ? (
+        // Reachable via a Firestore room doc with an empty days array
+        // (e.g. a brand-new collaboration room, or every day having been
+        // removed some other way that bypassed removeDay's own "can't
+        // remove the last day" guard) — without this, the whole content
+        // area below the toolbar would render nothing at all, which reads
+        // as "the app is broken" rather than "there's nothing here yet."
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-700 p-8 text-center">
+          <p className="text-sm text-slate-400">タイムテーブルがありません</p>
+          <button
+            onClick={addDay}
+            className="min-h-11 rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 md:min-h-0 md:py-1.5"
+          >
+            + 日を追加
+          </button>
+        </div>
+      ) : (
+        <div
+          className="grid flex-1 grid-cols-1 gap-2 md:min-h-0 md:[grid-template-columns:repeat(var(--day-count),minmax(0,1fr))]"
+          style={{ "--day-count": days.length } as CSSProperties}
+        >
+          {days.map((day) => (
+            <DayPanel key={day.id} day={day} daysCount={days.length} />
+          ))}
+        </div>
+      )}
 
       {showScheduleReview && (
         <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />

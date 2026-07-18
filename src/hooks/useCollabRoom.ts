@@ -49,16 +49,25 @@ function snapshotFromStore(): Omit<RoomDoc, "updatedAt"> {
   };
 }
 
+// A Firestore document is untyped data at rest — `snapshot.data() as T` in
+// useFirestoreDocSync trusts the cast, but a doc written by an older
+// client version, a partial/interrupted write, or manual console editing
+// could be missing fields entirely. Defaulting every field here (never
+// trusting `doc.bands`/`doc.days` to actually be arrays) is what stands
+// between that and useAppStore.setState({ bands: undefined, ... }) —
+// which would crash every `bands.map(...)`/`days.map(...)` in the app on
+// the very next render.
 function applyRoomDocToStore(doc: RoomDoc) {
+  console.log("[useCollabRoom] Applying room doc to store — bands:", doc.bands?.length, "days:", doc.days?.length);
   useAppStore.setState({
-    bands: doc.bands,
-    days: doc.days,
+    bands: doc.bands ?? [],
+    days: doc.days ?? [],
     eventInfo: {
-      liveName: doc.liveName,
-      venue: doc.venue,
-      organizationName: doc.organizationName,
+      liveName: doc.liveName ?? "",
+      venue: doc.venue ?? "",
+      organizationName: doc.organizationName ?? "",
     },
-    venueHours: doc.venueHours,
+    venueHours: doc.venueHours ?? DEFAULT_VENUE_HOURS,
   });
 }
 

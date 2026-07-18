@@ -56,10 +56,23 @@ const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 // election overhead this app doesn't need — each collaborator is one
 // person in one tab, not one person juggling several tabs on the same
 // room.
+// ignoreUndefinedProperties: without this, setDoc/updateDoc THROWS
+// ("Unsupported field value: undefined") the instant any nested object in
+// the payload has an explicit `undefined` field — and Band does, routinely:
+// parseBands.ts's raw-text-paste parser always includes `parseWarning` and
+// `durationMinutes` as keys even when nothing was detected (both typed as
+// `T | undefined` and returned via shorthand, so an unset one is `undefined`
+// as a *value*, not an absent key). Every band parsed that way broke the
+// ENTIRE room sync — not just that band, not just its part/grade — because
+// useCollabRoom writes the whole bands/days array as one document, so one
+// undefined field anywhere in it failed the whole write, silently (see the
+// error-logging note on useFirestoreDocSync's catch). Confirmed against the
+// real project: identical payload succeeds with this flag, fails without it.
 console.log("[firebase] 2. Initializing Firestore…");
 export const db = firebaseApp
   ? initializeFirestore(firebaseApp, {
       localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
+      ignoreUndefinedProperties: true,
     })
   : null;
 console.log("[firebase] 2. Firestore ready:", db !== null);
