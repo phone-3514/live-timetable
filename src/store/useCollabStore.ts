@@ -3,7 +3,13 @@ import { create } from "zustand";
 export type PresenceEntry = {
   clientId: string;
   nickname: string;
-  cursor: { x: number; y: number } | null;
+  // Fractions of the sender's own viewport (0–1), not raw pixels — a
+  // desktop cursor at x=1200 on a 1920px-wide screen and a mobile viewer
+  // on a 375px-wide screen don't share a coordinate space, so the only
+  // portable value to broadcast is "how far across their own screen."
+  // LiveCursors converts back to this VIEWER's pixels via CSS percentage
+  // positioning at render time. See useLivePresence.ts's handleMouseMove.
+  cursor: { xPct: number; yPct: number } | null;
   isDragging: boolean;
   draggedBandId: string | null;
 };

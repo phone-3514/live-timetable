@@ -15,9 +15,13 @@ function generateClientId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, n));
+}
+
 type RawPresenceValue = {
   nickname?: string;
-  cursor?: { x: number; y: number } | null;
+  cursor?: { xPct: number; yPct: number } | null;
   isDragging?: boolean;
   draggedBandId?: string | null;
 };
@@ -87,7 +91,12 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
       const now = Date.now();
       if (now - lastCursorSentRef.current < THROTTLE_MS) return;
       lastCursorSentRef.current = now;
-      void update(myRef, { cursor: { x: e.clientX, y: e.clientY }, updatedAt: serverTimestamp() });
+      // Broadcast as a fraction of THIS client's own viewport, not raw
+      // pixels — a desktop cursor's clientX/clientY is meaningless on a
+      // narrower mobile viewer's screen otherwise (see PresenceEntry.cursor).
+      const xPct = clamp01(e.clientX / window.innerWidth);
+      const yPct = clamp01(e.clientY / window.innerHeight);
+      void update(myRef, { cursor: { xPct, yPct }, updatedAt: serverTimestamp() });
     }
     window.addEventListener("mousemove", handleMouseMove);
 

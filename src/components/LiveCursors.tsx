@@ -12,36 +12,55 @@ function colorForClientId(clientId: string): string {
   return CURSOR_COLORS[hash % CURSOR_COLORS.length];
 }
 
+// A cursor at the very edge (xPct/yPct near 0 or 1) would render its
+// nickname label partly off-screen — CSS `left`/`top` percentages have no
+// concept of the label's own width, so clamp the *displayed* position
+// in from the true edge. This is on top of the 0–1 clamp already applied
+// at the sender in useLivePresence.ts; that one guarantees the dot itself
+// is on-screen, this one keeps the label attached to it readable too.
+const EDGE_MARGIN_PCT = 3;
+
+function clampDisplayPct(pct: number): number {
+  return Math.min(100 - EDGE_MARGIN_PCT, Math.max(EDGE_MARGIN_PCT, pct * 100));
+}
+
 // Renders every other connected collaborator's live cursor as a
-// fixed-position overlay (coordinates are viewport-relative — see
-// useLivePresence's use of clientX/clientY — so this intentionally
-// doesn't try to reconcile different collaborators' scroll positions or
-// window sizes; it's "where their pointer is on their screen," a
-// reasonable approximation for a small team on similar-sized laptops,
-// not a pixel-perfect shared canvas). pointer-events-none throughout so
-// this overlay never intercepts the local user's own clicks/drags.
+// fixed-position overlay. Coordinates arrive as xPct/yPct — fractions of
+// the SENDER's own viewport (see useLivePresence.ts) — and are rendered
+// here as CSS percentages, so a desktop cursor at 60% across a 1920px
+// screen lands at 60% across whatever screen is actually looking (mobile
+// included), instead of the raw-pixel value landing off-screen on a
+// narrower viewport. `overflow-hidden` on the wrapper is a second line of
+// defense alongside the percentage clamps below: even if a value ever
+// slipped past [0,1] (e.g. a stale payload from an older client), a
+// `position: fixed` descendant can't expand the page's scrollable area,
+// but this still stops it from visually bleeding past the viewport edge.
+// pointer-events-none throughout so this overlay never intercepts the
+// local user's own clicks/drags/taps.
 export function LiveCursors() {
   const others = useCollabStore((s) => s.others);
   const bands = useAppStore((s) => s.bands);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-50">
+    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
       {others
         .filter((o) => o.cursor !== null)
         .map((o) => {
           const color = colorForClientId(o.clientId);
           // "Attached to their cursor" — while o is dragging a band, its
           // name rides along with their pointer, the closest a
-          // viewport-relative cursor overlay (see the module comment)
+          // percentage-based cursor overlay (see the module comment)
           // can get to a literal shared drag ghost.
           const draggedBandName = o.isDragging
             ? bands.find((b) => b.id === o.draggedBandId)?.name
             : null;
+          const left = `${clampDisplayPct(o.cursor!.xPct)}%`;
+          const top = `${clampDisplayPct(o.cursor!.yPct)}%`;
           return (
             <div
               key={o.clientId}
               className="absolute transition-[left,top] duration-100 ease-out"
-              style={{ left: o.cursor!.x, top: o.cursor!.y }}
+              style={{ left, top }}
             >
               <svg width="20" height="20" viewBox="0 0 20 20" className="drop-shadow">
                 <path d="M2 2 L2 16 L6.5 12.5 L9.5 18.5 L12 17.2 L9 11.2 L15 11 Z" fill={color} />
