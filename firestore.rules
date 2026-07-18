@@ -17,6 +17,7 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if true;
       allow write: if isValidRoomMeta(request.resource.data);
+      allow delete: if true;
 
       match /bands/{bandId} {
         allow read: if true;
