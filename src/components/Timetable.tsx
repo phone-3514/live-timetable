@@ -1,9 +1,10 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   computeGearConflictDetails,
   computeMemberSchedules,
   useAppStore,
 } from "../store/useAppStore";
+import type { Band } from "../types";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useHistoryStore } from "../store/useHistoryStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
@@ -35,6 +36,11 @@ export function Timetable() {
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [exportingRoster, setExportingRoster] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  // -1 means "query changed, haven't jumped to a match yet" — the first
+  // Enter/Next press should land on match 0, not match 1, so jumpToMatch
+  // always operates on matchIndex + 1 for "next."
+  const [matchIndex, setMatchIndex] = useState(-1);
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
   const pastCount = useHistoryStore((s) => s.past.length);
@@ -47,6 +53,73 @@ export function Timetable() {
     const gearConflicts = computeGearConflictDetails(days, bands).length;
     return conflictMembers + gearConflicts;
   }, [bands, days]);
+
+  // Only bands actually placed on the grid are searchable — an unplaced
+  // band has no rendered SlotCard (and thus no #band-slot-<id> element) for
+  // scrollIntoView to target, so it can't usefully be a search result here.
+  // Order follows day order then slot order, giving Next/Prev a stable,
+  // predictable sequence to step through.
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const bandMap = new Map(bands.map((b) => [b.id, b]));
+    const seen = new Set<string>();
+    const matches: Band[] = [];
+    for (const day of days) {
+      for (const slot of day.slots) {
+        if (!slot.bandId || seen.has(slot.bandId)) continue;
+        const band = bandMap.get(slot.bandId);
+        if (!band) continue;
+        const nameMatch = band.name.toLowerCase().includes(q);
+        const memberMatch = band.members.some((m) => m.toLowerCase().includes(q));
+        if (nameMatch || memberMatch) {
+          seen.add(slot.bandId);
+          matches.push(band);
+        }
+      }
+    }
+    return matches;
+  }, [days, bands, searchQuery]);
+
+  // A fresh query always restarts navigation from "before the first
+  // match" — see the matchIndex comment above.
+  useEffect(() => {
+    setMatchIndex(-1);
+  }, [searchQuery]);
+
+  function scrollToBand(bandId: string) {
+    const el = document.getElementById(`band-slot-${bandId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Temporary ring pulse so the found card is unmistakable even though
+    // it's already centered — self-removing, no persisted state needed.
+    const highlightClasses = [
+      "ring-4",
+      "ring-amber-400",
+      "ring-offset-2",
+      "ring-offset-slate-900",
+      "animate-pulse",
+    ];
+    el.classList.add(...highlightClasses);
+    window.setTimeout(() => el.classList.remove(...highlightClasses), 1600);
+  }
+
+  function jumpToMatch(rawIndex: number) {
+    if (searchMatches.length === 0) return;
+    const wrapped =
+      ((rawIndex % searchMatches.length) + searchMatches.length) % searchMatches.length;
+    setMatchIndex(wrapped);
+    scrollToBand(searchMatches[wrapped].id);
+  }
+
+  const handleSearchNext = () => jumpToMatch(matchIndex + 1);
+  const handleSearchPrev = () => jumpToMatch(matchIndex - 1);
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    handleSearchNext();
+  }
 
   const handleReset = () => {
     if (
@@ -81,6 +154,46 @@ export function Timetable() {
 
   return (
     <div className="flex flex-1 flex-col gap-2 md:min-h-0">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-sm">
+        <span className="text-slate-500" aria-hidden="true">
+          🔍
+        </span>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          placeholder="バンド名・メンバー名で検索"
+          aria-label="バンド名・メンバー名で検索"
+          className="min-h-11 w-48 rounded border border-slate-600 bg-slate-800 px-2.5 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:w-56 md:py-1.5"
+        />
+        <button
+          type="button"
+          onClick={handleSearchPrev}
+          disabled={searchMatches.length === 0}
+          title="前の一致へ"
+          aria-label="前の一致へ"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-600 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30 md:h-7 md:w-7"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={handleSearchNext}
+          disabled={searchMatches.length === 0}
+          title="次の一致へ（Enter）"
+          aria-label="次の一致へ"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-slate-600 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30 md:h-7 md:w-7"
+        >
+          ›
+        </button>
+        {searchQuery.trim() && (
+          <span className="text-xs text-slate-400">
+            {searchMatches.length > 0
+              ? `${matchIndex + 1 > 0 ? matchIndex + 1 : 0}/${searchMatches.length}件`
+              : "見つかりません"}
+          </span>
+        )}
+      </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm">
         <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-600">
           <button

@@ -236,6 +236,11 @@ export function SlotCard({
       ) : (
         <div
           ref={bandDraggable.setNodeRef}
+          // Search-and-scroll target (see Timetable's search bar) — the
+          // slot's own id isn't stable across a reorder/re-place the way
+          // the band's own id is, so scrollIntoView/highlight target this
+          // by band id, not slot id.
+          id={band ? `band-slot-${band.id}` : undefined}
           className={`flex min-h-[36px] flex-1 items-center rounded-md border px-1.5 py-1 ${
             band
               ? "border-slate-700 bg-slate-900"
