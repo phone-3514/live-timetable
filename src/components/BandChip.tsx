@@ -40,15 +40,17 @@ export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSel
       onMouseLeave={onHoverEnd}
       // Touch has no hover, so the details flyout (which onHoverStart opens)
       // would otherwise be unreachable on mobile — a tap fires this too.
-      // touch-none is the standard dnd-kit fix so a touch-drag here is
-      // handled by the drag sensor instead of being swallowed as a page
-      // scroll gesture.
+      // No touch-action: none here — App.tsx's TouchSensor uses a
+      // delay-based (long-press) activation constraint, so a normal touch
+      // that moves before the delay elapses is handed back to the browser
+      // as an ordinary scroll instead of being claimed by dnd-kit; only a
+      // held long-press activates the drag. See App.tsx's sensors comment.
       onClick={() => elRef.current && onHoverStart(band, elRef.current)}
       // Fixed width + shrink-0 below lg (a horizontal-scroll strip needs
       // each chip to keep its own width instead of collapsing to fit);
       // lg+ switches to a full-width row in the narrow vertical sidebar.
-      className={`flex min-h-11 w-32 shrink-0 touch-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink ${
-        isDragging ? "relative z-50 opacity-50" : ""
+      className={`flex min-h-11 w-32 shrink-0 cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink ${
+        isDragging ? "relative z-50 scale-105 opacity-50" : ""
       } ${
         selected
           ? "border-indigo-400 bg-indigo-950/50"

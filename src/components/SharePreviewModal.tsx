@@ -5,6 +5,7 @@ import { THEMES } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { dataUrlToFile, shareOrDownloadFile, supportsFileShare } from "../utils/shareOrDownload";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -60,10 +61,12 @@ export function SharePreviewModal({ day, onClose }: Props) {
     setDownloading(true);
     try {
       const dataUrl = await toPng(el, { pixelRatio: 2 });
-      const link = document.createElement("a");
-      link.download = `share-timetable-${day.label}-${themeId}.png`;
-      link.href = dataUrl;
-      link.click();
+      const filename = `share-timetable-${day.label}-${themeId}.png`;
+      const file = dataUrlToFile(dataUrl, filename, "image/png");
+      await shareOrDownloadFile(file, {
+        title: eventInfo.liveName || "タイムテーブル",
+        text: `${day.label}のタイムテーブル`,
+      });
     } finally {
       setDownloading(false);
     }
@@ -175,7 +178,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
             disabled={downloading}
             className="min-h-11 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {downloading ? "画像を生成中…" : "画像をダウンロード"}
+            {downloading ? "画像を生成中…" : supportsFileShare ? "画像を共有 / 保存" : "画像をダウンロード"}
           </button>
         </div>
       </div>

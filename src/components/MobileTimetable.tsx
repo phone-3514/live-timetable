@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   computeGearConflictDetails,
   computeMemberSchedules,
-  formatConcentrationMessage,
   getConcentrationWarningDetails,
   getGearConflictSlotIds,
   getMemberConflictDetails,
@@ -11,171 +11,29 @@ import {
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useHistoryStore } from "../store/useHistoryStore";
-import { useLockedBandOwner } from "../store/useCollabStore";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
-import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
+import { SlotCard } from "./SlotCard";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
-import type { Band, TimetableDay, TimetableSlot } from "../types";
+import type { Band, TimetableDay } from "../types";
 
 const EMPTY_BANDS: Band[] = [];
 const EMPTY_DAYS: TimetableDay[] = [];
 
-// One slot, rendered as a single tappable row instead of SlotCard's
-// drag-handle + inline-popover + stepper-button desktop layout — reorder
-// here is the same ▲/▼ store actions SlotCard also offers as its
-// non-drag fallback, just promoted to the ONLY way to reorder on mobile
-// instead of a secondary option next to a drag handle (a drag gesture
-// competing with the page's own vertical scroll is exactly the kind of
-// "scaled-down desktop control" this view is meant to avoid). Tapping the
-// row opens the same PlacedBandDetailModal desktop uses — one editing
-// surface, not a second one to keep in sync.
-function MobileSlotRow({
-  dayId,
-  slot,
-  band,
-  index,
-  total,
-  performanceOrder,
-  conflicts,
-  gearConflict,
-  concentrationEntries,
-}: {
-  dayId: string;
-  slot: TimetableSlot;
-  band: Band | undefined;
-  index: number;
-  total: number;
-  performanceOrder: number | null;
-  conflicts: ReturnType<typeof getMemberConflictDetails> extends Map<string, infer V> ? V : never;
-  gearConflict: boolean;
-  concentrationEntries: ReturnType<typeof getConcentrationWarningDetails> extends Map<string, infer V>
-    ? V
-    : never;
-}) {
-  const moveSlot = useAppStore((s) => s.moveSlot);
-  const removeSlot = useAppStore((s) => s.removeSlot);
-  const [showDetails, setShowDetails] = useState(false);
-  const lockedByNickname = useLockedBandOwner(band?.id);
-  const hasConflict = conflicts.length > 0;
-  const hasFullConcentration = concentrationEntries.some((c) => c.level === "full");
-  const isCustom = slot.customLabel !== null;
-
-  return (
-    <div
-      id={band ? `band-slot-${band.id}` : undefined}
-      className={`flex items-stretch gap-2 rounded-lg border p-2 ${
-        isCustom
-          ? "border-amber-600 bg-amber-900/30"
-          : lockedByNickname
-            ? "border-amber-400 border-dashed bg-amber-950/20"
-            : hasConflict
-              ? "border-rose-500 bg-rose-950/30"
-              : gearConflict
-                ? "border-amber-500 bg-amber-950/20"
-                : hasFullConcentration
-                  ? "border-violet-500 bg-violet-950/20"
-                  : "border-slate-700 bg-slate-800"
-      }`}
-    >
-      <div className="flex w-14 shrink-0 flex-col justify-center font-mono text-xs text-slate-300">
-        <span>{slot.startTime}</span>
-        <span className="text-slate-500">-{slot.endTime}</span>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => band && setShowDetails(true)}
-        disabled={!band}
-        className="min-h-11 flex-1 rounded-md px-1 py-1 text-left disabled:cursor-default"
-      >
-        {performanceOrder !== null && (
-          <span
-            className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 align-middle text-[10px] font-bold leading-none text-white"
-            title={`出演順 ${performanceOrder}番目`}
-          >
-            {performanceOrder}
-          </span>
-        )}
-        {isCustom ? (
-          <span className="text-sm font-semibold text-amber-300">{slot.customLabel}</span>
-        ) : band ? (
-          <>
-            <p className="text-sm font-semibold text-slate-100">
-              {band.name}
-              {lockedByNickname && (
-                <span
-                  className="ml-1.5 rounded border border-amber-400 bg-amber-950/60 px-1 text-xs font-normal text-amber-300"
-                  title={`${lockedByNickname}が現在このバンドを移動中です`}
-                >
-                  🔒 {lockedByNickname}
-                </span>
-              )}
-              {band.hasSync && <span className="ml-1 text-xs">🔌</span>}
-              {band.hasKeyboard && <span className="ml-1 text-xs">🎹</span>}
-            </p>
-            <p className="truncate text-xs text-slate-400">{band.members.join(", ")}</p>
-            {hasConflict && (
-              <p className="text-xs font-medium text-rose-400">
-                ⚠️ {conflicts.map((c) => c.memberName).join("、")} が連続出演
-              </p>
-            )}
-            {!hasConflict && gearConflict && (
-              <p className="text-xs font-medium text-amber-400">⚙ 前後の枠と共有機材が重複</p>
-            )}
-            {concentrationEntries.map((c) => (
-              <p
-                key={c.memberName}
-                className={`text-xs font-medium ${c.level === "full" ? "text-violet-400" : "text-violet-400/70"}`}
-              >
-                ⚠️ {c.memberName}{" "}
-                {formatConcentrationMessage(c.totalSlots, c.maxBlockSlots, c.level, c.blockTimeRange)}
-              </p>
-            ))}
-          </>
-        ) : (
-          <span className="text-xs text-slate-500">空き枠</span>
-        )}
-      </button>
-
-      <div className="flex shrink-0 flex-col justify-center gap-1">
-        <button
-          onClick={() => moveSlot(dayId, slot.id, "up")}
-          disabled={index === 0}
-          className="flex h-9 w-9 items-center justify-center text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
-          title="上に移動"
-        >
-          ▲
-        </button>
-        <button
-          onClick={() => moveSlot(dayId, slot.id, "down")}
-          disabled={index === total - 1}
-          className="flex h-9 w-9 items-center justify-center text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20"
-          title="下に移動"
-        >
-          ▼
-        </button>
-      </div>
-      <button
-        onClick={() => removeSlot(dayId, slot.id)}
-        className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70"
-        title="枠を削除"
-      >
-        ×
-      </button>
-      {band && showDetails && (
-        <PlacedBandDetailModal band={band} slot={slot} onClose={() => setShowDetails(false)} />
-      )}
-    </div>
-  );
-}
-
-// One day, collapsed to a header + a flat vertical list of MobileSlotRow —
-// no side-by-side columns, no per-day settings/bulk-add/preset toolbar
-// (those stay desktop-only editing tools; see DesktopTimetable/DayPanel).
-// Starts expanded only for the first day so a long multi-day event doesn't
-// dump every slot on screen at once on a small viewport.
+// One day, collapsed to a header + a flat vertical list — no side-by-side
+// columns, no per-day settings/bulk-add/preset toolbar (those stay
+// desktop-only editing tools; see DesktopTimetable/DayPanel). Each slot
+// reuses SlotCard directly (the same component DayPanel renders) rather
+// than a second, simplified re-implementation: SlotCard already has
+// everything a phone needs — 44px touch targets, ▲/▼ buttons as a
+// non-drag fallback, and (once App.tsx's TouchSensor activation
+// constraint made long-press-to-drag safe alongside normal scrolling —
+// see its comment) real drag-and-drop that no longer fights the page's
+// own scroll gesture. Re-deriving that display/conflict/lock logic here
+// a second time was the actual "duplicated business logic" risk, not
+// which component renders it. Starts expanded only for the first day so
+// a long multi-day event doesn't dump every slot on screen at once.
 function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const bands = useAppStore((s) => s.bands) ?? EMPTY_BANDS;
@@ -220,26 +78,28 @@ function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen
             この日にはまだ枠がありません
           </p>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            {day.slots.map((slot, i) => {
-              const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
-              if (band) order++;
-              return (
-                <MobileSlotRow
-                  key={slot.id}
-                  dayId={day.id}
-                  slot={slot}
-                  band={band}
-                  index={i}
-                  total={day.slots.length}
-                  performanceOrder={band ? order : null}
-                  conflicts={conflictDetails.get(slot.id) ?? []}
-                  gearConflict={gearConflicts.has(slot.id)}
-                  concentrationEntries={concentrationDetails.get(slot.id) ?? []}
-                />
-              );
-            })}
-          </div>
+          <SortableContext items={day.slots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-1.5">
+              {day.slots.map((slot, i) => {
+                const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
+                if (band) order++;
+                return (
+                  <SlotCard
+                    key={slot.id}
+                    dayId={day.id}
+                    slot={slot}
+                    band={band}
+                    index={i}
+                    total={day.slots.length}
+                    performanceOrder={band ? order : null}
+                    conflicts={conflictDetails.get(slot.id) ?? []}
+                    gearConflict={gearConflicts.has(slot.id)}
+                    concentrationEntries={concentrationDetails.get(slot.id) ?? []}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
         ))}
     </div>
   );

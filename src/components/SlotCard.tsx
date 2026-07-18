@@ -125,8 +125,8 @@ export function SlotCard({
     <div
       ref={setNodeRef}
       style={rowStyle}
-      className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 ${
-        isDragging ? "opacity-40" : ""
+      className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 transition-transform ${
+        isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
         showBlockedHighlight
           ? "border-rose-500 bg-rose-950/40"
@@ -158,13 +158,16 @@ export function SlotCard({
         ref={setActivatorNodeRef}
         {...listeners}
         {...attributes}
-        // touch-none stops the browser from treating a touch-drag here as a
-        // page/list scroll gesture instead of handing it to dnd-kit — the
-        // standard fix for "drag and drop doesn't work on mobile" with
-        // PointerSensor (the default sensor, already touch-capable via the
-        // Pointer Events API once this is set).
-        className="flex min-h-11 w-8 shrink-0 touch-none cursor-grab items-center justify-center text-base text-slate-500 hover:text-slate-300 active:cursor-grabbing md:min-h-0 md:w-4 md:text-xs"
-        title="ドラッグして順番を入れ替え"
+        // No touch-action: none here — App.tsx's TouchSensor uses a
+        // delay-based activation constraint (long-press), which only
+        // calls preventDefault() once a hold has actually been
+        // recognized as a drag (see the comment there). Blocking
+        // touch-action outright would stop a normal scroll gesture that
+        // happens to start on this handle from ever reaching the
+        // browser, which is exactly what the long-press delay exists to
+        // avoid.
+        className="flex min-h-11 w-8 shrink-0 cursor-grab items-center justify-center text-base text-slate-500 hover:text-slate-300 active:cursor-grabbing md:min-h-0 md:w-4 md:text-xs"
+        title="ドラッグして順番を入れ替え（長押し）"
       >
         ⠿
       </button>
@@ -274,11 +277,13 @@ export function SlotCard({
             <div
               {...bandDraggable.listeners}
               {...bandDraggable.attributes}
-              className={`w-full min-h-11 touch-none md:min-h-0 ${
+              // No touch-action: none — see the slot drag-handle button's
+              // comment above; same delay-based TouchSensor, same reason.
+              className={`w-full min-h-11 scale-100 transition-transform md:min-h-0 ${
                 lockedByNickname
                   ? "cursor-not-allowed opacity-70"
                   : "cursor-grab active:cursor-grabbing"
-              }`}
+              } ${bandDraggable.isDragging ? "scale-[1.03]" : ""}`}
             >
               <p className="text-sm font-semibold text-slate-100">
                 {band.name}

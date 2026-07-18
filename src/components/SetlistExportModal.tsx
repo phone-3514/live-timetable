@@ -7,6 +7,7 @@ import { useApplicationStore } from "../store/useApplicationStore";
 import { THEMES, getSetlistPalette } from "../utils/shareThemes";
 import type { ThemeId } from "../utils/shareThemes";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { dataUrlToFile, shareOrDownloadFile, supportsFileShare } from "../utils/shareOrDownload";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -96,10 +97,12 @@ export function SetlistExportModal({ day, onClose }: Props) {
     setBusy("png");
     try {
       const dataUrl = await toPng(el, { pixelRatio: 2 });
-      const link = document.createElement("a");
-      link.download = `setlist-${day.label}-${themeId}.png`;
-      link.href = dataUrl;
-      link.click();
+      const filename = `setlist-${day.label}-${themeId}.png`;
+      const file = dataUrlToFile(dataUrl, filename, "image/png");
+      await shareOrDownloadFile(file, {
+        title: eventInfo.liveName || "セットリスト",
+        text: `${day.label}のセットリスト`,
+      });
     } finally {
       setBusy(null);
     }
@@ -201,7 +204,12 @@ export function SetlistExportModal({ day, onClose }: Props) {
         );
       }
 
-      pdf.save(`setlist-${day.label}-${themeId}.pdf`);
+      const filename = `setlist-${day.label}-${themeId}.pdf`;
+      const file = new File([pdf.output("blob")], filename, { type: "application/pdf" });
+      await shareOrDownloadFile(file, {
+        title: eventInfo.liveName || "セットリスト",
+        text: `${day.label}のセットリスト`,
+      });
     } finally {
       setBusy(null);
     }
@@ -310,14 +318,22 @@ export function SetlistExportModal({ day, onClose }: Props) {
             disabled={busy !== null}
             className="min-h-11 rounded border border-indigo-500 px-3 text-sm font-medium text-indigo-300 hover:bg-indigo-950/50 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {busy === "png" ? "画像を生成中…" : "画像として保存 (PNG・横向き)"}
+            {busy === "png"
+              ? "画像を生成中…"
+              : supportsFileShare
+                ? "画像を共有 / 保存 (PNG・横向き)"
+                : "画像として保存 (PNG・横向き)"}
           </button>
           <button
             onClick={handleDownloadPdf}
             disabled={busy !== null}
             className="min-h-11 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {busy === "pdf" ? "PDFを生成中…" : "PDFとして保存 (A4縦)"}
+            {busy === "pdf"
+              ? "PDFを生成中…"
+              : supportsFileShare
+                ? "PDFを共有 / 保存 (A4縦)"
+                : "PDFとして保存 (A4縦)"}
           </button>
         </div>
       </div>

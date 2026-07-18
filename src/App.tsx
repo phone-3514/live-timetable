@@ -1,5 +1,13 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { DndContext, DragOverlay } from "@dnd-kit/core";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
@@ -46,6 +54,27 @@ function App() {
     null,
   );
 
+  // Mouse and touch get different activation rules on purpose: a mouse
+  // drag on desktop should start the instant the cursor moves past a
+  // tiny distance (unchanged from before), but the same instant-start
+  // behavior on a touchscreen makes every attempt to scroll a slot list
+  // by touching a band card start a drag instead — see SlotCard.tsx/
+  // BandChip.tsx, which used to compensate with `touch-action: none` on
+  // every draggable node (blocking ALL scrolling that starts on them,
+  // not just accidental drags). A delay-based constraint fixes this at
+  // the source: dnd-kit's TouchSensor only calls preventDefault() once
+  // the touch has been held past `delay` without moving more than
+  // `tolerance` (see AbstractPointerSensor.handleMove in
+  // @dnd-kit/core) — a normal swipe-to-scroll exceeds tolerance well
+  // before 500ms and is silently handed back to the browser, while a
+  // held long-press activates the drag. That's what let touch-action:
+  // none come off those nodes.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
   // ⌘Z / Ctrl+Z and ⌘⇧Z / Ctrl+Y (redo) for the Timetable Editor's
   // placement history — skipped while focus is in a text input/textarea/
   // contentEditable so it doesn't fight the browser's own native undo
@@ -75,6 +104,19 @@ function App() {
   const handleDragStart = (event: DragStartEvent) => {
     const data = (event.active.data.current as ActiveDragData) ?? null;
     setActiveDragData(data);
+    // Fires exactly when a sensor activates a drag — for TouchSensor
+    // that's the moment the long-press delay elapses, so this doubles as
+    // the "you can now drag this" cue the touch activation constraint
+    // above needs: a short vibration where supported (Android Chrome;
+    // iOS Safari has no Vibration API, so this silently no-ops there —
+    // feature-detected, not browser-sniffed) and, since DragOverlay
+    // already shows a floating copy of whatever's being dragged, the
+    // ORIGINAL card's own isDragging-driven scale-up (see SlotCard.tsx/
+    // BandChip.tsx) is the other half of that same cue for devices
+    // without vibration.
+    if (typeof navigator.vibrate === "function") {
+      navigator.vibrate(50);
+    }
     // Broadcast to other collaborators (see useCollabStore/useLivePresence)
     // only for an actual band drag — a slot reorder doesn't move a band
     // identity anywhere another user would need to see "locked". No-op
@@ -122,6 +164,7 @@ function App() {
 
   return (
     <DndContext
+      sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => {
