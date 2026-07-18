@@ -57,8 +57,19 @@ function snapshotFromStore(): Omit<RoomDoc, "updatedAt"> {
 // between that and useAppStore.setState({ bands: undefined, ... }) —
 // which would crash every `bands.map(...)`/`days.map(...)` in the app on
 // the very next render.
+// Small helper for the payload-inspection logs below — pulls out
+// exactly the part/grade shape so a console reader doesn't have to dig
+// through a full bands array dump to answer "did this payload actually
+// carry part/grade."
+function summarizeMemberFields(bands: Band[] | undefined) {
+  return (bands ?? []).flatMap(
+    (b) => b.memberDetails?.map((m) => ({ band: b.name, name: m.name, grade: m.grade, part: m.part })) ?? [],
+  );
+}
+
 function applyRoomDocToStore(doc: RoomDoc) {
-  console.log("[useCollabRoom] Applying room doc to store — bands:", doc.bands?.length, "days:", doc.days?.length);
+  console.log("[useCollabRoom] onSnapshot: applying room doc to store — bands:", doc.bands?.length, "days:", doc.days?.length);
+  console.log("[useCollabRoom] onSnapshot: member grade/part in payload:", summarizeMemberFields(doc.bands));
   useAppStore.setState({
     bands: doc.bands ?? [],
     days: doc.days ?? [],
@@ -158,7 +169,10 @@ export function useCollabRoom(isAuthenticated: boolean) {
       if (!changed) return;
       const updatedAt = Date.now();
       lastKnownUpdatedAt.current = updatedAt;
-      update(() => ({ ...snapshotFromStore(), updatedAt }));
+      const snapshot = snapshotFromStore();
+      console.log("[useCollabRoom] write: pushing local state to Firestore — bands:", snapshot.bands.length, "days:", snapshot.days.length);
+      console.log("[useCollabRoom] write: member grade/part in payload:", summarizeMemberFields(snapshot.bands));
+      update(() => ({ ...snapshot, updatedAt }));
     });
   }, [roomId, update]);
 
