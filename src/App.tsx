@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
@@ -13,6 +13,18 @@ import { SlotDragPreview } from "./components/SlotDragPreview";
 import { ApplicationManagerTab } from "./components/applications/ApplicationManagerTab";
 import { BackupControls } from "./components/BackupControls";
 import type { Band, TimetableSlot } from "./types";
+
+// CollabControls pulls in the firebase SDK (~150kB gzipped) — same
+// reasoning as the jsPDF/exceljs/html2canvas dynamic imports elsewhere
+// in this app: a heavy dependency only some visitors ever touch stays
+// out of the main bundle. Gated on the raw env var (not firebase.ts's
+// isFirebaseConfigured, which would itself require importing the SDK to
+// check) so a deploy with no Firebase project configured — the default,
+// and every visitor today — never fetches this chunk at all.
+const CollabControls = lazy(() =>
+  import("./components/CollabControls").then((m) => ({ default: m.CollabControls })),
+);
+const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID);
 
 type ActiveDragData =
   | { type: "band"; band: Band }
@@ -137,6 +149,11 @@ function App() {
             </button>
           </nav>
           <BackupControls />
+          {hasFirebaseConfig && (
+            <Suspense fallback={null}>
+              <CollabControls />
+            </Suspense>
+          )}
           {/* Event-wide details (not per-day) — shown on the share image's
               header (live name/venue) and footer (organization name). Only
               relevant to the Timetable Editor. */}
