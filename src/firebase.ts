@@ -33,6 +33,18 @@ const firebaseConfig = {
 // (otherwise fully offline-capable) app for every visitor who never
 // touches real-time collaboration.
 export const isFirebaseConfigured = Boolean(firebaseConfig.projectId);
+// Separate from isFirebaseConfigured: Firestore (persistent data) and
+// RTDB (live cursors) are configured independently, since databaseURL is
+// its own env var (see .env.example) that can end up unset even when
+// projectId etc. are set — e.g. a GitHub Actions deploy where the
+// VITE_FIREBASE_DATABASE_URL secret hasn't been added yet. getDatabase()
+// throws a *fatal, uncatchable-by-try/catch* error on a missing/malformed
+// databaseURL (confirmed live — see project memory), which crashed the
+// entire app with no Error Boundary to stop it. Never call getDatabase()
+// without checking this first.
+const isRtdbConfigured = Boolean(firebaseConfig.databaseURL);
+
+console.log("[firebase] 1. Loading config — Firestore configured:", isFirebaseConfigured, "RTDB configured:", isRtdbConfigured);
 
 const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 
@@ -44,11 +56,13 @@ const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 // election overhead this app doesn't need — each collaborator is one
 // person in one tab, not one person juggling several tabs on the same
 // room.
+console.log("[firebase] 2. Initializing Firestore…");
 export const db = firebaseApp
   ? initializeFirestore(firebaseApp, {
       localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
     })
   : null;
+console.log("[firebase] 2. Firestore ready:", db !== null);
 
 // Realtime Database, used only for ephemeral collaborative state (live
 // cursors, drag-in-progress locks — see useLivePresence) that's cheap to
@@ -57,4 +71,6 @@ export const db = firebaseApp
 // this is deliberately a second, narrower-purpose Firebase product, not a
 // replacement — see the Firestore-vs-RTDB comparison in project memory
 // for why persistent data went to Firestore in the first place.
-export const rtdb = firebaseApp ? getDatabase(firebaseApp) : null;
+console.log("[firebase] 3. Initializing Realtime Database…");
+export const rtdb = firebaseApp && isRtdbConfigured ? getDatabase(firebaseApp) : null;
+console.log("[firebase] 3. RTDB ready:", rtdb !== null);

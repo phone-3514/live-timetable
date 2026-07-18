@@ -13,6 +13,7 @@ import { BandDragPreview } from "./components/BandDragPreview";
 import { SlotDragPreview } from "./components/SlotDragPreview";
 import { ApplicationManagerTab } from "./components/applications/ApplicationManagerTab";
 import { BackupControls } from "./components/BackupControls";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Band, TimetableSlot } from "./types";
 
 // CollabRoot pulls in the firebase SDK (~150kB gzipped) — same reasoning
@@ -163,9 +164,18 @@ function App() {
           </nav>
           <BackupControls />
           {hasFirebaseConfig && (
-            <Suspense fallback={null}>
-              <CollabRoot />
-            </Suspense>
+            // Local boundary so a collaboration-feature crash (Firebase
+            // misconfiguration, a bad room doc, etc.) only disables that
+            // one widget — the timetable editor underneath keeps working
+            // fully offline/local, exactly as if this whole feature
+            // didn't exist. See project memory for the incident (an
+            // uncaught RTDB init error with no boundary at all) this is
+            // specifically here to contain.
+            <ErrorBoundary title="共同編集機能" inline>
+              <Suspense fallback={null}>
+                <CollabRoot />
+              </Suspense>
+            </ErrorBoundary>
           )}
           {/* Event-wide details (not per-day) — shown on the share image's
               header (live name/venue) and footer (organization name). Only

@@ -19,12 +19,14 @@ import { readStoredNickname } from "../utils/nickname";
 // modal is scoped to "joining a room," not to every app load, so
 // ordinary local-only use is completely unaffected).
 export function CollabRoot() {
+  console.log("[CollabRoot] 4. Mounting collaboration UI");
   const { roomId, status, startRoom, leaveRoom } = useCollabRoom();
   const [nickname, setNickname] = useState<string | null>(() => readStoredNickname());
 
   useEffect(() => {
+    console.log("[CollabRoot] 5. Nickname check — roomId:", roomId, "nickname:", nickname);
     useCollabStore.getState().setNickname(nickname);
-  }, [nickname]);
+  }, [nickname, roomId]);
 
   useLivePresence(roomId, nickname);
 

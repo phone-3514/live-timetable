@@ -43,9 +43,18 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
 
   useEffect(() => {
     if (!roomId || !nickname || !rtdb) {
+      console.log(
+        "[useLivePresence] 6. Not connecting yet — roomId:",
+        roomId,
+        "nickname:",
+        nickname,
+        "rtdb configured:",
+        rtdb !== null,
+      );
       useCollabStore.getState().setOthers([]);
       return;
     }
+    console.log("[useLivePresence] 6. Room + nickname ready — connecting to RTDB presence");
 
     const myRef = ref(rtdb, `presence/${roomId}/${clientIdRef.current}`);
     const roomRef = ref(rtdb, `presence/${roomId}`);
