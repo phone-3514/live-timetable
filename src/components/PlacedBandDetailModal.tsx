@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -100,12 +100,17 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     setEditMembers((prev) => [...prev, { name: "", grade: "", part: "" }]);
   }
 
-  function handleSave() {
+  // Returns whether the save actually went through — callers that also
+  // want to close the modal (see the Enter-key handler below) need to
+  // know the difference between "saved" and "rejected by validation," so
+  // they don't close out from under a blank name/invalid duration the
+  // user hasn't fixed yet.
+  function handleSave(): boolean {
     const trimmedName = editName.trim();
-    if (!trimmedName) return;
+    if (!trimmedName) return false;
     const parsedDuration = editDuration.trim() ? Number(editDuration) : null;
     if (parsedDuration != null && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
-      return;
+      return false;
     }
     // Blank-name rows (an added-then-abandoned row, or a name someone
     // cleared) are dropped rather than saved as an empty member — same
@@ -156,7 +161,39 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       });
     }
     setIsEditing(false);
+    return true;
   }
+
+  // Enter-to-advance: view → edit → save-and-close, entirely keyboard
+  // driven. A window-level listener (rather than a React onKeyDown on the
+  // modal div) so it fires even when nothing inside the modal happens to
+  // have focus yet (activeElement then falls back to <body>, which isn't
+  // TEXTAREA or BUTTON and so still hits the normal-input/background
+  // branch below) — the same reasoning as useEscapeKey's own
+  // window-level listener. Checked via document.activeElement rather than
+  // e.target because a window listener's target is always `window`
+  // itself, never the focused element.
+  //
+  // TEXTAREA is excluded so Enter inserts a newline in the setlist field
+  // instead of submitting — a multi-line field where Enter is expected to
+  // do the obvious text-editing thing. BUTTON is excluded because a
+  // focused <button> already activates its own onClick on Enter
+  // natively; re-handling it here would double-fire save/edit.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === "TEXTAREA" || tag === "BUTTON") return;
+      e.preventDefault();
+      if (isEditing) {
+        if (handleSave()) onClose();
+      } else {
+        startEditing();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   return (
     <div
