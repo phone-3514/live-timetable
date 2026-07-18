@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { computeMemberFrameCounts, useApplicationStore } from "../../store/useApplicationStore";
+import { useIsMobile } from "../../hooks/useViewport";
 import { ApplicationImportPanel } from "./ApplicationImportPanel";
 import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
@@ -9,6 +10,7 @@ import { findNearDuplicateNames } from "../../utils/nameResolution";
 import type { Application } from "../../types";
 
 export function ApplicationManagerTab() {
+  const isMobile = useIsMobile();
   const applications = useApplicationStore((s) => s.applications);
   const approveApplication = useApplicationStore((s) => s.approveApplication);
   const unapproveApplication = useApplicationStore((s) => s.unapproveApplication);
@@ -119,7 +121,14 @@ export function ApplicationManagerTab() {
           side-by-side columns that are supposed to fill the full height. */}
       <div className="grid flex-1 content-start grid-cols-1 gap-4 p-4 md:min-h-0 md:overflow-hidden lg:content-normal lg:grid-cols-[340px_1fr]">
         <div className="flex flex-col gap-3 md:min-h-0 md:overflow-y-auto">
-          <ApplicationImportPanel />
+          {/* Discord chat-log import is a bulk-admin, desktop-centric
+              workflow (drag-and-drop a file, or paste from a desktop
+              clipboard) — omitted entirely on mobile, not just visually
+              hidden, so no space is reserved for it and MemberFrameCounts
+              below simply flows up to fill the freed space. Mobile still
+              has full review/approve access to whatever was already
+              imported; it just isn't where new applications get added. */}
+          {!isMobile && <ApplicationImportPanel />}
           <MemberFrameCounts
             frameCounts={frameCounts}
             selectedMember={filterText || null}

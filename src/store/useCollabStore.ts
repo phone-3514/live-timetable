@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 export type PresenceEntry = {
   clientId: string;
@@ -12,6 +13,18 @@ export type PresenceEntry = {
   cursor: { xPct: number; yPct: number } | null;
   isDragging: boolean;
   draggedBandId: string | null;
+  // Which band's card this collaborator's mouse is currently over — a
+  // band id, or null when they're not hovering any tracked card. Unlike
+  // `cursor` above, this is layout-independent: a raw x/y position is
+  // meaningless translated onto a completely different DOM arrangement
+  // (desktop's side-by-side grid vs. mobile's accordion list), but "band
+  // X's card" refers to the same thing regardless of where either
+  // viewer's layout happens to draw it. That's what lets a mobile viewer
+  // render "someone's looking at this" directly on the matching
+  // accordion row instead of trying to reproduce a floating cursor that
+  // wouldn't correspond to anything on their screen. See SlotCard.tsx's
+  // onMouseEnter/onMouseLeave and useLivePresence.ts.
+  hoveredElementId: string | null;
 };
 
 // Mirrors useFirestoreSync's SyncStatus exactly (same literal values) —
@@ -34,11 +47,17 @@ type CollabState = {
    * bundle. The lazy-loaded useLivePresence hook is the only thing that
    * reads `myDragState` and actually pushes it to RTDB. */
   myDragState: DragState;
+  /** This client's own currently-hovered band id, or null. Same
+   * Firebase-free write pattern as myDragState — SlotCard writes here
+   * directly on mouse enter/leave, and the lazy-loaded useLivePresence
+   * hook is the only thing that reads it and pushes it to RTDB. */
+  myHoveredElementId: string | null;
 
   setRoomState: (roomId: string | null, status: CollabStatus) => void;
   setNickname: (nickname: string | null) => void;
   setOthers: (others: PresenceEntry[]) => void;
   setMyDragState: (state: DragState) => void;
+  setMyHoveredElementId: (id: string | null) => void;
 };
 
 // Shared, no-Firebase-dependency slice of collaboration state — see the
@@ -53,11 +72,13 @@ export const useCollabStore = create<CollabState>((set) => ({
   myNickname: null,
   others: [],
   myDragState: { isDragging: false, draggedBandId: null },
+  myHoveredElementId: null,
 
   setRoomState: (roomId, status) => set({ roomId, status }),
   setNickname: (myNickname) => set({ myNickname }),
   setOthers: (others) => set({ others }),
   setMyDragState: (myDragState) => set({ myDragState }),
+  setMyHoveredElementId: (myHoveredElementId) => set({ myHoveredElementId }),
 }));
 
 /** Nickname of whichever OTHER collaborator is currently dragging this
@@ -68,4 +89,27 @@ export function useLockedBandOwner(bandId: string | undefined): string | null {
     if (!bandId) return null;
     return s.others.find((o) => o.isDragging && o.draggedBandId === bandId)?.nickname ?? null;
   });
+}
+
+/** Nicknames of every OTHER collaborator currently hovering this band's
+ * card, empty when nobody is. Used by SlotCard's mobile presence badge —
+ * see PresenceEntry.hoveredElementId for why element-id (not cursor
+ * position) is what makes this meaningful on a layout completely
+ * different from whichever one the hovering collaborator is using. */
+export function useHoveringUsers(bandId: string | undefined): string[] {
+  // useShallow so the mapped array's element-by-element equality (not
+  // reference equality) decides whether this actually changed — without
+  // it, a plain selector returning `.filter().map()` hands back a brand
+  // new array on every store notification regardless of whether the
+  // hovering set truly changed, and React 18's useSyncExternalStore
+  // treats that as "the snapshot is always different," which forces an
+  // infinite re-render loop the very first time two clients are in a
+  // room together (hit this directly while verifying — SlotCard crashed
+  // via ErrorBoundary with "Maximum update depth exceeded").
+  return useCollabStore(
+    useShallow((s) => {
+      if (!bandId) return [];
+      return s.others.filter((o) => o.hoveredElementId === bandId).map((o) => o.nickname);
+    }),
+  );
 }

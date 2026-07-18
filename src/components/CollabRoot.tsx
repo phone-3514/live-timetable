@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useCollabRoom } from "../hooks/useCollabRoom";
 import { useLivePresence } from "../hooks/useLivePresence";
 import { useCollabStore } from "../store/useCollabStore";
+import { useIsMobile } from "../hooks/useViewport";
 import { CollabControls } from "./CollabControls";
 import { LiveCursors } from "./LiveCursors";
 import { NicknameEntryModal } from "./NicknameEntryModal";
@@ -30,6 +31,12 @@ export function CollabRoot() {
 
   const { roomId, status, startRoom, leaveRoom } = useCollabRoom(isAuthenticated);
   const [nickname, setNickname] = useState<string | null>(() => readStoredNickname());
+  // Own viewport, not any other collaborator's — a floating cursor
+  // reproduces a POSITION on the sender's screen, which has no meaning on
+  // a layout shaped completely differently (mobile's accordion list vs.
+  // desktop's grid). SlotCard's element-id-based hover badge (see
+  // useHoveringUsers) is what mobile viewers get instead.
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     console.log("[CollabRoot] 5. Nickname check — roomId:", roomId, "authenticated:", isAuthenticated, "nickname:", nickname);
@@ -72,7 +79,7 @@ export function CollabRoot() {
     <>
       <CollabControls roomId={roomId} status={status} startRoom={startRoom} leaveRoom={leaveRoom} />
       {needsNickname && <NicknameEntryModal onSubmit={setNickname} />}
-      {roomId && nickname && <LiveCursors />}
+      {roomId && nickname && !isMobile && <LiveCursors />}
     </>
   );
 }

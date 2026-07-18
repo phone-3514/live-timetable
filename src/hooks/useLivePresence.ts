@@ -24,6 +24,7 @@ type RawPresenceValue = {
   cursor?: { xPct: number; yPct: number } | null;
   isDragging?: boolean;
   draggedBandId?: string | null;
+  hoveredElementId?: string | null;
 };
 
 /**
@@ -68,6 +69,7 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
       cursor: null,
       isDragging: false,
       draggedBandId: null,
+      hoveredElementId: null,
       updatedAt: serverTimestamp(),
     });
     const disconnectHandle = onDisconnect(myRef);
@@ -83,6 +85,7 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
           cursor: v.cursor ?? null,
           isDragging: Boolean(v.isDragging),
           draggedBandId: v.draggedBandId ?? null,
+          hoveredElementId: v.hoveredElementId ?? null,
         }));
       useCollabStore.getState().setOthers(others);
     });
@@ -108,10 +111,25 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
       void update(myRef, { ...state.myDragState, updatedAt: serverTimestamp() });
     });
 
+    // Mirrors this client's OWN hovered-band id (written to useCollabStore
+    // by SlotCard's onMouseEnter/onMouseLeave, again with zero Firebase
+    // dependency there) into RTDB whenever it changes — the element-id
+    // equivalent of the cursor mousemove broadcast above. No throttling:
+    // enter/leave already fires at most once per card transition, nowhere
+    // near mousemove's rate.
+    const unsubscribeHover = useCollabStore.subscribe((state, prev) => {
+      if (state.myHoveredElementId === prev.myHoveredElementId) return;
+      void update(myRef, {
+        hoveredElementId: state.myHoveredElementId,
+        updatedAt: serverTimestamp(),
+      });
+    });
+
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       unsubscribe();
       unsubscribeDragState();
+      unsubscribeHover();
       void disconnectHandle.cancel();
       void remove(myRef);
       useCollabStore.getState().setOthers([]);
