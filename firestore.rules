@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// live-timetable has no login system by design (see project memory:
+// feedback_no-backend-static-spa) — a "room" is joined purely by knowing
+// its roomId, shared as a URL (the same trust model as a Google Docs
+// "anyone with the link can edit" share). These rules can't check WHO is
+// writing, since there's no auth to check against; what they DO enforce
+// is that every write is a well-formed document for its collection, so
+// one buggy client (or a stray script hitting the API directly) can't
+// corrupt another collaborator's session with a malformed or oversized
+// document. If real access control (private rooms, per-user permissions)
+// is ever needed, that requires adding Firebase Auth — out of scope for
+// this pass.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow write: if isValidRoomMeta(request.resource.data);
+
+      match /bands/{bandId} {
+        allow read: if true;
+        allow write: if isValidBand(request.resource.data);
+        allow delete: if true;
+      }
+
+      match /timetable/{dayId} {
+        allow read: if true;
+        allow write: if isValidDay(request.resource.data);
+        allow delete: if true;
+      }
+
+      match /members/{memberId} {
+        allow read: if true;
+        allow write: if isValidMember(request.resource.data);
+        allow delete: if true;
+      }
+    }
+
+    // Every cap below is generous for a college club's live-event
+    // timetable (dozens of bands, a handful of days) but still bounds
+    // the size of any single write — the free tier's per-document 1MiB
+    // limit is already a backstop, these are tighter, deliberately
+    // low-enough-to-notice-a-bug ceilings on top of it.
+    function isValidRoomMeta(data) {
+      return data.keys().hasAll(['liveName'])
+        && data.liveName is string && data.liveName.size() < 200;
+    }
+
+    function isValidBand(data) {
+      return data.keys().hasAll(['name', 'members'])
+        && data.name is string && data.name.size() < 200
+        && data.members is list && data.members.size() < 50;
+    }
+
+    function isValidDay(data) {
+      return data.keys().hasAll(['label', 'slots'])
+        && data.label is string && data.label.size() < 50
+        && data.slots is list && data.slots.size() < 500;
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll(['displayName'])
+        && data.displayName is string && data.displayName.size() < 100;
+    }
+  }
+}

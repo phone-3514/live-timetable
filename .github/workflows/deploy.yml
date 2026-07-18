@@ -25,6 +25,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # Optional — only needed once real-time collaboration is set
+          # up (see README.md). Vite bakes VITE_-prefixed vars into the
+          # static build at this step; unset secrets just become empty
+          # strings, which firebase.ts already treats as "not
+          # configured" and falls back to local-only mode, so leaving
+          # these unset here doesn't break the build.
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

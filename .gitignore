@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Per-project Firebase config (see .env.example) — not secret, but not
+# meant to be committed either, since it's specific to whoever set up
+# their own Firebase project.
+.env
+.env.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
