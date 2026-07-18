@@ -7,6 +7,7 @@ import {
   type MemberFrameCount,
 } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
+import { ApplicationMobileCard } from "./ApplicationMobileCard";
 
 type SortKey =
   | "applicantName"
@@ -32,7 +33,7 @@ interface Props {
   onFilterTextChange: (text: string) => void;
 }
 
-function MemberBadgeList({ members }: { members: Application["members"] }) {
+export function MemberBadgeList({ members }: { members: Application["members"] }) {
   return (
     <ul className="space-y-1">
       {members.map((m, i) => (
@@ -46,7 +47,7 @@ function MemberBadgeList({ members }: { members: Application["members"] }) {
   );
 }
 
-function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
+export function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
   return (
     <ul className="space-y-0.5">
       {setlist.map((s, i) => (
@@ -65,7 +66,7 @@ function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
 // clutter). Click toggles an inline breakdown ("3枠: 1人, 4枠: 1人"); the
 // same text is also on the badge's title so a mouse hover shows it without
 // a click, satisfying both interaction styles on desktop and touch.
-function HighParticipationBadge({ info }: { info: HighParticipationInfo }) {
+export function HighParticipationBadge({ info }: { info: HighParticipationInfo }) {
   const [expanded, setExpanded] = useState(false);
   if (info.highCount === 0) return null;
 
@@ -233,95 +234,23 @@ export function ApplicationTable({
         </p>
       )}
 
-      {/* Mobile (<768px): one card per application instead of a table row —
-          a 9-column table has no room to stay legible once each column
-          drops to ~35px on a 320px screen, so this is a different layout,
-          not just the same table squeezed down. */}
+      {/* Mobile (<768px): one collapsed-by-default accordion card per
+          application instead of a table row — a 9-column table has no room
+          to stay legible once each column drops to ~35px on a 320px
+          screen, so this is a different layout, not just the same table
+          squeezed down. See ApplicationMobileCard for why member/setlist
+          details collapse behind local per-card state. */}
       {sorted.length > 0 && (
         <div className="flex flex-col gap-2 overflow-y-auto md:hidden">
           {sorted.map((app) => (
-            <div
+            <ApplicationMobileCard
               key={app.id}
-              className={`rounded-lg border p-3 ${
-                app.approved
-                  ? "border-emerald-700 bg-emerald-950/20"
-                  : "border-slate-700 bg-slate-800"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="break-words text-sm font-semibold text-slate-100">
-                    {app.bandName}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">
-                    {app.applicantName || "-"} ・ {app.applicationDateTime || "-"}
-                  </p>
-                </div>
-                <Badge
-                  tone={app.approved ? "status-approved" : "status-pending"}
-                  className="shrink-0"
-                >
-                  {app.approved ? "承認済み" : "未承認"}
-                </Badge>
-              </div>
-
-              {app.parseWarning && (
-                <p className="mt-1.5 text-xs text-amber-400">⚠ {app.parseWarning}</p>
-              )}
-
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <Badge tone={app.hasSync ? "sync-on" : "sync-off"}>
-                  同期{app.hasSync ? "あり" : "なし"}
-                </Badge>
-                {app.durationMinutes != null && (
-                  <span className="text-xs text-slate-300">{app.durationMinutes}分</span>
-                )}
-                {app.desiredDateTime && (
-                  <span className="text-xs text-slate-300">・{app.desiredDateTime}</span>
-                )}
-              </div>
-
-              {(highParticipationByAppId.get(app.id)?.highCount ?? 0) > 0 && (
-                <div className="mt-2">
-                  <HighParticipationBadge info={highParticipationByAppId.get(app.id)!} />
-                </div>
-              )}
-
-              {app.setlist.length > 0 && (
-                <div className="mt-2 text-xs text-slate-300">
-                  <p className="mb-0.5 font-semibold text-slate-500">セットリスト</p>
-                  <SetlistLines setlist={app.setlist} />
-                </div>
-              )}
-
-              {app.members.length > 0 && (
-                <div className="mt-2 text-xs">
-                  <p className="mb-1 font-semibold text-slate-500">メンバー</p>
-                  <MemberBadgeList members={app.members} />
-                </div>
-              )}
-
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => (app.approved ? onUnapprove(app.id) : onApprove(app.id))}
-                  className={`min-h-11 flex-1 rounded-md text-sm font-semibold ${
-                    app.approved
-                      ? "border border-emerald-600 bg-emerald-900/40 text-emerald-200"
-                      : "bg-emerald-600 text-white hover:bg-emerald-500"
-                  }`}
-                >
-                  {app.approved ? "✓ キャンセル" : "承認"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRequestReject(app)}
-                  className="min-h-11 flex-1 rounded-md border-2 border-red-600 text-sm font-semibold text-red-400 hover:bg-red-950/50"
-                >
-                  却下
-                </button>
-              </div>
-            </div>
+              app={app}
+              highParticipationInfo={highParticipationByAppId.get(app.id)!}
+              onApprove={onApprove}
+              onUnapprove={onUnapprove}
+              onRequestReject={onRequestReject}
+            />
           ))}
         </div>
       )}
