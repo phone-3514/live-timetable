@@ -103,7 +103,10 @@ function findHeaderBefore(lines: string[], beforeIndex: number): Header | null {
   return null;
 }
 
-function splitSetlistEntry(entry: string): ApplicationSetlistItem {
+// Exported so PlacedBandDetailModal can reuse the exact same title/artist
+// split when syncing a Band-side setlist edit back into a linked
+// Application's structured setlist — one splitting rule, not two.
+export function splitSetlistEntry(entry: string): ApplicationSetlistItem {
   const slash = entry.match(/^(.+?)\s*[/／]\s*(.+)$/);
   if (slash) return { title: slash[1].trim(), artist: slash[2].trim() };
   return { title: entry.trim(), artist: "" };

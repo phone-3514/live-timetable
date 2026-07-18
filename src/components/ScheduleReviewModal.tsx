@@ -4,6 +4,7 @@ import {
   computeGearConflictDetails,
   computeMemberBlockBreakdown,
   computeMemberSchedules,
+  formatConcentrationMessage,
   useAppStore,
   type ConcentrationSummaryEntry,
   type MemberBlockUsage,
@@ -174,9 +175,12 @@ export function ScheduleReviewModal({ onClose }: Props) {
                         className="mt-1 text-[11px] font-medium text-amber-400"
                       >
                         ⚠️ {!isSingleDay && `${c.dayLabel} `}
-                        {c.level === "full"
-                          ? `全出番（${c.totalSlots}枠中${c.totalSlots}枠）が同ブロックに集中しています`
-                          : `出番が集中しています（${c.totalSlots}枠中${c.maxBlockSlots}枠が同ブロック）`}
+                        {formatConcentrationMessage(
+                          c.totalSlots,
+                          c.maxBlockSlots,
+                          c.level,
+                          c.blockTimeRange,
+                        )}
                       </p>
                     ))}
 
@@ -188,7 +192,10 @@ export function ScheduleReviewModal({ onClose }: Props) {
                             className="rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] font-medium text-slate-300"
                           >
                             {!isSingleDay && `${b.dayLabel} `}
-                            ブロック{b.block + 1}: {b.count}枠
+                            {b.timeRange
+                              ? `${b.timeRange.start}〜${b.timeRange.end}`
+                              : `ブロック${b.block + 1}`}
+                            : {b.count}枠
                           </span>
                         ))}
                       </div>

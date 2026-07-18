@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { splitSetlistEntry } from "../utils/parseApplications";
 import { Badge } from "./applications/Badge";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
@@ -29,7 +30,7 @@ interface Props {
 export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const applications = useApplicationStore((s) => s.applications);
   const updateBand = useAppStore((s) => s.updateBand);
-  const updateApplicationMembers = useApplicationStore((s) => s.updateApplicationMembers);
+  const syncApplicationFromBand = useApplicationStore((s) => s.syncApplicationFromBand);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
   // Priority for what's actually shown/edited: the band's own
@@ -52,6 +53,8 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   );
   const [editGearTags, setEditGearTags] = useState(band.gearTags.join(", "));
   const [editMembers, setEditMembers] = useState<BandMemberDetail[]>([]);
+  const [editSetlist, setEditSetlist] = useState("");
+  const [editHasSync, setEditHasSync] = useState(band.hasSync);
 
   // Escape cancels an in-progress edit first (same as clicking
   // "キャンセル"), rather than immediately closing the whole modal out from
@@ -75,6 +78,13 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     setEditDuration(band.durationMinutes != null ? String(band.durationMinutes) : "");
     setEditGearTags(band.gearTags.join(", "));
     setEditMembers(displayMembers.map((m) => ({ ...m })));
+    // Seeds from the same priority-resolved `setlist` display variable used
+    // below (linkedApp's setlist when one exists, else the band's own) —
+    // not band.setlist directly — so editing starts from whatever's
+    // actually shown, the same way editMembers seeds from displayMembers
+    // rather than band.memberDetails.
+    setEditSetlist(setlist.join("\n"));
+    setEditHasSync(band.hasSync);
     setIsEditing(true);
   }
 
@@ -105,6 +115,10 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     const cleanedMembers = editMembers
       .map((m) => ({ name: m.name.trim(), grade: m.grade.trim(), part: m.part.trim() }))
       .filter((m) => m.name.length > 0);
+    const cleanedSetlist = editSetlist
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
     // Slot start/end times aren't stored on the Band itself — they're
     // recomputed from cumulative durations down the day whenever any band's
     // durationMinutes changes (see recomputeTimes in useAppStore), so
@@ -123,12 +137,23 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       // (getMemberConflictDetails) actually read, so a rename here needs
       // to show up there too, not just in the Setlist export.
       members: cleanedMembers.map((m) => m.name),
+      setlist: cleanedSetlist,
+      hasSync: editHasSync,
     });
     // Propagate to the Application Manager's own copy too, so it never
-    // shows stale name/grade/part after an edit made here — see this
-    // component's top-of-file comment.
+    // shows stale name/setlist/sync status/members after an edit made here
+    // — see this component's top-of-file comment. splitSetlistEntry is the
+    // exact same title/artist split parseApplications uses when first
+    // reading a submission, so a setlist edited here round-trips through
+    // the Application's structured {title, artist} shape without drifting
+    // from how every other setlist in the app got parsed.
     if (linkedApp) {
-      updateApplicationMembers(linkedApp.id, cleanedMembers);
+      syncApplicationFromBand(linkedApp.id, {
+        bandName: trimmedName,
+        members: cleanedMembers,
+        setlist: cleanedSetlist.map(splitSetlistEntry),
+        hasSync: editHasSync,
+      });
     }
     setIsEditing(false);
   }
@@ -161,7 +186,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               type="button"
               onClick={startEditing}
               className="flex h-9 shrink-0 items-center gap-1 rounded border border-slate-600 px-2 text-xs font-medium text-slate-300 hover:bg-slate-800"
-              title="バンド名・演奏時間・メンバーを編集"
+              title="バンド名・演奏時間・メンバー・セットリスト・同期演奏を編集"
             >
               ✎ 編集
             </button>
@@ -218,10 +243,22 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
 
           <div>
             <dt className="font-semibold text-slate-500">同期・機材</dt>
-            <dd className="mt-1 flex flex-wrap gap-1.5">
-              <Badge tone={band.hasSync ? "sync-on" : "sync-off"}>
-                同期演奏{band.hasSync ? "あり" : "なし"}
-              </Badge>
+            <dd className="mt-1 flex flex-wrap items-center gap-1.5">
+              {isEditing ? (
+                <label className="flex min-h-11 items-center gap-1.5 text-slate-200 md:min-h-0">
+                  <input
+                    type="checkbox"
+                    checked={editHasSync}
+                    onChange={(e) => setEditHasSync(e.target.checked)}
+                    className="h-4 w-4 accent-indigo-500"
+                  />
+                  同期演奏あり
+                </label>
+              ) : (
+                <Badge tone={band.hasSync ? "sync-on" : "sync-off"}>
+                  同期演奏{band.hasSync ? "あり" : "なし"}
+                </Badge>
+              )}
               {band.hasKeyboard && <Badge tone="part">🎹 キーボードあり</Badge>}
             </dd>
           </div>
@@ -315,7 +352,15 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
           <div>
             <dt className="font-semibold text-slate-500">セットリスト</dt>
             <dd className="mt-1">
-              {setlist.length > 0 ? (
+              {isEditing ? (
+                <textarea
+                  value={editSetlist}
+                  onChange={(e) => setEditSetlist(e.target.value)}
+                  placeholder={"1行に1曲（例：桜の時/aiko）"}
+                  rows={4}
+                  className="w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+              ) : setlist.length > 0 ? (
                 <ul className="space-y-0.5 text-slate-200">
                   {setlist.map((song, i) => (
                     <li key={i}>{song}</li>

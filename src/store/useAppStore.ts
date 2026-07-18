@@ -983,6 +983,33 @@ function computeSlotBlocks(day: TimetableDay): Map<string, number> {
   return blockBySlotId;
 }
 
+export type BlockTimeRange = { start: string; end: string };
+
+// The actual clock-time window each block covers — the first performance
+// slot's start through the last one's end, for the concentration warning
+// to show "9:00〜12:00" instead of an opaque "ブロック1". Walks every
+// performance slot (filled or still empty) between dividers, not just
+// band-having ones, so the range reflects the block's real span rather
+// than just wherever bands happen to be placed so far.
+function computeBlockTimeRanges(day: TimetableDay): Map<number, BlockTimeRange> {
+  const ranges = new Map<number, BlockTimeRange>();
+  let block = 0;
+  for (const slot of day.slots) {
+    if (slot.customLabel !== null) {
+      block++;
+      continue;
+    }
+    if (!slot.startTime || !slot.endTime) continue;
+    const existing = ranges.get(block);
+    if (!existing) {
+      ranges.set(block, { start: slot.startTime, end: slot.endTime });
+    } else {
+      existing.end = slot.endTime;
+    }
+  }
+  return ranges;
+}
+
 // "Performance concentration" warning: a member with 2+ performances that
 // day, most or all of which land in the exact same block (see
 // computeSlotBlocks), never gets a real break — they're either on stage or
@@ -1007,6 +1034,9 @@ export type ConcentrationEntry = {
   totalSlots: number;
   /** How many of those land in the single most-crowded block. */
   maxBlockSlots: number;
+  /** The crowded block's actual clock-time window, e.g. {start:"09:00",
+   * end:"12:00"} — null only if the block somehow has no timed slots. */
+  blockTimeRange: BlockTimeRange | null;
 };
 
 type ConcentrationStat = {
@@ -1015,6 +1045,7 @@ type ConcentrationStat = {
   maxBlockSlots: number;
   maxBlockSlotIds: string[];
   level: ConcentrationLevel;
+  blockTimeRange: BlockTimeRange | null;
 };
 
 // Shared by getConcentrationWarningDetails (per-slot, for SlotCard) and
@@ -1026,6 +1057,7 @@ function computeDayConcentrationStats(
 ): Map<string, ConcentrationStat> {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const blockBySlotId = computeSlotBlocks(day);
+  const blockTimeRanges = computeBlockTimeRanges(day);
   const byMember = new Map<
     string,
     { displayName: string; slotsByBlock: Map<number, string[]> }
@@ -1058,9 +1090,13 @@ function computeDayConcentrationStats(
       0,
     );
     if (totalSlots < 2) continue;
+    let maxBlock = -1;
     let maxBlockSlotIds: string[] = [];
-    for (const ids of slotsByBlock.values()) {
-      if (ids.length > maxBlockSlotIds.length) maxBlockSlotIds = ids;
+    for (const [blockIdx, ids] of slotsByBlock) {
+      if (ids.length > maxBlockSlotIds.length) {
+        maxBlockSlotIds = ids;
+        maxBlock = blockIdx;
+      }
     }
     const maxBlockSlots = maxBlockSlotIds.length;
     if (maxBlockSlots < 2) continue;
@@ -1068,7 +1104,14 @@ function computeDayConcentrationStats(
     const level: ConcentrationLevel | null =
       ratio === 1 ? "full" : ratio > 0.5 ? "partial" : null;
     if (!level) continue;
-    stats.set(key, { displayName, totalSlots, maxBlockSlots, maxBlockSlotIds, level });
+    stats.set(key, {
+      displayName,
+      totalSlots,
+      maxBlockSlots,
+      maxBlockSlotIds,
+      level,
+      blockTimeRange: blockTimeRanges.get(maxBlock) ?? null,
+    });
   }
   return stats;
 }
@@ -1083,10 +1126,17 @@ export function getConcentrationWarningDetails(
 ): Map<string, ConcentrationEntry[]> {
   const stats = computeDayConcentrationStats(day, bands);
   const warningsBySlot = new Map<string, ConcentrationEntry[]>();
-  for (const { displayName, totalSlots, maxBlockSlots, maxBlockSlotIds, level } of stats.values()) {
+  for (const {
+    displayName,
+    totalSlots,
+    maxBlockSlots,
+    maxBlockSlotIds,
+    level,
+    blockTimeRange,
+  } of stats.values()) {
     for (const slotId of maxBlockSlotIds) {
       const list = warningsBySlot.get(slotId) ?? [];
-      list.push({ memberName: displayName, level, totalSlots, maxBlockSlots });
+      list.push({ memberName: displayName, level, totalSlots, maxBlockSlots, blockTimeRange });
       warningsBySlot.set(slotId, list);
     }
   }
@@ -1100,6 +1150,7 @@ export type ConcentrationSummaryEntry = {
   level: ConcentrationLevel;
   totalSlots: number;
   maxBlockSlots: number;
+  blockTimeRange: BlockTimeRange | null;
 };
 
 // Day-by-day summary for the Schedule Confirmation modal — concentration is
@@ -1112,7 +1163,7 @@ export function computeConcentrationSummary(
   const result: ConcentrationSummaryEntry[] = [];
   for (const day of days) {
     const stats = computeDayConcentrationStats(day, bands);
-    for (const { displayName, totalSlots, maxBlockSlots, level } of stats.values()) {
+    for (const { displayName, totalSlots, maxBlockSlots, level, blockTimeRange } of stats.values()) {
       result.push({
         memberName: displayName,
         dayId: day.id,
@@ -1120,6 +1171,7 @@ export function computeConcentrationSummary(
         level,
         totalSlots,
         maxBlockSlots,
+        blockTimeRange,
       });
     }
   }
@@ -1130,17 +1182,38 @@ export function computeConcentrationSummary(
   });
 }
 
+// Shared formatter so SlotCard and the Schedule Confirmation modal render
+// the exact same "9:00〜12:00" phrasing for a concentration warning.
+export function formatConcentrationMessage(
+  totalSlots: number,
+  maxBlockSlots: number,
+  level: ConcentrationLevel,
+  blockTimeRange: BlockTimeRange | null,
+): string {
+  const rangeText = blockTimeRange
+    ? `${blockTimeRange.start}〜${blockTimeRange.end}`
+    : "同ブロック";
+  return level === "full"
+    ? `全出番（${totalSlots}枠中${totalSlots}枠）が${rangeText}に集中しています`
+    : `出番が集中しています（${totalSlots}枠中${maxBlockSlots}枠が${rangeText}）`;
+}
+
 export type MemberBlockUsage = {
   dayId: string;
   dayLabel: string;
-  /** 0-based, per computeSlotBlocks — display as block+1. */
+  /** 0-based, per computeSlotBlocks — not shown directly; used only to
+   * order the breakdown chronologically and as a fallback label if the
+   * block somehow has no timed slots. */
   block: number;
   count: number;
+  /** The block's actual clock-time window, e.g. {start:"09:00",
+   * end:"12:00"} — shown instead of the raw block index. */
+  timeRange: BlockTimeRange | null;
 };
 
 // Per-member, per-day-and-block slot counts — the raw material for the
-// Schedule Confirmation modal's "ブロック1: 2枠 | ブロック2: 1枠" breakdown.
-// Unlike computeConcentrationSummary (which only reports the single
+// Schedule Confirmation modal's "09:00〜12:00: 2枠" breakdown. Unlike
+// computeConcentrationSummary (which only reports the single
 // most-crowded block once a concentration threshold is crossed), this
 // returns every block the member has ANY slot in, so the modal can show
 // the full distribution even for members with no warning at all.
@@ -1150,9 +1223,11 @@ export function computeMemberBlockBreakdown(
 ): Map<string, MemberBlockUsage[]> {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const countByMemberAndCell = new Map<string, Map<string, number>>();
+  const blockTimeRangesByDay = new Map<string, Map<number, BlockTimeRange>>();
 
   for (const day of days) {
     const blockBySlotId = computeSlotBlocks(day);
+    blockTimeRangesByDay.set(day.id, computeBlockTimeRanges(day));
     for (const slot of day.slots) {
       if (!slot.bandId) continue;
       const band = bandMap.get(slot.bandId);
@@ -1178,7 +1253,9 @@ export function computeMemberBlockBreakdown(
     const usages = [...perMember.entries()].map(([cellKey, count]) => {
       const [dayId, blockStr] = cellKey.split(":");
       const day = days.find((d) => d.id === dayId)!;
-      return { dayId, dayLabel: day.label, block: Number(blockStr), count };
+      const block = Number(blockStr);
+      const timeRange = blockTimeRangesByDay.get(dayId)?.get(block) ?? null;
+      return { dayId, dayLabel: day.label, block, count, timeRange };
     });
     usages.sort((a, b) => {
       const dayDiff = (dayIndex.get(a.dayId) ?? 0) - (dayIndex.get(b.dayId) ?? 0);

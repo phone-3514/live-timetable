@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   canPlaceBandInSlot,
   computeDropPreviewStartTime,
+  formatConcentrationMessage,
   useAppStore,
 } from "../store/useAppStore";
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
@@ -351,9 +352,13 @@ export function SlotCard({
                     c.level === "full" ? "text-violet-400" : "text-violet-400/70"
                   }`}
                 >
-                  {c.level === "full"
-                    ? `⚠️ ${c.memberName} の全出番（${c.totalSlots}枠中${c.totalSlots}枠）が同ブロックに集中しています`
-                    : `⚠️ ${c.memberName} の出番が集中しています（${c.totalSlots}枠中${c.maxBlockSlots}枠が同ブロック）`}
+                  ⚠️ {c.memberName}{" "}
+                  {formatConcentrationMessage(
+                    c.totalSlots,
+                    c.maxBlockSlots,
+                    c.level,
+                    c.blockTimeRange,
+                  )}
                 </p>
               ))}
             </div>
