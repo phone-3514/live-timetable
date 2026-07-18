@@ -91,12 +91,18 @@ function applyRoomDocToStore(doc: RoomDoc) {
  * those two directions from echoing into an infinite feedback loop —
  * see their comments below.
  */
-export function useCollabRoom() {
+export function useCollabRoom(isAuthenticated: boolean) {
   const [roomId, setRoomIdState] = useState<string | null>(() => readRoomIdFromUrl());
-  const { data, update, updateNow, status } = useFirestoreDocSync<RoomDoc>(
-    roomId ? `rooms/${roomId}` : null,
-    EMPTY_ROOM,
-  );
+  // The password gate (see PasswordGate.tsx/CollabRoot.tsx) works by
+  // keeping this path null — and therefore useFirestoreDocSync's
+  // onSnapshot never subscribing at all — until isAuthenticated flips
+  // true. roomId can already be set (from the URL, or from startRoom()
+  // below) while this stays null; every effect further down keys off
+  // `status`/`hydratedRef`, which simply never progress past "offline"
+  // while the real Firestore path is withheld, so no separate "don't run
+  // yet" branching is needed anywhere else in this hook.
+  const path = roomId && isAuthenticated ? `rooms/${roomId}` : null;
+  const { data, update, updateNow, status } = useFirestoreDocSync<RoomDoc>(path, EMPTY_ROOM);
 
   // Has the one-time join handshake (seed-or-replace) completed for the
   // CURRENT roomId? Reset whenever roomId itself changes.
