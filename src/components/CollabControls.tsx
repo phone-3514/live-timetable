@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useCollabRoom } from "../hooks/useCollabRoom";
+import { useCollabStore, type CollabStatus } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
-import { isFirebaseConfigured } from "../firebase";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -9,19 +8,25 @@ const STATUS_LABEL: Record<string, string> = {
   error: "🔴 エラー",
 };
 
+interface Props {
+  roomId: string | null;
+  status: CollabStatus;
+  startRoom: () => void;
+  leaveRoom: () => void;
+}
+
 // Lives in the header next to BackupControls — collaboration is opt-in
 // per browser session via ?room=<id> in the URL (see useCollabRoom), so
 // this is the one control surface for starting a room, sharing its URL,
-// and leaving it. Renders nothing at all when no Firebase project is
-// configured (see isFirebaseConfigured) — every visitor to the deployed
-// app without a Firebase setup should see the exact same UI as before
-// this feature existed.
-export function CollabControls() {
-  const { roomId, status, startRoom, leaveRoom } = useCollabRoom();
+// seeing who else is online, and leaving. Takes room state as props
+// (rather than calling useCollabRoom itself) because CollabRoot already
+// owns that one instance — a second call here would open a second,
+// redundant Firestore subscription for the same room.
+export function CollabControls({ roomId, status, startRoom, leaveRoom }: Props) {
+  const others = useCollabStore((s) => s.others);
+  const myNickname = useCollabStore((s) => s.myNickname);
   const showToast = useToastStore((s) => s.show);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
-
-  if (!isFirebaseConfigured) return null;
 
   async function handleCopyUrl() {
     try {
@@ -46,10 +51,29 @@ export function CollabControls() {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
       <span className="text-xs text-slate-400" title={`ルームID: ${roomId}`}>
         {STATUS_LABEL[status] ?? status}
       </span>
+
+      {/* Connected-collaborators list — always includes yourself first
+          so the row never looks empty right after joining. */}
+      <div className="flex items-center gap-1" title="現在参加中のメンバー">
+        {myNickname && (
+          <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
+            {myNickname}（自分）
+          </span>
+        )}
+        {others.map((o) => (
+          <span
+            key={o.clientId}
+            className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-300"
+          >
+            {o.nickname}
+          </span>
+        ))}
+      </div>
+
       <button
         type="button"
         onClick={handleCopyUrl}

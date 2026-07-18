@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { useCollabStore } from "../store/useCollabStore";
 import type { Band, TimetableDay } from "../types";
 import { DEFAULT_VENUE_HOURS, type VenueHours } from "../utils/parseBands";
-import { useFirestoreDocSync, type SyncStatus } from "./useFirestoreSync";
+import { useFirestoreDocSync } from "./useFirestoreSync";
 
 const ROOM_PARAM = "room";
 
@@ -158,6 +159,13 @@ export function useCollabRoom() {
     });
   }, [roomId, data]);
 
+  // Publishes into the shared, Firebase-free useCollabStore so ordinary
+  // (main-bundle) components like SlotCard can read roomId/status without
+  // ever importing this hook or firebase.ts themselves.
+  useEffect(() => {
+    useCollabStore.getState().setRoomState(roomId, status);
+  }, [roomId, status]);
+
   const startRoom = useCallback(() => {
     const id = generateRoomId();
     const url = new URL(window.location.href);
@@ -175,7 +183,7 @@ export function useCollabRoom() {
 
   return {
     roomId,
-    status: (roomId ? status : "off") as SyncStatus | "off",
+    status,
     startRoom,
     leaveRoom,
   };

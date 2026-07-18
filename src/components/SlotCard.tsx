@@ -9,6 +9,7 @@ import {
   useAppStore,
 } from "../store/useAppStore";
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
+import { useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
@@ -76,9 +77,15 @@ export function SlotCard({
     isOver,
   } = useSortable({ id: slot.id, data: { type: "slot", slot, band } });
 
+  // Another collaborator's nickname if THEY currently have this exact
+  // band picked up (see useCollabStore/useLivePresence) — null the vast
+  // majority of the time (not in a collab room, or nobody else is
+  // dragging this specific band), in which case this behaves exactly as
+  // before real-time collaboration existed.
+  const lockedByNickname = useLockedBandOwner(band?.id);
   const bandDraggable = useDraggable({
     id: band ? `band:${band.id}` : `empty-band:${slot.id}`,
-    disabled: !band,
+    disabled: !band || lockedByNickname !== null,
     data: band ? { type: "band", band } : undefined,
   });
 
@@ -248,15 +255,17 @@ export function SlotCard({
                 ? "border-dashed border-indigo-500 text-xs text-indigo-300"
                 : "border-dashed border-slate-700 text-xs text-slate-500"
           } ${
-            conflict
-              ? "border-rose-500 bg-rose-950/40"
-              : gearConflict
-                ? "border-amber-500 bg-amber-950/30"
-                : hasFullConcentration
-                  ? "border-violet-500 bg-violet-950/30"
-                  : hasConcentrationWarning
-                    ? "border-violet-700 border-dashed bg-violet-950/10"
-                    : ""
+            lockedByNickname
+              ? "border-amber-400 border-dashed bg-amber-950/20"
+              : conflict
+                ? "border-rose-500 bg-rose-950/40"
+                : gearConflict
+                  ? "border-amber-500 bg-amber-950/30"
+                  : hasFullConcentration
+                    ? "border-violet-500 bg-violet-950/30"
+                    : hasConcentrationWarning
+                      ? "border-violet-700 border-dashed bg-violet-950/10"
+                      : ""
           } ${
             bandDraggable.isDragging ? "opacity-50" : ""
           }`}
@@ -265,10 +274,22 @@ export function SlotCard({
             <div
               {...bandDraggable.listeners}
               {...bandDraggable.attributes}
-              className="w-full min-h-11 cursor-grab touch-none active:cursor-grabbing md:min-h-0"
+              className={`w-full min-h-11 touch-none md:min-h-0 ${
+                lockedByNickname
+                  ? "cursor-not-allowed opacity-70"
+                  : "cursor-grab active:cursor-grabbing"
+              }`}
             >
               <p className="text-sm font-semibold text-slate-100">
                 {band.name}
+                {lockedByNickname && (
+                  <span
+                    className="ml-1.5 rounded border border-amber-400 bg-amber-950/60 px-1 text-xs font-normal text-amber-300"
+                    title={`${lockedByNickname}が現在このバンドを移動中です`}
+                  >
+                    🔒 {lockedByNickname}が移動中
+                  </span>
+                )}
                 {band.durationMinutes != null && (
                   <span className="ml-1.5 text-xs font-normal text-indigo-400">
                     ({band.durationMinutes}分)

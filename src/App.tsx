@@ -4,6 +4,7 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
 import { useHistoryStore } from "./store/useHistoryStore";
+import { useCollabStore } from "./store/useCollabStore";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
@@ -14,15 +15,15 @@ import { ApplicationManagerTab } from "./components/applications/ApplicationMana
 import { BackupControls } from "./components/BackupControls";
 import type { Band, TimetableSlot } from "./types";
 
-// CollabControls pulls in the firebase SDK (~150kB gzipped) — same
-// reasoning as the jsPDF/exceljs/html2canvas dynamic imports elsewhere
-// in this app: a heavy dependency only some visitors ever touch stays
-// out of the main bundle. Gated on the raw env var (not firebase.ts's
+// CollabRoot pulls in the firebase SDK (~150kB gzipped) — same reasoning
+// as the jsPDF/exceljs/html2canvas dynamic imports elsewhere in this
+// app: a heavy dependency only some visitors ever touch stays out of the
+// main bundle. Gated on the raw env var (not firebase.ts's
 // isFirebaseConfigured, which would itself require importing the SDK to
 // check) so a deploy with no Firebase project configured — the default,
 // and every visitor today — never fetches this chunk at all.
-const CollabControls = lazy(() =>
-  import("./components/CollabControls").then((m) => ({ default: m.CollabControls })),
+const CollabRoot = lazy(() =>
+  import("./components/CollabRoot").then((m) => ({ default: m.CollabRoot })),
 );
 const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID);
 
@@ -71,11 +72,20 @@ function App() {
   }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragData((event.active.data.current as ActiveDragData) ?? null);
+    const data = (event.active.data.current as ActiveDragData) ?? null;
+    setActiveDragData(data);
+    // Broadcast to other collaborators (see useCollabStore/useLivePresence)
+    // only for an actual band drag — a slot reorder doesn't move a band
+    // identity anywhere another user would need to see "locked". No-op
+    // (writes to a local store nobody reads) when not in a collab room.
+    if (data?.type === "band") {
+      useCollabStore.getState().setMyDragState({ isDragging: true, draggedBandId: data.band.id });
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragData(null);
+    useCollabStore.getState().setMyDragState({ isDragging: false, draggedBandId: null });
     const { active, over } = event;
     if (!over) return;
     const activeId = active.id.toString();
@@ -113,7 +123,10 @@ function App() {
     <DndContext
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveDragData(null)}
+      onDragCancel={() => {
+        setActiveDragData(null);
+        useCollabStore.getState().setMyDragState({ isDragging: false, draggedBandId: null });
+      }}
     >
       <div className="flex min-h-screen flex-col bg-slate-950 md:h-screen md:overflow-hidden">
         <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-3 py-2 md:gap-x-6 md:px-6 md:py-2.5">
@@ -151,7 +164,7 @@ function App() {
           <BackupControls />
           {hasFirebaseConfig && (
             <Suspense fallback={null}>
-              <CollabControls />
+              <CollabRoot />
             </Suspense>
           )}
           {/* Event-wide details (not per-day) — shown on the share image's
