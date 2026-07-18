@@ -30,12 +30,19 @@ service cloud.firestore {
     // write — the free tier's per-document 1MiB limit is already a
     // backstop, this is a tighter, deliberately low-enough-to-notice-a-
     // bug ceiling on top of it.
+    //
+    // `applications` (Application Manager data) is validated only *if
+    // present*, not required — a room document written by a client from
+    // before this field existed won't have it yet, and requiring it would
+    // reject that otherwise-valid write instead of just merging the new
+    // field in going forward.
     function isValidRoom(data) {
       return data.keys().hasAll(['liveName', 'bands', 'days', 'updatedAt'])
         && data.liveName is string && data.liveName.size() < 200
         && data.bands is list && data.bands.size() < 300
         && data.days is list && data.days.size() < 20
-        && data.updatedAt is int;
+        && data.updatedAt is int
+        && (!('applications' in data) || (data.applications is list && data.applications.size() < 300));
     }
   }
 }

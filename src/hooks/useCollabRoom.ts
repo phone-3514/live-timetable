@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { useApplicationStore } from "../store/useApplicationStore";
 import { useCollabStore } from "../store/useCollabStore";
-import type { Band, TimetableDay } from "../types";
+import type { Application, Band, TimetableDay } from "../types";
 import { DEFAULT_VENUE_HOURS, type VenueHours } from "../utils/parseBands";
 import { useFirestoreDocSync } from "./useFirestoreSync";
 
@@ -14,6 +15,14 @@ export type RoomDoc = {
   venueHours: VenueHours;
   bands: Band[];
   days: TimetableDay[];
+  // 出演申し込み管理 (Application Manager) data — a separate Zustand store
+  // (useApplicationStore) from bands/days, but synced through this same
+  // one-document-per-room model rather than a second Firestore document:
+  // it's still "everything in this room," and an approved application's
+  // linkedBandId already cross-references the band it became, so keeping
+  // both in the same write/read cycle is what keeps that reference
+  // consistent for every collaborator at the same moment.
+  applications: Application[];
   updatedAt: number;
 };
 
@@ -24,6 +33,7 @@ const EMPTY_ROOM: RoomDoc = {
   venueHours: DEFAULT_VENUE_HOURS,
   bands: [],
   days: [],
+  applications: [],
   updatedAt: 0,
 };
 
@@ -46,6 +56,7 @@ function snapshotFromStore(): Omit<RoomDoc, "updatedAt"> {
     venueHours: s.venueHours,
     bands: s.bands,
     days: s.days,
+    applications: useApplicationStore.getState().applications,
   };
 }
 
@@ -68,7 +79,14 @@ function summarizeMemberFields(bands: Band[] | undefined) {
 }
 
 function applyRoomDocToStore(doc: RoomDoc) {
-  console.log("[useCollabRoom] onSnapshot: applying room doc to store — bands:", doc.bands?.length, "days:", doc.days?.length);
+  console.log(
+    "[useCollabRoom] onSnapshot: applying room doc to store — bands:",
+    doc.bands?.length,
+    "days:",
+    doc.days?.length,
+    "applications:",
+    doc.applications?.length,
+  );
   console.log("[useCollabRoom] onSnapshot: member grade/part in payload:", summarizeMemberFields(doc.bands));
   useAppStore.setState({
     bands: doc.bands ?? [],
@@ -80,6 +98,7 @@ function applyRoomDocToStore(doc: RoomDoc) {
     },
     venueHours: doc.venueHours ?? DEFAULT_VENUE_HOURS,
   });
+  useApplicationStore.setState({ applications: doc.applications ?? [] });
 }
 
 /**
@@ -156,7 +175,28 @@ export function useCollabRoom(isAuthenticated: boolean) {
     }
   }, [roomId, status, data, updateNow]);
 
-  // 2a. Local -> remote.
+  // 2a. Local -> remote — two independent Zustand stores (useAppStore for
+  // bands/days/eventInfo/venueHours, useApplicationStore for Application
+  // Manager data), each with its own subscribe callback, but both funnel
+  // into the same pushSnapshot so either one changing produces one
+  // combined write of the full room doc — matches how snapshotFromStore
+  // already reads across both stores in one pass.
+  const pushSnapshot = useCallback(() => {
+    const updatedAt = Date.now();
+    lastKnownUpdatedAt.current = updatedAt;
+    const snapshot = snapshotFromStore();
+    console.log(
+      "[useCollabRoom] write: pushing local state to Firestore — bands:",
+      snapshot.bands.length,
+      "days:",
+      snapshot.days.length,
+      "applications:",
+      snapshot.applications.length,
+    );
+    console.log("[useCollabRoom] write: member grade/part in payload:", summarizeMemberFields(snapshot.bands));
+    update(() => ({ ...snapshot, updatedAt }));
+  }, [update]);
+
   useEffect(() => {
     if (!roomId) return;
     return useAppStore.subscribe((state, prev) => {
@@ -167,14 +207,18 @@ export function useCollabRoom(isAuthenticated: boolean) {
         state.eventInfo !== prev.eventInfo ||
         state.venueHours !== prev.venueHours;
       if (!changed) return;
-      const updatedAt = Date.now();
-      lastKnownUpdatedAt.current = updatedAt;
-      const snapshot = snapshotFromStore();
-      console.log("[useCollabRoom] write: pushing local state to Firestore — bands:", snapshot.bands.length, "days:", snapshot.days.length);
-      console.log("[useCollabRoom] write: member grade/part in payload:", summarizeMemberFields(snapshot.bands));
-      update(() => ({ ...snapshot, updatedAt }));
+      pushSnapshot();
     });
-  }, [roomId, update]);
+  }, [roomId, pushSnapshot]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    return useApplicationStore.subscribe((state, prev) => {
+      if (!hydratedRef.current || suppressPushRef.current) return;
+      if (state.applications === prev.applications) return;
+      pushSnapshot();
+    });
+  }, [roomId, pushSnapshot]);
 
   // 2b. Remote -> local.
   useEffect(() => {
