@@ -141,17 +141,44 @@ function App() {
           .flatMap((d) => d.slots)
           .find((s) => s.bandId === bandId);
         if (slot) unassignSlot(slot.id);
-      } else {
-        // "Magnetic" drop: onto an empty slot, just fill it (unchanged
-        // behavior); onto a slot some OTHER band already occupies, insert
-        // a new slot there instead of silently bumping that band back to
-        // unplaced — it and everyone after it that day shift later instead.
-        const overSlot = days.flatMap((d) => d.slots).find((s) => s.id === overId);
-        if (overSlot?.bandId && overSlot.bandId !== bandId) {
-          insertBandAtSlot(bandId, overId);
-        } else {
-          assignBandToSlot(bandId, overId);
+        return;
+      }
+
+      // A band that's already placed somewhere brings its own slot along
+      // for the ride — dragging its full cell is conceptually the exact
+      // same move as dragging that slot's own ⠿ handle, so it goes
+      // through the identical reorderSlots/arrayMove call the handle
+      // uses, not insertBandAtSlot/assignBandToSlot. Those two null out
+      // the origin slot's bandId in place rather than removing it, which
+      // is correct for an UNPLACED band (there's no slot to relocate —
+      // BandListPanel drags always take this path) but left a genuine
+      // empty, un-deleted slot behind for an already-placed one, and
+      // produced a different resulting order than the handle would for
+      // the same drag (confirmed by reproducing both side by side: the
+      // handle cleanly reordered 3 slots to 3 slots, the full-cell drag
+      // left 4). reorderSlots is a pure permutation of existing slot
+      // objects — nothing created, nothing orphaned — so this fixes both
+      // at once, for both desktop's full-cell drag and mobile's
+      // long-press (same handleDragEnd, same DndContext, already shared).
+      const originDay = days.find((d) => d.slots.some((s) => s.bandId === bandId));
+      const originSlot = originDay?.slots.find((s) => s.bandId === bandId);
+      const targetDay = days.find((d) => d.slots.some((s) => s.id === overId));
+      if (originSlot && targetDay && originDay?.id === targetDay.id) {
+        if (originSlot.id !== overId) {
+          reorderSlots(originSlot.id, overId);
         }
+        return;
+      }
+
+      // Unplaced band, or a cross-day move (each day owns a physically
+      // separate slots array with its own computed time schedule, so
+      // there's no single array to permute across that boundary) —
+      // unchanged "magnetic" insert/assign behavior.
+      const overSlot = days.flatMap((d) => d.slots).find((s) => s.id === overId);
+      if (overSlot?.bandId && overSlot.bandId !== bandId) {
+        insertBandAtSlot(bandId, overId);
+      } else {
+        assignBandToSlot(bandId, overId);
       }
       return;
     }
