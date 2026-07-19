@@ -248,32 +248,36 @@ function App() {
               軽音ライブ編成
             </span>
           </h1>
-          <nav className="flex shrink-0 gap-1" role="tablist" aria-label="表示切り替え">
+          <nav className="grid w-full shrink-0 grid-cols-2 gap-1 rounded-xl border border-slate-600 bg-slate-800 p-1 shadow-inner md:flex md:w-auto md:rounded-lg md:p-0.5" role="tablist" aria-label="編集画面と申込管理の切り替え" aria-orientation="horizontal">
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === "timetable"}
               onClick={() => setActiveTab("timetable")}
-              className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
+              className={`flex min-h-14 min-w-0 items-center gap-2 rounded-lg px-3 text-left transition-all md:min-h-0 md:gap-1.5 md:px-2.5 md:py-1 ${
                 activeTab === "timetable"
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-indigo-600 text-white shadow-sm ring-1 ring-inset ring-indigo-400"
                   : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
-              編集
+              <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-base md:h-6 md:w-6 md:text-sm ${activeTab === "timetable" ? "bg-white/15" : "bg-slate-700"}`}>✏️</span>
+              <span className="min-w-0 flex-1"><strong className="block text-sm leading-tight md:text-xs">編集</strong><span className={`block truncate text-[10px] leading-tight md:hidden ${activeTab === "timetable" ? "text-indigo-100" : "text-slate-500"}`}>タイムテーブルを作成</span></span>
+              {activeTab === "timetable" && <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-bold"><span aria-hidden="true">✓ </span>選択中</span>}
             </button>
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === "applications"}
               onClick={() => setActiveTab("applications")}
-              className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
+              className={`flex min-h-14 min-w-0 items-center gap-2 rounded-lg px-3 text-left transition-all md:min-h-0 md:gap-1.5 md:px-2.5 md:py-1 ${
                 activeTab === "applications"
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-indigo-600 text-white shadow-sm ring-1 ring-inset ring-indigo-400"
                   : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
-              申込管理
+              <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-base md:h-6 md:w-6 md:text-sm ${activeTab === "applications" ? "bg-white/15" : "bg-slate-700"}`}>📝</span>
+              <span className="min-w-0 flex-1"><strong className="block text-sm leading-tight md:text-xs">申込管理</strong><span className={`block truncate text-[10px] leading-tight md:hidden ${activeTab === "applications" ? "text-indigo-100" : "text-slate-500"}`}>確認・承認・出演登録</span></span>
+              {activeTab === "applications" && <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-bold"><span aria-hidden="true">✓ </span>選択中</span>}
             </button>
           </nav>
           {activeTab === "timetable" && (
