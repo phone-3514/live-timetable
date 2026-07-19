@@ -257,7 +257,7 @@ export function PaViewerRoot() {
   const scheduled = useMemo(() => {
     const bands = new Map((room?.bands ?? []).map((band) => [band.id, band]));
     const result: ScheduledBand[] = [];
-    const seenBands = new Set<string>();
+    const seenBandsByDay = new Set<string>();
     let order = 0;
     for (const day of room?.days ?? []) {
       for (const slot of day.slots ?? []) {
@@ -267,9 +267,11 @@ export function PaViewerRoot() {
           // simultaneous collaborative move can temporarily leave the
           // same band in multiple slots. Those duplicate slots must not
           // become duplicate "Next sheet" stops in the PA remote.
-          const identity = normalizeBandName(band.name) || band.id;
-          if (!seenBands.has(identity)) {
-            seenBands.add(identity);
+          // De-duplicate only inside the same day. The same band can
+          // legitimately appear again on another day of a multi-day live.
+          const identity = `${day.id}:${normalizeBandName(band.name) || band.id}`;
+          if (!seenBandsByDay.has(identity)) {
+            seenBandsByDay.add(identity);
             result.push({ band, day, slot, order });
           }
         }
@@ -290,6 +292,16 @@ export function PaViewerRoot() {
     return -1;
   }, [progress?.slotId, room?.days]);
 
+  const progressDayId = useMemo(() => {
+    const dayContainingActiveSlot = (room?.days ?? []).find((day) =>
+      day.slots.some((slot) => slot.id === progress?.slotId),
+    );
+    if (dayContainingActiveSlot) return dayContainingActiveSlot.id;
+    return (room?.days ?? []).some((day) => day.id === progress?.dayId)
+      ? progress?.dayId ?? null
+      : null;
+  }, [progress?.dayId, progress?.slotId, room?.days]);
+
   const liveIndex = useMemo(() => {
     const exact = scheduled.findIndex((item) => item.slot.id === progress?.slotId);
     if (exact >= 0) return exact;
@@ -305,21 +317,37 @@ export function PaViewerRoot() {
     if (progressBand) {
       const identity = normalizeBandName(progressBand.name) || progressBand.id;
       const sameBandIndex = scheduled.findIndex(
-        (item) => (normalizeBandName(item.band.name) || item.band.id) === identity,
+        (item) => item.day.id === progressDayId
+          && (normalizeBandName(item.band.name) || item.band.id) === identity,
       );
       if (sameBandIndex >= 0) return sameBandIndex;
     }
     if (activeSlotOrder >= 0) {
-      const nextIndex = scheduled.findIndex((item) => item.order > activeSlotOrder);
+      const nextIndex = scheduled.findIndex((item) =>
+        item.order > activeSlotOrder
+        && (!progressDayId || item.day.id === progressDayId),
+      );
       if (nextIndex >= 0) return nextIndex;
     }
-    const activeByClock = scheduled.findIndex((item) => {
+    const progressDaySchedule = progressDayId
+      ? scheduled.filter((item) => item.day.id === progressDayId)
+      : scheduled;
+    const activeByClockEntry = progressDaySchedule.find((item) => {
       const start = dateAtTime(item.day, item.slot.startTime)?.getTime();
       const end = dateAtTime(item.day, item.slot.endTime)?.getTime();
       return start !== undefined && start !== null && end !== undefined && end !== null && now >= start && now < end;
     });
-    return activeByClock >= 0 ? activeByClock : 0;
-  }, [activeSlotOrder, now, progress?.slotId, room?.bands, room?.days, scheduled]);
+    if (activeByClockEntry) {
+      return scheduled.findIndex((item) => item.slot.id === activeByClockEntry.slot.id);
+    }
+    // When progression is stopped, dayId still records the day selected
+    // in Stage Control. Show that day's first band rather than silently
+    // falling back to day one's first slot.
+    const firstOnProgressDay = progressDaySchedule[0];
+    return firstOnProgressDay
+      ? scheduled.findIndex((item) => item.slot.id === firstOnProgressDay.slot.id)
+      : 0;
+  }, [activeSlotOrder, now, progress?.slotId, progressDayId, room?.bands, room?.days, scheduled]);
 
   const activeSlot = useMemo(() => {
     for (const day of room?.days ?? []) {
@@ -333,7 +361,9 @@ export function PaViewerRoot() {
   const selectedIndex = manualIndex >= 0 ? manualIndex : liveIndex;
   const selected = scheduled[selectedIndex] ?? null;
   const live = scheduled[liveIndex] ?? null;
-  const nextLive = scheduled[liveIndex + 1] ?? null;
+  const nextLive = live
+    ? scheduled.slice(liveIndex + 1).find((item) => item.day.id === live.day.id) ?? null
+    : null;
   const activeBand = activeSlot?.bandId
     ? (room?.bands ?? []).find((band) => band.id === activeSlot.bandId)
     : null;
