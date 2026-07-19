@@ -13,6 +13,7 @@ import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
 import { useHistoryStore } from "./store/useHistoryStore";
 import { useCollabStore } from "./store/useCollabStore";
+import { useIsMobile } from "./hooks/useViewport";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
@@ -74,6 +75,27 @@ function App() {
     useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
+
+  // dnd-kit's default auto-scroll triggers within the outer 20% of the
+  // scroll container's height (`threshold.y: 0.2`) and accelerates at a
+  // rate tuned for a desktop-sized viewport (`acceleration: 10`, see
+  // useAutoScroller's defaults in @dnd-kit/core). On a phone-height
+  // screen, 20% is a big enough band that a long-press-drag anywhere in
+  // the lower third of the screen — nowhere near the actual bottom edge
+  // — could already start auto-scrolling, and at the default
+  // acceleration it moved fast enough to overshoot past the slot the
+  // user meant to drop on. `#root` is this app's real mobile scroll
+  // container (see index.css / the scroll-lock round's finding), which
+  // dnd-kit auto-detects as a scrollable ancestor via computed
+  // `overflow-y`, so no separate wiring is needed beyond this config.
+  // Desktop keeps dnd-kit's own defaults (`autoScroll={true}`) — DayPanel's
+  // fixed-height, internally-scrolling panels are a different shape of
+  // problem this narrower mobile threshold isn't meant to solve, and
+  // nothing here suggested desktop's existing behavior was an issue.
+  const isMobile = useIsMobile();
+  const autoScroll = isMobile
+    ? { threshold: { x: 0.2, y: 0.08 }, acceleration: 2 }
+    : true;
 
   // ⌘Z / Ctrl+Z and ⌘⇧Z / Ctrl+Y (redo) for the Timetable Editor's
   // placement history — skipped while focus is in a text input/textarea/
@@ -192,6 +214,7 @@ function App() {
   return (
     <DndContext
       sensors={sensors}
+      autoScroll={autoScroll}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => {
