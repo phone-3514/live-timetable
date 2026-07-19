@@ -224,11 +224,22 @@ export function PaViewerRoot() {
   const scheduled = useMemo(() => {
     const bands = new Map((room?.bands ?? []).map((band) => [band.id, band]));
     const result: ScheduledBand[] = [];
+    const seenBands = new Set<string>();
     let order = 0;
     for (const day of room?.days ?? []) {
       for (const slot of day.slots ?? []) {
         const band = slot.bandId ? bands.get(slot.bandId) : null;
-        if (band) result.push({ band, day, slot, order });
+        if (band) {
+          // A Band is meant to occupy one slot, but older rooms and a
+          // simultaneous collaborative move can temporarily leave the
+          // same band in multiple slots. Those duplicate slots must not
+          // become duplicate "Next sheet" stops in the PA remote.
+          const identity = normalizeBandName(band.name) || band.id;
+          if (!seenBands.has(identity)) {
+            seenBands.add(identity);
+            result.push({ band, day, slot, order });
+          }
+        }
         order += 1;
       }
     }
@@ -249,6 +260,22 @@ export function PaViewerRoot() {
   const liveIndex = useMemo(() => {
     const exact = scheduled.findIndex((item) => item.slot.id === progress?.slotId);
     if (exact >= 0) return exact;
+    // If progress points at a duplicate slot removed above, keep showing
+    // that band's single canonical sheet instead of treating it as a
+    // non-band row and jumping to the following band.
+    const progressSlot = (room?.days ?? [])
+      .flatMap((day) => day.slots)
+      .find((slot) => slot.id === progress?.slotId);
+    const progressBand = progressSlot?.bandId
+      ? (room?.bands ?? []).find((band) => band.id === progressSlot.bandId)
+      : null;
+    if (progressBand) {
+      const identity = normalizeBandName(progressBand.name) || progressBand.id;
+      const sameBandIndex = scheduled.findIndex(
+        (item) => (normalizeBandName(item.band.name) || item.band.id) === identity,
+      );
+      if (sameBandIndex >= 0) return sameBandIndex;
+    }
     if (activeSlotOrder >= 0) {
       const nextIndex = scheduled.findIndex((item) => item.order > activeSlotOrder);
       if (nextIndex >= 0) return nextIndex;
@@ -259,7 +286,7 @@ export function PaViewerRoot() {
       return start !== undefined && start !== null && end !== undefined && end !== null && now >= start && now < end;
     });
     return activeByClock >= 0 ? activeByClock : 0;
-  }, [activeSlotOrder, now, progress?.slotId, scheduled]);
+  }, [activeSlotOrder, now, progress?.slotId, room?.bands, room?.days, scheduled]);
 
   const activeSlot = useMemo(() => {
     for (const day of room?.days ?? []) {
@@ -274,7 +301,16 @@ export function PaViewerRoot() {
   const selected = scheduled[selectedIndex] ?? null;
   const live = scheduled[liveIndex] ?? null;
   const nextLive = scheduled[liveIndex + 1] ?? null;
-  const liveIsActiveSlot = live?.slot.id === activeSlot?.id;
+  const activeBand = activeSlot?.bandId
+    ? (room?.bands ?? []).find((band) => band.id === activeSlot.bandId)
+    : null;
+  const activeDay = activeSlot
+    ? (room?.days ?? []).find((day) => day.slots.some((slot) => slot.id === activeSlot.id))
+    : null;
+  const liveIsActiveSlot = live?.slot.id === activeSlot?.id
+    || Boolean(activeBand && live
+      && (normalizeBandName(activeBand.name) || activeBand.id)
+        === (normalizeBandName(live.band.name) || live.band.id));
   const currentHeaderName = activeSlot
     ? (liveIsActiveSlot ? live.band.name : activeSlot.customLabel || "バンド出演なし")
     : live?.band.name ?? "—";
@@ -291,8 +327,8 @@ export function PaViewerRoot() {
       ? [{ label: "PAフォルダ", url: room.paConfig.folderUrl }]
       : [];
 
-  const countdownTarget = progress?.phase === "performing" && liveIsActiveSlot && live
-    ? dateAtTime(live.day, live.slot.endTime)
+  const countdownTarget = progress?.phase === "performing" && liveIsActiveSlot && activeSlot && activeDay
+    ? dateAtTime(activeDay, activeSlot.endTime)
     : nextHeaderEntry ? dateAtTime(nextHeaderEntry.day, nextHeaderEntry.slot.startTime) : null;
   const countdownLabel = progress?.phase === "performing" ? "終了まで" : "次の開始まで";
 
