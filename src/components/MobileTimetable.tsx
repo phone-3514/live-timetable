@@ -12,7 +12,8 @@ import { useApplicationStore } from "../store/useApplicationStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useHistoryStore } from "../store/useHistoryStore";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
-import { SlotCard } from "./SlotCard";
+import { MobileSlotCard } from "./MobileSlotCard";
+import { SharePreviewModal } from "./SharePreviewModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
@@ -24,16 +25,16 @@ const EMPTY_DAYS: TimetableDay[] = [];
 // One day, collapsed to a header + a flat vertical list — no side-by-side
 // columns, no per-day settings/bulk-add/preset toolbar (those stay
 // desktop-only editing tools; see DesktopTimetable/DayPanel). Each slot
-// reuses SlotCard directly (the same component DayPanel renders) rather
-// than a second, simplified re-implementation: SlotCard already has
-// everything a phone needs — 44px touch targets, ▲/▼ buttons as a
-// non-drag fallback, and (once App.tsx's TouchSensor activation
-// constraint made long-press-to-drag safe alongside normal scrolling —
-// see its comment) real drag-and-drop that no longer fights the page's
-// own scroll gesture. Re-deriving that display/conflict/lock logic here
-// a second time was the actual "duplicated business logic" risk, not
-// which component renders it. Starts expanded only for the first day so
-// a long multi-day event doesn't dump every slot on screen at once.
+// renders via MobileSlotCard — a genuinely condensed row (one line,
+// strict truncation, member/setlist detail behind a 詳細 button) rather
+// than SlotCard's fuller desktop layout, since a phone-width column has
+// no room for SlotCard's multi-line member/conflict text without forcing
+// horizontal scroll. It still shares SlotCard's exact drag wiring
+// (useSortable/useDraggable, same store actions, same conflict/lock
+// selectors passed in as props) — the presentation is different, the
+// underlying scheduling logic is not duplicated. Starts expanded only
+// for the first day so a long multi-day event doesn't dump every slot on
+// screen at once.
 function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const bands = useAppStore((s) => s.bands) ?? EMPTY_BANDS;
@@ -79,18 +80,16 @@ function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen
           </p>
         ) : (
           <SortableContext items={day.slots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <div className="flex flex-col gap-1.5">
-              {day.slots.map((slot, i) => {
+            <div className="flex w-full min-w-0 flex-col gap-1">
+              {day.slots.map((slot) => {
                 const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
                 if (band) order++;
                 return (
-                  <SlotCard
+                  <MobileSlotCard
                     key={slot.id}
                     dayId={day.id}
                     slot={slot}
                     band={band}
-                    index={i}
-                    total={day.slots.length}
                     performanceOrder={band ? order : null}
                     conflicts={conflictDetails.get(slot.id) ?? []}
                     gearConflict={gearConflicts.has(slot.id)}
@@ -141,6 +140,13 @@ export function MobileTimetable() {
   const [exportingRoster, setExportingRoster] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Which day's SharePreviewModal is open, if any — a single day at a
+  // time only, so with one day (the common case for this club's events)
+  // the FAB opens straight into export; with several it opens a tiny
+  // picker first (below) instead of guessing which day the user meant.
+  const [exportDayId, setExportDayId] = useState<string | null>(null);
+  const [showDayPicker, setShowDayPicker] = useState(false);
+  const exportDay = days.find((d) => d.id === exportDayId) ?? null;
 
   const reviewIssueCount = useMemo(() => {
     const conflictMembers = computeMemberSchedules(bands, days).filter(
@@ -205,6 +211,15 @@ export function MobileTimetable() {
       await downloadMemberRosterExcel(entries, `参加者名簿-${eventLabel}.xlsx`);
     } finally {
       setExportingRoster(false);
+    }
+  };
+
+  const handleFabClick = () => {
+    if (days.length === 0) return;
+    if (days.length === 1) {
+      setExportDayId(days[0].id);
+    } else {
+      setShowDayPicker(true);
     }
   };
 
@@ -344,6 +359,52 @@ export function MobileTimetable() {
       {showScheduleReview && <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />}
       {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
       {showFuriganaImport && <FuriganaImportModal onClose={() => setShowFuriganaImport(false)} />}
+
+      {/* Fixed bottom-right FAB, independent of page scroll — stays
+          reachable no matter how far down a long multi-day list is
+          scrolled, and sits above everything else in this view (z-40,
+          still below the z-50 modals it opens). */}
+      {days.length > 0 && (
+        <button
+          type="button"
+          onClick={handleFabClick}
+          title="タイムテーブルを画像として書き出し"
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-2xl text-white shadow-lg shadow-black/40 active:bg-indigo-500"
+        >
+          🎨
+        </button>
+      )}
+
+      {showDayPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60"
+          onClick={() => setShowDayPicker(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border-t border-slate-700 bg-slate-900 p-3 pb-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-2 px-1 text-xs font-semibold text-slate-400">書き出す日を選択</p>
+            <div className="flex flex-col gap-1.5">
+              {days.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => {
+                    setExportDayId(d.id);
+                    setShowDayPicker(false);
+                  }}
+                  className="min-h-11 rounded-lg border border-slate-700 bg-slate-800 px-3 text-left text-sm text-slate-100"
+                >
+                  {d.label}
+                  {d.date && <span className="ml-2 text-xs text-slate-500">{d.date}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exportDay && <SharePreviewModal day={exportDay} onClose={() => setExportDayId(null)} />}
     </div>
   );
 }
