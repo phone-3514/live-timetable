@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { StagePhase, StageProgress } from "../store/useProgressStore";
 import { normalizeBandName, type PaDriveFolder, type PaLinkConfig, type PaSheetLink } from "./types";
@@ -165,12 +166,44 @@ function SheetLinkViewer({ matchedLinks, folders, bandName }: {
   );
 }
 
+function EventChangeDialog({ eventName, onCancel, onConfirm }: {
+  eventName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEscapeKey(onCancel);
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pa-event-change-title"
+      onClick={onCancel}
+    >
+      <section
+        className="w-full max-w-sm rounded-2xl border border-slate-600 bg-slate-900 p-5 shadow-2xl shadow-black/60"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="text-xs font-bold tracking-[0.14em] text-blue-300">PA / ROADIE SYNC</p>
+        <h2 id="pa-event-change-title" className="mt-2 text-xl font-black text-white">イベントを変更しますか？</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-400">現在接続中の<strong className="mx-1 text-slate-200">{eventName}</strong>から離れ、共有コード入力画面へ戻ります。</p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button type="button" onClick={onCancel} autoFocus className="min-h-12 rounded-xl border border-slate-600 bg-slate-800 px-4 text-sm font-black text-slate-100 hover:bg-slate-700">キャンセル</button>
+          <button type="button" onClick={onConfirm} className="min-h-12 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-lg shadow-blue-950/50 hover:bg-blue-500 active:bg-blue-700">変更する</button>
+        </div>
+        <p className="mt-3 text-center text-[11px] text-slate-500">画面外のタップ、またはEscキーでもキャンセルできます</p>
+      </section>
+    </div>
+  );
+}
+
 export function PaViewerRoot() {
   const [roomId, setRoomId] = useState<string | null>(initialRoomId);
   const [room, setRoom] = useState<PaRoomDoc | null>(null);
   const [publicProgress, setPublicProgress] = useState<StageProgress | null>(null);
   const [syncState, setSyncState] = useState<SyncState>(roomId ? "connecting" : "offline");
   const [manualSlotId, setManualSlotId] = useState<string | null>(null);
+  const [confirmingEventChange, setConfirmingEventChange] = useState(false);
   const [now, setNow] = useState(Date.now());
   const online = useOnlineStatus();
 
@@ -347,6 +380,7 @@ export function PaViewerRoot() {
     setRoomId(null);
     setRoom(null);
     setManualSlotId(null);
+    setConfirmingEventChange(false);
   };
 
   if (!roomId) return <RoomEntry onJoin={join} />;
@@ -360,7 +394,7 @@ export function PaViewerRoot() {
       <header className="sticky top-0 z-30 border-b border-slate-700 bg-slate-900/95 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-xl backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="min-w-0"><p className="truncate text-xs font-bold tracking-[0.12em] text-blue-300">{room?.liveName || "PA / ROADIE SYNC"}</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><span className={`h-2 w-2 rounded-full ${syncColor}`} />{syncLabel}</p></div>
-          <button type="button" onClick={leave} className="min-h-10 shrink-0 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">イベント変更</button>
+          <button type="button" onClick={() => setConfirmingEventChange(true)} className="min-h-10 shrink-0 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">イベント変更</button>
         </div>
         <div className="mx-auto mt-3 grid max-w-5xl grid-cols-[1fr_1fr_auto] gap-2">
           <section className="min-w-0 rounded-xl border border-blue-800/70 bg-blue-950/60 px-3 py-2"><p className="text-[10px] font-bold tracking-wider text-blue-300">CURRENT · {phaseLabel(progress?.phase)}</p><p className="mt-0.5 truncate text-sm font-black text-white">{currentHeaderName}</p></section>
@@ -383,6 +417,13 @@ export function PaViewerRoot() {
           <button type="button" disabled={selectedIndex < 0 || selectedIndex >= scheduled.length - 1} onClick={() => setManualSlotId(scheduled[selectedIndex + 1]?.slot.id ?? null)} className="min-h-14 rounded-xl bg-blue-600 px-4 text-right font-black text-white shadow-lg shadow-blue-950/60 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-35">次のシート<span className="ml-2">›</span></button>
         </div>
       </nav>
+      {confirmingEventChange && (
+        <EventChangeDialog
+          eventName={room?.liveName || "このイベント"}
+          onCancel={() => setConfirmingEventChange(false)}
+          onConfirm={leave}
+        />
+      )}
     </div>
   );
 }
