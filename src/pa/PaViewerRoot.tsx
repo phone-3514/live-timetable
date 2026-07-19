@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import type { Band, BandPaSheetLink, TimetableDay, TimetableSlot } from "../types";
+import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { StagePhase, StageProgress } from "../store/useProgressStore";
-import { normalizeBandName, type PaLinkConfig, type PaSheetLink } from "./types";
+import { normalizeBandName, type PaDriveFolder, type PaLinkConfig, type PaSheetLink } from "./types";
 
 type PaRoomDoc = {
   liveName?: string;
@@ -120,21 +120,22 @@ function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
   );
 }
 
-function SheetLinkViewer({ bandLinks, directLink, folderUrl, bandName }: {
-  bandLinks: BandPaSheetLink[];
-  directLink: PaSheetLink | null;
-  folderUrl: string;
+function SheetLinkViewer({ matchedLinks, folders, bandName }: {
+  matchedLinks: PaSheetLink[];
+  folders: PaDriveFolder[];
   bandName: string;
 }) {
-  const links = bandLinks
-    .map((link, index) => ({ label: link.label.trim() || `PAシート${index + 1}`, url: link.url.trim() }))
-    .filter((link) => link.url.length > 0);
-  if (directLink && !links.some((link) => link.url === directLink.url)) {
-    links.push({ label: directLink.fileName || "自動割り当てシート", url: directLink.url });
-  }
-  if (links.length === 0 && folderUrl) {
-    links.push({ label: "共通PAフォルダ", url: folderUrl });
-  }
+  const links = matchedLinks.length > 0
+    ? matchedLinks.map((link, index) => ({
+        label: link.label || link.fileName || `PAシート${index + 1}`,
+        detail: link.fileName,
+        url: link.url,
+      }))
+    : folders.map((folder, index) => ({
+        label: folder.label.trim() || `PAフォルダ${index + 1}`,
+        detail: "一致ファイルなし・フォルダを開く",
+        url: folder.url,
+      }));
   if (links.length === 0) return <div className="grid h-full place-items-center px-6 text-center"><div className="max-w-sm"><p className="text-5xl" aria-hidden="true">📄</p><h2 className="mt-3 text-2xl font-black">シート未登録</h2><p className="mt-2 text-sm leading-6 text-slate-400"><strong className="text-slate-200">{bandName}</strong> のPA／ステージ資料はまだ登録されていません。</p></div></div>;
   return (
     <div className="h-full overflow-y-auto px-4 py-5 sm:px-6">
@@ -153,7 +154,7 @@ function SheetLinkViewer({ bandLinks, directLink, folderUrl, bandName }: {
               rel="noreferrer"
               className="flex min-h-16 items-center justify-between gap-3 rounded-2xl border border-blue-500/40 bg-blue-600 px-5 text-left text-base font-black text-white shadow-lg shadow-blue-950/60 transition-colors hover:bg-blue-500 active:bg-blue-700"
             >
-              <span className="min-w-0 break-words">{link.label}</span>
+              <span className="min-w-0"><span className="block break-words">{link.label}</span>{link.detail && link.detail !== link.label && <span className="mt-1 block truncate text-xs font-semibold text-blue-100/70">{link.detail}</span>}</span>
               <span className="shrink-0 text-xl" aria-hidden="true">↗</span>
             </a>
           ))}
@@ -278,11 +279,17 @@ export function PaViewerRoot() {
     ? (liveIsActiveSlot ? live.band.name : activeSlot.customLabel || "バンド出演なし")
     : live?.band.name ?? "—";
   const nextHeaderEntry = liveIsActiveSlot ? nextLive : live;
-  const matchingLink = selected
-    ? room?.paConfig?.links?.find((link) => link.bandId === selected.band.id)
-      ?? room?.paConfig?.links?.find((link) => normalizeBandName(link.bandName) === normalizeBandName(selected.band.name))
-      ?? null
-    : null;
+  const matchingLinks = selected
+    ? (room?.paConfig?.links ?? []).filter((link) =>
+        link.bandId === selected.band.id
+        || normalizeBandName(link.bandName) === normalizeBandName(selected.band.name),
+      )
+    : [];
+  const configuredFolders = room?.paConfig?.folders?.length
+    ? room.paConfig.folders
+    : room?.paConfig?.folderUrl
+      ? [{ label: "PAフォルダ", url: room.paConfig.folderUrl }]
+      : [];
 
   const countdownTarget = progress?.phase === "performing" && liveIsActiveSlot && live
     ? dateAtTime(live.day, live.slot.endTime)
@@ -331,7 +338,7 @@ export function PaViewerRoot() {
         {syncState === "connecting" && !room ? <div className="grid h-full min-h-[55vh] place-items-center text-slate-400">リアルタイム情報に接続中…</div>
           : syncState === "error" && !room ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-xl font-black">同期に接続できません</p><p className="mt-2 text-sm text-slate-400">通信状態とFirebase設定を確認してください。</p></div></div>
           : !selected ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-4xl">🎚️</p><h2 className="mt-3 text-xl font-black">出演バンドが未登録です</h2><p className="mt-2 text-sm text-slate-400">タイムテーブルにバンドを配置するとシートが表示されます。</p></div></div>
-          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">Driveリンク</span></div><div className="h-[calc(100%-2.5rem)]"><SheetLinkViewer bandLinks={selected.band.paSheetLinks ?? []} directLink={matchingLink} folderUrl={room?.paConfig?.folderUrl ?? ""} bandName={selected.band.name} /></div></div>}
+          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">Driveリンク</span></div><div className="h-[calc(100%-2.5rem)]"><SheetLinkViewer matchedLinks={matchingLinks} folders={configuredFolders} bandName={selected.band.name} /></div></div>}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl" aria-label="PAシート手動切り替え">

@@ -385,7 +385,6 @@ function parseTableBands(rawText: string): Band[] {
       hasSync: detectHasSync(line),
       hasKeyboard: detectHasKeyboard(line),
       gearTags: [],
-      paSheetLinks: [],
       raw: line,
       parseWarning,
     };
@@ -628,7 +627,6 @@ function parseChatLogBands(rawText: string): Band[] {
       hasSync: detectHasSync(blockText),
       hasKeyboard: detectHasKeyboard(blockText),
       gearTags: [],
-      paSheetLinks: [],
       raw: blockText,
       parseWarning,
     };

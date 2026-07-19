@@ -852,11 +852,7 @@ export const useAppStore = create<AppState>()(
         return {
           ...currentState,
           ...persisted,
-          bands: bands.map((b) => ({
-            ...b,
-            gearTags: b.gearTags ?? [],
-            paSheetLinks: b.paSheetLinks ?? [],
-          })),
+          bands: bands.map((b) => ({ ...b, gearTags: b.gearTags ?? [] })),
         };
       },
     },

@@ -86,7 +86,8 @@ service cloud.firestore {
         && (!('applications' in data) || (data.applications is list && data.applications.size() < 300))
         && (!('paConfig' in data) || (
           data.paConfig is map
-          && data.paConfig.folderUrl is string && data.paConfig.folderUrl.size() < 2048
+          && (!('folderUrl' in data.paConfig) || (data.paConfig.folderUrl is string && data.paConfig.folderUrl.size() < 2048))
+          && (!('folders' in data.paConfig) || (data.paConfig.folders is list && data.paConfig.folders.size() <= 20))
           && data.paConfig.links is list && data.paConfig.links.size() < 300
           && data.paConfig.updatedAt is int
         ));

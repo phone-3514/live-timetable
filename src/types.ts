@@ -5,11 +5,6 @@ export type BandMemberDetail = {
   part: string;
 };
 
-export type BandPaSheetLink = {
-  label: string;
-  url: string;
-};
-
 export type Band = {
   id: string;
   name: string;
@@ -56,9 +51,6 @@ export type Band = {
   // the keyboard was still being carried across stage" problem. Manually
   // set only; nothing auto-detects these the way hasSync/hasKeyboard do.
   gearTags: string[];
-  /** Band-specific PA, lighting, and stage-reference links. Optional so
-   * rooms saved before this field was introduced remain readable. */
-  paSheetLinks?: BandPaSheetLink[];
   raw: string;
   parseWarning?: string;
 };

@@ -1,12 +1,20 @@
 export type PaSheetLink = {
   bandId: string;
   bandName: string;
+  label?: string;
   fileName?: string;
   url: string;
 };
 
+export type PaDriveFolder = {
+  label: string;
+  url: string;
+};
+
 export type PaLinkConfig = {
-  folderUrl: string;
+  folders: PaDriveFolder[];
+  /** Legacy single-folder field retained while old rooms migrate. */
+  folderUrl?: string;
   links: PaSheetLink[];
   updatedAt: number;
 };

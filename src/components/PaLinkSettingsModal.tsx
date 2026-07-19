@@ -5,16 +5,16 @@ import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToastStore } from "../store/useToastStore";
 import { ModalPortal } from "./ModalPortal";
-import { isGoogleWorkspaceUrl, type PaLinkConfig, type PaSheetLink } from "../pa/types";
+import { isGoogleWorkspaceUrl, type PaDriveFolder, type PaLinkConfig, type PaSheetLink } from "../pa/types";
 import { autoMatchDriveFiles, listPublicDriveFolder } from "../pa/googleDriveFolder";
 
 export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClose: () => void }) {
   useEscapeKey(onClose);
   const bands = useAppStore((state) => state.bands);
   const showToast = useToastStore((state) => state.show);
-  const [folderUrl, setFolderUrl] = useState("");
+  const [folders, setFolders] = useState<(PaDriveFolder & { id: string })[]>([]);
   const [autoLinks, setAutoLinks] = useState<PaSheetLink[]>([]);
-  const [scannedFolderUrl, setScannedFolderUrl] = useState("");
+  const [scannedFingerprint, setScannedFingerprint] = useState("");
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,9 +36,14 @@ export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClo
     getDoc(doc(db, "rooms", roomId)).then((snapshot) => {
       if (!active) return;
       const config = snapshot.data()?.paConfig as PaLinkConfig | undefined;
-      setFolderUrl(config?.folderUrl ?? "");
+      const loadedFolders = config?.folders?.length
+        ? config.folders
+        : config?.folderUrl
+          ? [{ label: "PAシート", url: config.folderUrl }]
+          : [];
+      setFolders(loadedFolders.map((folder) => ({ ...folder, id: crypto.randomUUID() })));
       setAutoLinks(config?.links ?? []);
-      setScannedFolderUrl(config?.folderUrl ?? "");
+      setScannedFingerprint(JSON.stringify(loadedFolders));
     }).catch(() => {
       if (active) setError("PAリンク設定を読み込めませんでした");
     }).finally(() => {
@@ -56,24 +61,54 @@ export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClo
     }
   }
 
-  async function scanFolder(): Promise<PaSheetLink[] | null> {
-    if (!isGoogleWorkspaceUrl(folderUrl)) {
-      setError("共通フォルダにはGoogle DriveまたはGoogleスプレッドシートのHTTPS URLを入力してください");
+  const cleanedFolders = folders
+    .map((folder, index) => ({
+      label: folder.label.trim() || `PAフォルダ${index + 1}`,
+      url: folder.url.trim(),
+    }))
+    .filter((folder) => folder.url.length > 0);
+  const foldersFingerprint = JSON.stringify(cleanedFolders);
+  const hasInvalidFolder = folders.some(
+    (folder) => Boolean(folder.url.trim()) && !isGoogleWorkspaceUrl(folder.url),
+  );
+
+  function addFolder() {
+    setFolders((current) => [
+      ...current,
+      { id: crypto.randomUUID(), label: `PAフォルダ${current.length + 1}`, url: "" },
+    ]);
+    setError(null);
+  }
+
+  async function scanFolders(): Promise<PaSheetLink[] | null> {
+    if (hasInvalidFolder) {
+      setError("すべての項目にGoogle DriveフォルダのHTTPS URLを入力してください");
       return null;
     }
-    if (!folderUrl.trim()) {
-      setError("Google DriveフォルダのURLを入力してください");
+    if (cleanedFolders.length === 0) {
+      setError("Google Driveフォルダを1つ以上追加してください");
       return null;
     }
     setScanning(true);
     setError(null);
     try {
-      const files = await listPublicDriveFolder(folderUrl.trim());
-      const result = autoMatchDriveFiles(sortedBands, files);
-      setAutoLinks(result.links);
-      setScannedFolderUrl(folderUrl.trim());
-      if (result.links.length === 0) setError("バンド名を含むファイルが見つかりませんでした。ファイル名と共有設定を確認してください");
-      return result.links;
+      const folderResults = await Promise.all(cleanedFolders.map(async (folder) => {
+        try {
+          const files = await listPublicDriveFolder(folder.url);
+          const result = autoMatchDriveFiles(sortedBands, files);
+          return result.links.map((link) => ({ ...link, label: folder.label }));
+        } catch (folderError) {
+          const detail = folderError instanceof Error ? folderError.message : "読み取れませんでした";
+          throw new Error(`「${folder.label}」: ${detail}`);
+        }
+      }));
+      const uniqueLinks = folderResults.flat().filter((link, index, all) =>
+        all.findIndex((candidate) => candidate.bandId === link.bandId && candidate.url === link.url) === index,
+      );
+      setAutoLinks(uniqueLinks);
+      setScannedFingerprint(foldersFingerprint);
+      if (uniqueLinks.length === 0) setError("バンド名を含むファイルが見つかりませんでした。ファイル名と共有設定を確認してください");
+      return uniqueLinks;
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : "フォルダを読み取れませんでした");
       return null;
@@ -87,8 +122,10 @@ export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClo
     setSaving(true);
     setError(null);
     let linksToSave = autoLinks;
-    if (folderUrl.trim() && scannedFolderUrl !== folderUrl.trim()) {
-      const scanned = await scanFolder();
+    if (cleanedFolders.length === 0) {
+      linksToSave = [];
+    } else if (foldersFingerprint !== scannedFingerprint) {
+      const scanned = await scanFolders();
       if (!scanned) {
         setSaving(false);
         return;
@@ -96,7 +133,10 @@ export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClo
       linksToSave = scanned;
     }
     const config: PaLinkConfig = {
-      folderUrl: folderUrl.trim(),
+      folders: cleanedFolders,
+      // Keep the first URL mirrored for rooms still using the previous
+      // single-folder rules/schema. New clients read `folders` first.
+      folderUrl: cleanedFolders[0]?.url ?? "",
       links: linksToSave,
       updatedAt: Date.now(),
     };
@@ -129,16 +169,19 @@ export function PaLinkSettingsModal({ roomId, onClose }: { roomId: string; onClo
 
             {loading ? <p className="py-12 text-center text-sm text-slate-400">設定を読み込み中…</p> : <>
               <section className="mt-5">
-                <label htmlFor="pa-folder-url" className="text-sm font-bold text-slate-200">共通のGoogle Driveフォルダ</label>
-                <p className="mt-1 text-xs text-slate-500">バンド別リンクがない場合、このフォルダを開きます。「リンクを知っている全員が閲覧可」にしてください。</p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input id="pa-folder-url" type="url" inputMode="url" value={folderUrl} onChange={(event) => { setFolderUrl(event.target.value); setError(null); }} placeholder="https://drive.google.com/drive/folders/..." className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950 px-3 text-base text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-500" /><button type="button" disabled={scanning} onClick={() => void scanFolder()} className="min-h-12 shrink-0 rounded-xl border border-blue-600 bg-blue-950/40 px-4 text-sm font-black text-blue-200 hover:bg-blue-900/60 disabled:opacity-50">{scanning ? "読取中…" : "ファイル名から自動割当"}</button></div>
+                <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-200">Google Driveフォルダ</h3><p className="mt-1 text-xs text-slate-500">Main PA、Sub PA、照明など複数のフォルダを登録できます。各フォルダは「リンクを知っている全員が閲覧可」にしてください。</p></div><span className="shrink-0 rounded-full bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-300">{cleanedFolders.length}件</span></div>
+                <div className="mt-3 space-y-3">
+                  {folders.map((folder, index) => { const invalid = Boolean(folder.url.trim()) && !isGoogleWorkspaceUrl(folder.url); return <div key={folder.id} className="rounded-xl border border-slate-700 bg-slate-950/50 p-3"><div className="flex items-start gap-2"><div className="min-w-0 flex-1 space-y-2"><input value={folder.label} onChange={(event) => { const label = event.target.value; setFolders((current) => current.map((item) => item.id === folder.id ? { ...item, label } : item)); setError(null); }} aria-label={`PAフォルダ${index + 1}の名称`} placeholder={`PAフォルダ${index + 1}`} className="min-h-11 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 text-base font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500" /><input type="url" inputMode="url" value={folder.url} onChange={(event) => { const url = event.target.value; setFolders((current) => current.map((item) => item.id === folder.id ? { ...item, url } : item)); setError(null); }} aria-label={`${folder.label || `PAフォルダ${index + 1}`}のGoogle Drive URL`} aria-invalid={invalid} placeholder="https://drive.google.com/drive/folders/..." className={`min-h-12 w-full rounded-lg border bg-slate-900 px-3 text-base text-slate-100 outline-none placeholder:text-slate-600 ${invalid ? "border-rose-500 focus:border-rose-400" : "border-slate-600 focus:border-blue-500"}`} /></div><button type="button" onClick={() => { setFolders((current) => current.filter((item) => item.id !== folder.id)); setError(null); }} aria-label={`${folder.label || `PAフォルダ${index + 1}`}を削除`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 text-xl text-slate-400 hover:border-rose-700 hover:bg-rose-950/50 hover:text-rose-300">×</button></div>{invalid && <p className="mt-2 text-xs font-semibold text-rose-300">Google DriveフォルダのURLを入力してください</p>}</div>; })}
+                  <button type="button" onClick={addFolder} disabled={folders.length >= 20} className="min-h-12 w-full rounded-xl border border-dashed border-blue-600 bg-blue-950/20 px-4 text-sm font-black text-blue-200 hover:bg-blue-900/40 disabled:opacity-40">＋ フォルダを追加</button>
+                  <button type="button" disabled={scanning || cleanedFolders.length === 0 || hasInvalidFolder} onClick={() => void scanFolders()} className="min-h-12 w-full rounded-xl border border-blue-600 bg-blue-950/40 px-4 text-sm font-black text-blue-200 hover:bg-blue-900/60 disabled:opacity-50">{scanning ? `${cleanedFolders.length}フォルダを読取中…` : "全フォルダから自動割り当て"}</button>
+                </div>
               </section>
 
               <section className="mt-6">
                 <h3 className="text-sm font-bold text-slate-200">自動割り当て結果</h3>
                 <p className="mt-1 text-xs text-slate-500">全角半角・空白・記号を無視し、ファイル名にバンド名が含まれるシートを割り当てます。</p>
                 <div className="mt-3 grid gap-3">
-                  {sortedBands.length === 0 ? <p className="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">バンドを登録すると割り当て結果が表示されます。</p> : sortedBands.map((band) => { const matched = autoLinks.find((link) => link.bandId === band.id); return <div key={band.id} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${matched ? "border-emerald-800 bg-emerald-950/20" : "border-slate-700 bg-slate-950/50"}`}><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-200">{band.name}</p><p className={`mt-1 truncate text-xs ${matched ? "text-emerald-300" : "text-slate-500"}`}>{matched ? `✓ ${matched.fileName ?? "シートを割り当て済み"}` : "— 一致するファイルなし（共通フォルダを表示）"}</p></div>{matched && <a href={matched.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border border-slate-600 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-700">確認 ↗</a>}</div>; })}
+                  {sortedBands.length === 0 ? <p className="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">バンドを登録すると割り当て結果が表示されます。</p> : sortedBands.map((band) => { const matches = autoLinks.filter((link) => link.bandId === band.id); return <div key={band.id} className={`rounded-xl border p-3 ${matches.length ? "border-emerald-800 bg-emerald-950/20" : "border-slate-700 bg-slate-950/50"}`}><p className="truncate text-sm font-bold text-slate-200">{band.name}</p>{matches.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{matches.map((matched, index) => <a key={`${matched.url}-${index}`} href={matched.url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-emerald-800/70 bg-emerald-950/30 px-3 text-xs font-bold text-emerald-200 hover:bg-emerald-900/40"><span className="min-w-0 truncate">✓ {matched.label || `PAシート${index + 1}`} · {matched.fileName ?? "割り当て済み"}</span><span>↗</span></a>)}</div> : <p className="mt-1 text-xs text-slate-500">— 一致するファイルなし（登録フォルダを表示）</p>}</div>; })}
                 </div>
               </section>
             </>}
