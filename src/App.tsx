@@ -81,32 +81,17 @@ function App() {
     useSensor(KeyboardSensor),
   );
 
-  // dnd-kit's built-in `autoScroll` prop only accepts one symmetric
-  // `threshold.y` fraction applied to both the top AND bottom edges of
-  // the scroll container (confirmed by reading getScrollDirectionAndSpeed
-  // in @dnd-kit/core's source — no per-edge option exists). Mobile wants
-  // an asymmetric setup: the bottom zone stays at the previously tuned
-  // 8% (see the earlier auto-scroll-sensitivity round), but the top zone
-  // needs to be noticeably bigger so scrolling up toward an earlier slot
-  // starts well before the finger/dragged card actually reaches the top
-  // few pixels of the screen — without going so large that it reaches
-  // the literal top edge (i.e., not so big that ordinary drags near the
-  // top of the visible content trigger it unintentionally). Since
-  // dnd-kit can't express that declaratively, mobile disables the
-  // built-in autoScroll entirely and uses useAsymmetricAutoScroll below
-  // instead, which reimplements the same formula/cadence for both zones
-  // (see that hook's own comment) so the bottom zone's feel is unchanged.
-  // Desktop keeps dnd-kit's own defaults (`autoScroll={true}`) — DayPanel's
-  // fixed-height, internally-scrolling panels are a different shape of
-  // problem this mobile-only handling isn't meant to solve, and nothing
-  // here suggested desktop's existing behavior was an issue.
+  // Mobile auto-scroll follows the dragged row's viewport position: the
+  // top/bottom 20% scroll at a constant speed and the centre 60% stops it
+  // immediately. It deliberately ignores distance from the drag's origin,
+  // which was the source of sticky scrolling after returning to the centre.
+  // Desktop retains dnd-kit's behavior for its scrolling day panels.
   const isMobile = useIsMobile();
   const autoScroll = isMobile ? false : true;
   const asymmetricAutoScroll = useAsymmetricAutoScroll({
     enabled: isMobile,
-    topThreshold: 0.3,
-    bottomThreshold: 0.08,
-    acceleration: 2,
+    activeZoneRatio: 0.2,
+    scrollStep: 4,
   });
 
   // ⌘Z / Ctrl+Z and ⌘⇧Z / Ctrl+Y (redo) for the Timetable Editor's
