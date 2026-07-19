@@ -17,6 +17,7 @@ import { SharePreviewModal } from "./SharePreviewModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
+import { ModalPortal } from "./ModalPortal";
 import type { Band, TimetableDay } from "../types";
 
 const EMPTY_BANDS: Band[] = [];
@@ -376,6 +377,7 @@ export function MobileTimetable() {
       )}
 
       {showDayPicker && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/60"
           onClick={() => setShowDayPicker(false)}
@@ -402,6 +404,7 @@ export function MobileTimetable() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {exportDay && <SharePreviewModal day={exportDay} onClose={() => setExportDayId(null)} />}

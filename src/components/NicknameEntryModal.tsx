@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { storeNickname } from "../utils/nickname";
 import { storeAdminAuthFlag } from "../utils/adminAuth";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   onSubmit: (nickname: string, isAdmin: boolean) => void;
@@ -31,6 +32,7 @@ export function NicknameEntryModal({ onSubmit }: Props) {
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 backdrop-blur-sm"
       role="dialog"
@@ -77,5 +79,6 @@ export function NicknameEntryModal({ onSubmit }: Props) {
       </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

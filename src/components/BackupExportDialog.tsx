@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { buildBackupFilename, downloadBackupFile } from "../utils/backup";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   liveName: string;
@@ -18,6 +19,7 @@ export function BackupExportDialog({ liveName, onClose }: Props) {
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm"
       role="dialog"
@@ -59,5 +61,6 @@ export function BackupExportDialog({ liveName, onClose }: Props) {
       </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

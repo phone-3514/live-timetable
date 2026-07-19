@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
-import { THEMES } from "../utils/shareThemes";
-import type { ThemeId } from "../utils/shareThemes";
+import { LAYOUTS, THEMES } from "../utils/shareThemes";
+import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import type { EventInfo } from "../store/useAppStore";
 
 // A purely presentational, non-interactive render of a day's timetable,
@@ -43,10 +44,34 @@ type Props = {
   // the event name, so the caller (SharePreviewModal) tells us how many
   // days the event has and this hides the badge when there's only one.
   isSingleDay: boolean;
+  /** Independent from `themeId` — see shareThemes.ts's LayoutId doc
+   * comment. Defaults to "classic", which reproduces this template's
+   * pre-existing rendering exactly (every callsite that existed before
+   * this prop was added keeps working with zero visual change). */
+  layoutId?: LayoutId;
 };
 
-export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingleDay }: Props) {
+export function ShareTimetableTemplate({
+  day,
+  bands,
+  themeId,
+  eventInfo,
+  isSingleDay,
+  layoutId = "classic",
+}: Props) {
   const theme = THEMES[themeId];
+  const layout = LAYOUTS[layoutId];
+  const headerAlignClass = layout.titleAlign === "left" ? "items-start text-left" : "items-center text-center";
+  const headerJustifyClass = layout.titleAlign === "left" ? "justify-start" : "justify-center";
+  const titleColorStyle: CSSProperties =
+    layout.titleUseGradient && theme.dayTitleGradient
+      ? {
+          backgroundImage: theme.dayTitleGradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }
+      : { color: theme.dayTitleColor };
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   // Fully-empty "still to be filled" slots are a working-draft artifact —
   // they carry no information for an audience, so the shared image only
@@ -110,7 +135,7 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
       )}
 
       <div className="relative flex flex-col" style={{ gap: 36 }}>
-        <header className="flex flex-col items-center text-center">
+        <header className={`flex flex-col ${headerAlignClass}`}>
           <span
             className="font-semibold tracking-[0.35em]"
             style={{ fontSize: 24, color: theme.kickerColor }}
@@ -124,22 +149,12 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
                   "Day N" marker, which becomes a secondary pill instead. */}
               <h1
                 className="mt-2 font-black leading-tight"
-                style={{
-                  fontSize: 80,
-                  ...(theme.dayTitleGradient
-                    ? {
-                        backgroundImage: theme.dayTitleGradient,
-                        backgroundClip: "text",
-                        WebkitBackgroundClip: "text",
-                        color: "transparent",
-                      }
-                    : { color: theme.dayTitleColor }),
-                }}
+                style={{ fontSize: 80, ...titleColorStyle }}
               >
                 {eventInfo.liveName}
               </h1>
               {(showDayLabel || dateLabel) && (
-                <div className="mt-3 flex flex-wrap items-center justify-center" style={{ gap: 10 }}>
+                <div className={`mt-3 flex flex-wrap items-center ${headerJustifyClass}`} style={{ gap: 10 }}>
                   {showDayLabel && (
                     <span
                       className="rounded-full font-bold"
@@ -173,17 +188,7 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
                   leaving the header blank. */}
               <h1
                 className="mt-2 font-black leading-none"
-                style={{
-                  fontSize: 96,
-                  ...(theme.dayTitleGradient
-                    ? {
-                        backgroundImage: theme.dayTitleGradient,
-                        backgroundClip: "text",
-                        WebkitBackgroundClip: "text",
-                        color: "transparent",
-                      }
-                    : { color: theme.dayTitleColor }),
-                }}
+                style={{ fontSize: 96, ...titleColorStyle }}
               >
                 {showDayLabel || !dateLabel ? day.label : dateLabel}
               </h1>
@@ -203,7 +208,7 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
             // keeps the icon and full name together on one line; the
             // header has no width constraint tighter than the canvas
             // itself, so there's always room for it to grow into.
-            <div className="mt-2 flex flex-row items-center justify-center" style={{ gap: 6 }}>
+            <div className={`mt-2 flex flex-row items-center ${headerJustifyClass}`} style={{ gap: 6 }}>
               <span style={{ fontSize: 20, lineHeight: 1 }}>📍</span>
               <span
                 className="font-medium tracking-wide"
@@ -213,10 +218,16 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
               </span>
             </div>
           )}
-          <div
-            className="mt-5 rounded-full"
-            style={{ height: 2, width: 320, background: theme.dividerBackground }}
-          />
+          {layout.headerRuleStyle !== "none" && (
+            <div
+              className={layout.headerRuleStyle === "pill" ? "mt-5 rounded-full" : "mt-5 w-full"}
+              style={{
+                height: layout.headerRuleStyle === "pill" ? 2 : 1,
+                width: layout.headerRuleStyle === "pill" ? 320 : "100%",
+                background: theme.dividerBackground,
+              }}
+            />
+          )}
         </header>
 
         {columns.length === 0 ? (
@@ -229,37 +240,59 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
               <div
                 key={colIndex}
                 className="flex shrink-0 flex-col"
-                style={{ width: COLUMN_WIDTH, gap: 16 }}
+                style={{ width: COLUMN_WIDTH, gap: layout.cardGap }}
               >
-                {column.map((slot) => {
+                {column.map((slot, slotIndex) => {
                   const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
                   if (band) {
                     const shownSetlist = band.setlist.slice(0, MAX_SETLIST_SONGS);
                     const extraSongs = band.setlist.length - shownSetlist.length;
+                    // Grouped-list layouts (Apple/Notion: cardGap near 0,
+                    // no per-card border) use a thin bottom rule between
+                    // adjacent rows instead, so rows still read as
+                    // separated — but never after the last row in a
+                    // column, and never when the layout already has its
+                    // own card border (classic/material).
+                    const isLastInColumn = slotIndex === column.length - 1;
+                    const groupedDivider =
+                      layout.cardBorderWidth === 0 && layout.cardGap <= 4 && !isLastInColumn
+                        ? `1px solid ${theme.cardBorder}`
+                        : "none";
                     return (
                       <div
                         key={slot.id}
-                        className="flex items-start rounded-2xl border"
+                        className="flex items-start"
                         style={{
                           gap: 18,
                           padding: 20,
                           background: theme.cardBg,
-                          borderColor: theme.cardBorder,
-                          boxShadow: theme.cardShadow,
+                          borderRadius: layout.cardRadius,
+                          border: layout.cardBorderWidth > 0 ? `${layout.cardBorderWidth}px solid ${theme.cardBorder}` : "none",
+                          borderBottom: groupedDivider !== "none" ? groupedDivider : undefined,
+                          boxShadow: layout.cardShadowOverride ?? theme.cardShadow,
                         }}
                       >
-                        <div
-                          className="flex shrink-0 items-center justify-center rounded-full font-bold"
-                          style={{
-                            width: 46,
-                            height: 46,
-                            fontSize: 19,
-                            background: theme.numberBadgeBackground,
-                            color: theme.numberBadgeText,
-                          }}
-                        >
-                          {orderById.get(slot.id)}
-                        </div>
+                        {layout.badgeShape === "none" ? (
+                          <div
+                            className="flex shrink-0 items-center justify-center font-mono font-bold"
+                            style={{ width: 32, fontSize: 17, color: theme.timeColor, opacity: 0.75 }}
+                          >
+                            {String(orderById.get(slot.id)).padStart(2, "0")}
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex shrink-0 items-center justify-center font-bold ${layout.badgeShape === "circle" ? "rounded-full" : "rounded-lg"}`}
+                            style={{
+                              width: 46,
+                              height: 46,
+                              fontSize: 19,
+                              background: theme.numberBadgeBackground,
+                              color: theme.numberBadgeText,
+                            }}
+                          >
+                            {orderById.get(slot.id)}
+                          </div>
+                        )}
 
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
@@ -380,10 +413,11 @@ export function ShareTimetableTemplate({ day, bands, themeId, eventInfo, isSingl
                   return (
                     <div
                       key={slot.id}
-                      className="flex items-center justify-center rounded-2xl border-2"
+                      className="flex items-center justify-center border-2"
                       style={{
                         gap: 14,
                         padding: "18px 16px",
+                        borderRadius: layout.cardRadius,
                         borderColor: theme.breakBorder,
                         background: theme.breakBg,
                         boxShadow: "0 2px 10px rgba(0,0,0,0.12)",

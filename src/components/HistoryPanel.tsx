@@ -1,5 +1,6 @@
 import { useHistoryStore } from "../store/useHistoryStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   onClose: () => void;
@@ -16,6 +17,7 @@ export function HistoryPanel({ onClose }: Props) {
   useEscapeKey(onClose);
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-20"
       role="dialog"
@@ -75,5 +77,6 @@ export function HistoryPanel({ onClose }: Props) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

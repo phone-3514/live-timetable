@@ -1,5 +1,6 @@
 import { useAppStore } from "../store/useAppStore";
 import { useCollabStore } from "../store/useCollabStore";
+import { ModalPortal } from "./ModalPortal";
 
 // A small fixed palette keyed by a cheap hash of clientId — not
 // meaningful identity, just enough visual variety that two simultaneous
@@ -42,6 +43,7 @@ export function LiveCursors() {
   const bands = useAppStore((s) => s.bands);
 
   return (
+    <ModalPortal>
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
       {others
         .filter((o) => o.cursor !== null)
@@ -80,5 +82,6 @@ export function LiveCursors() {
           );
         })}
     </div>
+    </ModalPortal>
   );
 }

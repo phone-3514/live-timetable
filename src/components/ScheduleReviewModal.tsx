@@ -12,6 +12,7 @@ import {
 } from "../store/useAppStore";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   onClose: () => void;
@@ -79,6 +80,7 @@ export function ScheduleReviewModal({ onClose }: Props) {
   ).length;
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
@@ -265,5 +267,6 @@ export function ScheduleReviewModal({ onClose }: Props) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -4,10 +4,11 @@ import { SetlistExportTemplate, PAGE_WIDTH } from "./SetlistExportTemplate";
 import { computeSetlistEntries } from "../utils/setlistExport";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
-import { THEMES, getSetlistPalette } from "../utils/shareThemes";
-import type { ThemeId } from "../utils/shareThemes";
+import { LAYOUTS, THEMES, getSetlistPalette } from "../utils/shareThemes";
+import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { dataUrlToFile, shareOrDownloadFile, supportsFileShare } from "../utils/shareOrDownload";
+import { ModalPortal } from "./ModalPortal";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -51,6 +52,8 @@ export function SetlistExportModal({ day, onClose }: Props) {
   // the sound crew looking different from the audience-facing timetable
   // image, but both draw from the identical theme list.
   const [themeId, setThemeId] = useState<ThemeId>("standard");
+  // Independent from themeId — see shareThemes.ts's LayoutId doc comment.
+  const [layoutId, setLayoutId] = useState<LayoutId>("classic");
 
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -74,7 +77,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, applications, entries.length, themeId]);
+  }, [day, bands, applications, entries.length, themeId, layoutId]);
 
   useLayoutEffect(() => {
     const el = previewAreaRef.current;
@@ -216,6 +219,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -270,6 +274,30 @@ export function SetlistExportModal({ day, onClose }: Props) {
           </div>
         </div>
 
+        {/* Structural Layout — independent from the color theme above
+            (see shareThemes.ts's LayoutId doc comment). Defaults to
+            "classic", byte-identical to this template's pre-existing
+            rendering. */}
+        <div className="shrink-0 border-b border-slate-800 px-4 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold text-slate-500">レイアウト構造</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.values(LAYOUTS).map((layout) => (
+              <button
+                key={layout.id}
+                onClick={() => setLayoutId(layout.id)}
+                title={layout.description}
+                className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                  layoutId === layout.id
+                    ? "border-emerald-400 bg-emerald-950/40 text-emerald-200"
+                    : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+                }`}
+              >
+                {layout.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div
           ref={previewAreaRef}
           className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4"
@@ -300,6 +328,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
                 eventInfo={eventInfo}
                 entries={entries}
                 themeId={themeId}
+                layoutId={layoutId}
                 isSingleDay={isSingleDay}
               />
             </div>
@@ -353,6 +382,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             entries={entries}
             columns={1}
             themeId={themeId}
+            layoutId={layoutId}
             isSingleDay={isSingleDay}
           />
         </div>
@@ -368,10 +398,12 @@ export function SetlistExportModal({ day, onClose }: Props) {
             entries={entries}
             columns={pngColumns}
             themeId={themeId}
+            layoutId={layoutId}
             isSingleDay={isSingleDay}
           />
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

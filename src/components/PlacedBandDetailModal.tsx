@@ -5,6 +5,7 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { splitSetlistEntry } from "../utils/parseApplications";
 import { Badge } from "./applications/Badge";
+import { ModalPortal } from "./ModalPortal";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
 interface Props {
@@ -198,6 +199,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   });
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
@@ -449,5 +451,6 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
