@@ -83,7 +83,13 @@ service cloud.firestore {
         && data.bands is list && data.bands.size() < 300
         && data.days is list && data.days.size() < 20
         && data.updatedAt is int
-        && (!('applications' in data) || (data.applications is list && data.applications.size() < 300));
+        && (!('applications' in data) || (data.applications is list && data.applications.size() < 300))
+        && (!('paConfig' in data) || (
+          data.paConfig is map
+          && data.paConfig.folderUrl is string && data.paConfig.folderUrl.size() < 2048
+          && data.paConfig.links is list && data.paConfig.links.size() < 300
+          && data.paConfig.updatedAt is int
+        ));
     }
   }
 }

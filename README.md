@@ -56,7 +56,7 @@ See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rule
 3. 同じく「構築」→「Realtime Database」→「データベースを作成」（ロケーションはFirestoreと合わせなくてOK）。
 
 ### 2. Web アプリを登録し、config を取得
-プロジェクト概要の「`</>`」アイコン →ニックネームを入力（Firebase Hosting は使わないのでチェック不要）→表示される `firebaseConfig` の値（apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId, **databaseURL**）を控える。
+プロジェクト概要の「`</>`」アイコン →ニックネームを入力（Firebase Hosting は使わないのでチェック不要）→表示される `firebaseConfig` の値（apiKey, authDomain, projectId, messagingSenderId, appId, **databaseURL**）を控える。Firebase Storageは使用しません。
 
 ### 3. ローカル環境に設定
 ```bash
@@ -64,11 +64,10 @@ cp .env.example .env.local
 ```
 `.env.local` に控えた値を貼り付けて `npm run dev` を再起動。`.env.local` は `.gitignore` 済みなのでコミットされません。
 
-### 4. セキュリティルールを反映（3箇所）
-Firestore、RTDB、Storage はコンソールのルール設定が別々の場所にあるので、すべて忘れずに：
+### 4. セキュリティルールを反映（2箇所）
+FirestoreとRTDBはコンソールのルール設定が別々の場所にあるので、両方とも忘れずに：
 - `firestore.rules` の中身 → 「Firestore Database」→「ルール」タブに貼り付けて公開
 - `database.rules.json` の中身 → 「Realtime Database」→「ルール」タブに貼り付けて公開
-- `storage.rules` の中身 → 「Storage」→「ルール」タブに貼り付けて公開
 
 どちらもログイン機能が無いため「ルームIDを知っている人は誰でも読み書き可能」というモデルですが、書き込み内容の形式（必須フィールド・サイズ上限）は検証し、壊れた/巨大な書き込みだけは弾きます。**このリポジトリのルールファイルを編集した場合は、その都度この手順でコンソール側に再度貼り付けが必要です**（自動デプロイの仕組みはありません）。
 
@@ -96,6 +95,14 @@ GitHub リポジトリの Settings → Secrets and variables → Actions →「N
 ## PA／ローディー同期ビュー
 
 - 共同編集メニューの「QR共有」から「PA／ローディー」を開くか、`/pa-viewer?room=共有コード`へアクセスします。URLがなくても `/pa-viewer` で8文字の共有コードを入力できます。
-- Firebase Storage に `pa-sheets/{共有コード}/{バンド名}.pdf` の形式でPAシートをアップロードしてください。拡張子は PDF、PNG、JPEG、WebP、GIF に対応し、ファイル名の全角・半角、空白、記号の差は照合時に吸収します。
+- 共同編集メニューの「Google Driveリンクを設定」に、PAシートを入れた公開Google DriveフォルダのURLを登録します。ファイルをFirebaseへアップロードする必要はありません。
+- フォルダを読み取ると、ファイル名にバンド名が含まれるシートを自動割り当てします。全角半角・大文字小文字・空白・一般的な記号の差は照合時に吸収します。サブフォルダは1階層まで読み取ります。
 - 進行モードの現在枠をリアルタイム追従します。「前のシート」「次のシート」を押すと手動表示が優先され、「ライブ同期へ戻る」まで自動切替しません。
-- StorageへのアップロードはFirebaseコンソールから行います。`storage.rules` は閲覧だけを許可し、ブラウザからの書き込みを禁止しています。
+- PA専用URLは共同編集メニューに常時表示され、コピーボタンで担当者へ送れます。PA画面は専用PWAとしてホーム画面へ追加でき、最後に開いたイベントを記憶します。
+
+### Google Drive APIの設定
+
+1. Google Cloud ConsoleでGoogle Drive APIを有効化し、標準APIキーを作成します。
+2. APIキーを「Google Drive APIのみ」「`https://phone-3514.github.io/*`からのみ」に制限します。
+3. ローカルでは`.env.local`、公開環境ではGitHub ActionsのSecretへ`VITE_GOOGLE_DRIVE_API_KEY`として登録します。
+4. PAフォルダと中のファイルを「リンクを知っている全員が閲覧可」にします。アプリはファイル名と閲覧リンクだけを読み、編集権限は要求しません。

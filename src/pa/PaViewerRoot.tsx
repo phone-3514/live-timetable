@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { getDownloadURL, listAll, ref } from "firebase/storage";
-import { db, storage } from "../firebase";
+import { db } from "../firebase";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { StagePhase, StageProgress } from "../store/useProgressStore";
+import { normalizeBandName, type PaLinkConfig, type PaSheetLink } from "./types";
 
 type PaRoomDoc = {
   liveName?: string;
   bands?: Band[];
   days?: TimetableDay[];
   progress?: StageProgress;
+  paConfig?: PaLinkConfig;
 };
 
 type SyncState = "connecting" | "synced" | "offline" | "not-found" | "error";
-type SheetState = "idle" | "loading" | "ready" | "error";
-type PaSheet = { name: string; url: string; kind: "pdf" | "image" };
 type ScheduledBand = {
   band: Band;
   day: TimetableDay;
@@ -23,7 +22,7 @@ type ScheduledBand = {
   order: number;
 };
 
-const SUPPORTED_SHEET = /\.(pdf|png|jpe?g|webp|gif)$/i;
+const PA_ROOM_KEY = "live-timetable-pa-room";
 
 function normalizeRoomCode(value: string) {
   const normalized = value.trim().replace(/[\s-]+/g, "").toLowerCase();
@@ -31,15 +30,13 @@ function normalizeRoomCode(value: string) {
 }
 
 function initialRoomId() {
-  return normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? "");
-}
-
-function normalizeSheetName(value: string) {
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase("ja")
-    .replace(SUPPORTED_SHEET, "")
-    .replace(/[\s._\-‐‑–—・･()[\]（）【】『』「」]+/g, "");
+  const fromUrl = normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? "");
+  if (fromUrl) return fromUrl;
+  try {
+    return normalizeRoomCode(localStorage.getItem(PA_ROOM_KEY) ?? "");
+  } catch {
+    return null;
+  }
 }
 
 function phaseLabel(phase: StagePhase | undefined) {
@@ -101,6 +98,7 @@ function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
         <p className="text-xs font-bold tracking-[0.18em] text-blue-300">PA / ROADIE SYNC</p>
         <h1 className="mt-2 text-2xl font-black tracking-tight">PAシートを開く</h1>
         <p className="mt-2 text-sm leading-6 text-slate-400">イベントの8文字の共有コードを入力してください。</p>
+        <p className="mt-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-400">この画面をホーム画面へ追加すると、PA専用アプリとして次回も同じイベントを開けます。</p>
         <form className="mt-5" onSubmit={submit}>
           <label className="text-sm font-semibold text-slate-300" htmlFor="pa-room-code">共有コード</label>
           <input
@@ -122,26 +120,14 @@ function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
   );
 }
 
-function SheetViewer({ sheet, sheetState, bandName, roomId, onRetry }: {
-  sheet: PaSheet | null;
-  sheetState: SheetState;
+function SheetLinkViewer({ directLink, folderUrl, bandName }: {
+  directLink: PaSheetLink | null;
+  folderUrl: string;
   bandName: string;
-  roomId: string;
-  onRetry: () => void;
 }) {
-  if (sheetState === "loading" || sheetState === "idle") {
-    return <div className="grid h-full place-items-center text-center"><div><span className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-blue-400" /><p className="mt-3 text-sm font-semibold text-slate-400">シートを確認中…</p></div></div>;
-  }
-  if (sheetState === "error") {
-    return <div className="grid h-full place-items-center px-6 text-center"><div><p className="text-4xl" aria-hidden="true">⚠️</p><h2 className="mt-3 text-xl font-black">シートの取得に失敗しました</h2><p className="mt-2 text-sm text-slate-400">通信状態またはFirebase Storageの設定を確認してください。</p><button type="button" onClick={onRetry} className="mt-5 min-h-12 rounded-xl border border-blue-500 px-5 font-bold text-blue-200 hover:bg-blue-950">再読み込み</button></div></div>;
-  }
-  if (!sheet) {
-    return <div className="grid h-full place-items-center px-6 text-center"><div className="max-w-sm"><p className="text-5xl" aria-hidden="true">📄</p><h2 className="mt-3 text-2xl font-black">シート未登録</h2><p className="mt-2 text-sm leading-6 text-slate-400"><strong className="text-slate-200">{bandName}</strong> と一致するPDF・画像がありません。</p><p className="mt-4 rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-left font-mono text-xs text-slate-400">pa-sheets/{roomId}/<br /><span className="text-blue-300">{bandName}.pdf</span></p><button type="button" onClick={onRetry} className="mt-5 min-h-12 rounded-xl border border-slate-600 px-5 font-bold text-slate-200 hover:bg-slate-800">再読み込み</button></div></div>;
-  }
-  if (sheet.kind === "pdf") {
-    return <div className="relative h-full w-full bg-slate-800"><iframe title={`${bandName} PAシート`} src={`${sheet.url}#view=FitH`} className="h-full w-full border-0 bg-white" /><a href={sheet.url} target="_blank" rel="noreferrer" className="absolute right-3 top-3 rounded-full border border-slate-500 bg-slate-950/90 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-slate-800">別画面で開く ↗</a></div>;
-  }
-  return <div className="h-full w-full overflow-auto bg-slate-950 text-center" style={{ touchAction: "pan-x pan-y pinch-zoom" }}><img src={sheet.url} alt={`${bandName} PAシート`} className="inline-block min-h-full min-w-full max-w-none object-contain align-top" draggable={false} /></div>;
+  const targetUrl = directLink?.url || folderUrl;
+  if (!targetUrl) return <div className="grid h-full place-items-center px-6 text-center"><div className="max-w-sm"><p className="text-5xl" aria-hidden="true">📄</p><h2 className="mt-3 text-2xl font-black">シート未登録</h2><p className="mt-2 text-sm leading-6 text-slate-400"><strong className="text-slate-200">{bandName}</strong> に一致するGoogle Driveファイルがありません。管理者にPAフォルダの設定を依頼してください。</p></div></div>;
+  return <div className="grid h-full place-items-center px-5 text-center"><section className="w-full max-w-md rounded-3xl border border-blue-800/70 bg-gradient-to-b from-blue-950/60 to-slate-900 p-6 shadow-2xl"><p className="text-5xl" aria-hidden="true">{directLink ? "📊" : "📁"}</p><p className="mt-4 text-xs font-bold tracking-[0.16em] text-blue-300">{directLink ? "MATCHED PA SHEET" : "PA SHEET FOLDER"}</p><h2 className="mt-2 text-2xl font-black text-white">{bandName}</h2><p className="mt-2 truncate text-sm text-slate-400">{directLink?.fileName ?? "直接リンクなし・共通フォルダを開きます"}</p><a href={targetUrl} target="_blank" rel="noreferrer" className="mt-6 flex min-h-16 w-full items-center justify-center rounded-2xl bg-blue-600 px-5 text-lg font-black text-white shadow-xl shadow-blue-950/70 hover:bg-blue-500 active:bg-blue-700">{directLink ? "該当シートを開く" : "PAフォルダを開く"}<span className="ml-2">↗</span></a><p className="mt-3 text-xs leading-5 text-slate-500">Google Driveアプリがある端末では、そのままDrive／スプレッドシートで開きます。</p></section></div>;
 }
 
 export function PaViewerRoot() {
@@ -149,12 +135,14 @@ export function PaViewerRoot() {
   const [room, setRoom] = useState<PaRoomDoc | null>(null);
   const [publicProgress, setPublicProgress] = useState<StageProgress | null>(null);
   const [syncState, setSyncState] = useState<SyncState>(roomId ? "connecting" : "offline");
-  const [sheets, setSheets] = useState<PaSheet[]>([]);
-  const [sheetState, setSheetState] = useState<SheetState>("idle");
-  const [sheetRefresh, setSheetRefresh] = useState(0);
   const [manualSlotId, setManualSlotId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const online = useOnlineStatus();
+
+  useEffect(() => {
+    if (!roomId) return;
+    try { localStorage.setItem(PA_ROOM_KEY, roomId); } catch { /* continue without remembered event */ }
+  }, [roomId]);
 
   useEffect(() => {
     document.title = room?.liveName ? `PAシート — ${room.liveName}` : "PA / Roadie Sync";
@@ -190,31 +178,6 @@ export function PaViewerRoot() {
   useEffect(() => {
     if (!online && roomId) setSyncState("offline");
   }, [online, roomId]);
-
-  useEffect(() => {
-    if (!roomId) return;
-    if (!storage) {
-      setSheetState("error");
-      return;
-    }
-    let cancelled = false;
-    setSheetState("loading");
-    listAll(ref(storage, `pa-sheets/${roomId}`))
-      .then(async (result) => {
-        const supported = result.items.filter((item) => SUPPORTED_SHEET.test(item.name));
-        const resolved = await Promise.all(supported.map(async (item): Promise<PaSheet> => ({
-          name: item.name,
-          url: await getDownloadURL(item),
-          kind: item.name.toLowerCase().endsWith(".pdf") ? "pdf" : "image",
-        })));
-        if (!cancelled) {
-          setSheets(resolved);
-          setSheetState("ready");
-        }
-      })
-      .catch(() => { if (!cancelled) setSheetState("error"); });
-    return () => { cancelled = true; };
-  }, [roomId, sheetRefresh]);
 
   const progress = useMemo(() => {
     const local = room?.progress ?? null;
@@ -281,22 +244,11 @@ export function PaViewerRoot() {
     ? (liveIsActiveSlot ? live.band.name : activeSlot.customLabel || "バンド出演なし")
     : live?.band.name ?? "—";
   const nextHeaderEntry = liveIsActiveSlot ? nextLive : live;
-  const matchingSheet = selected ? sheets.find((sheet) => normalizeSheetName(sheet.name) === normalizeSheetName(selected.band.name)) ?? null : null;
-  const nextSelectedSheet = scheduled[selectedIndex + 1]
-    ? sheets.find((sheet) => normalizeSheetName(sheet.name) === normalizeSheetName(scheduled[selectedIndex + 1].band.name)) ?? null
+  const matchingLink = selected
+    ? room?.paConfig?.links?.find((link) => link.bandId === selected.band.id)
+      ?? room?.paConfig?.links?.find((link) => normalizeBandName(link.bandName) === normalizeBandName(selected.band.name))
+      ?? null
     : null;
-
-  useEffect(() => {
-    if (!nextSelectedSheet) return;
-    if (nextSelectedSheet.kind === "image") {
-      const image = new Image();
-      image.src = nextSelectedSheet.url;
-      return;
-    }
-    const controller = new AbortController();
-    void fetch(nextSelectedSheet.url, { signal: controller.signal }).catch(() => undefined);
-    return () => controller.abort();
-  }, [nextSelectedSheet]);
 
   const countdownTarget = progress?.phase === "performing" && liveIsActiveSlot && live
     ? dateAtTime(live.day, live.slot.endTime)
@@ -307,12 +259,14 @@ export function PaViewerRoot() {
     const url = new URL(window.location.href);
     url.searchParams.set("room", id);
     window.history.replaceState(null, "", url.toString());
+    try { localStorage.setItem(PA_ROOM_KEY, id); } catch { /* continue without remembered event */ }
     setRoomId(id);
   };
   const leave = () => {
     const url = new URL(window.location.href);
     url.searchParams.delete("room");
     window.history.replaceState(null, "", url.toString());
+    try { localStorage.removeItem(PA_ROOM_KEY); } catch { /* no persistent storage available */ }
     setRoomId(null);
     setRoom(null);
     setManualSlotId(null);
@@ -343,7 +297,7 @@ export function PaViewerRoot() {
         {syncState === "connecting" && !room ? <div className="grid h-full min-h-[55vh] place-items-center text-slate-400">リアルタイム情報に接続中…</div>
           : syncState === "error" && !room ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-xl font-black">同期に接続できません</p><p className="mt-2 text-sm text-slate-400">通信状態とFirebase設定を確認してください。</p></div></div>
           : !selected ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-4xl">🎚️</p><h2 className="mt-3 text-xl font-black">出演バンドが未登録です</h2><p className="mt-2 text-sm text-slate-400">タイムテーブルにバンドを配置するとシートが表示されます。</p></div></div>
-          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">ピンチ操作で拡大</span></div><div className="h-[calc(100%-2.5rem)]"><SheetViewer sheet={matchingSheet} sheetState={sheetState} bandName={selected.band.name} roomId={roomId} onRetry={() => setSheetRefresh((value) => value + 1)} /></div></div>}
+          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">Driveリンク</span></div><div className="h-[calc(100%-2.5rem)]"><SheetLinkViewer directLink={matchingLink} folderUrl={room?.paConfig?.folderUrl ?? ""} bandName={selected.band.name} /></div></div>}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl" aria-label="PAシート手動切り替え">

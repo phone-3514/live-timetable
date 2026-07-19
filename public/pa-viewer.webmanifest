@@ -1,0 +1,28 @@
+{
+  "id": "./pa-viewer",
+  "name": "PA / Roadie Sync",
+  "short_name": "PA Sync",
+  "description": "進行中のバンドに合わせてPAシートを開く運営用アプリ",
+  "lang": "ja",
+  "start_url": "./pa-viewer",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0F172A",
+  "orientation": "any",
+  "categories": ["productivity", "music", "utilities"],
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

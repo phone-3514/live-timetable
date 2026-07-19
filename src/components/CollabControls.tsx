@@ -6,6 +6,7 @@ import { ModalPortal } from "./ModalPortal";
 import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { QrShareModal } from "./QrShareModal";
+import { PaLinkSettingsModal } from "./PaLinkSettingsModal";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -40,6 +41,7 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
   const [roomCode, setRoomCode] = useState("");
   const [roomCodeError, setRoomCodeError] = useState<string | null>(null);
   const [showQrShare, setShowQrShare] = useState(false);
+  const [showPaSettings, setShowPaSettings] = useState(false);
   const collabDetailsRef = useDismissibleDetails();
   useEscapeKey(() => setShowEntry(false));
 
@@ -64,6 +66,17 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
       showToast("共有コードをコピーしました", "success");
     } catch {
       showToast("コードをコピーできませんでした", "error");
+    }
+  }
+
+  async function handleCopyPaUrl() {
+    if (!roomId) return;
+    const url = `${window.location.origin}${import.meta.env.BASE_URL}pa-viewer?room=${roomId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("PA用URLをコピーしました", "success");
+    } catch {
+      showToast("PA用URLをコピーできませんでした", "error");
     }
   }
 
@@ -219,6 +232,10 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-700 pt-2">
+        <section className="mb-1 w-full rounded-lg border border-blue-800/70 bg-blue-950/25 p-2.5">
+          <div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs font-bold text-blue-200">🎚️ PA／ローディー画面</p><p className="mt-0.5 truncate text-[10px] text-slate-500">{`${window.location.origin}${import.meta.env.BASE_URL}pa-viewer?room=${roomId}`}</p></div><button type="button" onClick={() => void handleCopyPaUrl()} className="min-h-10 shrink-0 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-500">⧉ コピー</button></div>
+          <button type="button" onClick={() => setShowPaSettings(true)} className="mt-2 min-h-10 w-full rounded-lg border border-blue-700 px-3 text-xs font-bold text-blue-200 hover:bg-blue-950/60">⚙ Google Driveリンクを設定</button>
+        </section>
         <button type="button" onClick={() => setShowQrShare(true)} className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">▦ QR共有</button>
         <button
           type="button"
@@ -317,6 +334,7 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
         </ModalPortal>
       )}
       {showQrShare && <QrShareModal roomId={roomId} onClose={() => setShowQrShare(false)} />}
+      {showPaSettings && <PaLinkSettingsModal roomId={roomId} onClose={() => setShowPaSettings(false)} />}
     </details>
   );
 }

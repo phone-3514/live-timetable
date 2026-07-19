@@ -38,6 +38,9 @@ const relativePath = window.location.pathname.startsWith(import.meta.env.BASE_UR
   ? window.location.pathname.slice(import.meta.env.BASE_URL.length)
   : window.location.pathname.replace(/^\//, '')
 const isPaViewer = /^pa-viewer\/?$/.test(relativePath)
+if (isPaViewer) {
+  document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', `${import.meta.env.BASE_URL}pa-viewer.webmanifest`)
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

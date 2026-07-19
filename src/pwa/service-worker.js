@@ -5,6 +5,7 @@ const INITIAL_ASSETS = __PRECACHE_ASSETS__
 const CORE_ASSETS = [
   APP_ROOT,
   new URL('app.webmanifest', APP_ROOT).toString(),
+  new URL('pa-viewer.webmanifest', APP_ROOT).toString(),
   new URL('app-icon-192.png', APP_ROOT).toString(),
   new URL('app-icon-512.png', APP_ROOT).toString(),
   ...INITIAL_ASSETS.map((path) => new URL(path, APP_ROOT).toString()),
