@@ -1,0 +1,14 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // PA/Roadie viewers know the same unguessable eight-character room
+    // code used by collaboration. Uploads stay console/admin-only; the
+    // browser application can only list and read supported sheet files.
+    match /pa-sheets/{roomId}/{fileName} {
+      allow read: if roomId.matches('^[a-z0-9]{8}$')
+        && fileName.matches('^.+[.](pdf|PDF|png|PNG|jpg|JPG|jpeg|JPEG|webp|WEBP|gif|GIF)$');
+      allow write: if false;
+    }
+  }
+}

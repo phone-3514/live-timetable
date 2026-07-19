@@ -5,6 +5,7 @@ import {
   persistentSingleTabManager,
 } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 
 // Firebase's web "config" (apiKey included) is not a secret — it just
 // identifies which project a client talks to. Access control lives
@@ -47,6 +48,11 @@ const isRtdbConfigured = Boolean(firebaseConfig.databaseURL);
 console.log("[firebase] 1. Loading config — Firestore configured:", isFirebaseConfigured, "RTDB configured:", isRtdbConfigured);
 
 const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
+
+// PA sheets are kept outside Firestore because PDFs/images can be large.
+// The viewer lists only pa-sheets/{roomId}/ and then resolves download
+// URLs for files whose basename matches a scheduled band's name.
+export const storage = firebaseApp && firebaseConfig.storageBucket ? getStorage(firebaseApp) : null;
 
 // persistentLocalCache gives the SDK an IndexedDB-backed offline cache —
 // this is what makes the optimistic UI updates in useFirestoreDocSync

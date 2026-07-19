@@ -21,6 +21,9 @@ registerServiceWorker()
 const PublicPamphletRoot = lazy(() =>
   import('./pamphlet/PublicPamphletRoot.tsx').then((m) => ({ default: m.PublicPamphletRoot })),
 )
+const PaViewerRoot = lazy(() =>
+  import('./pa/PaViewerRoot.tsx').then((m) => ({ default: m.PaViewerRoot })),
+)
 
 function readPublicCircleId(): string | null {
   const base = import.meta.env.BASE_URL
@@ -31,11 +34,19 @@ function readPublicCircleId(): string | null {
 }
 
 const publicCircleId = readPublicCircleId()
+const relativePath = window.location.pathname.startsWith(import.meta.env.BASE_URL)
+  ? window.location.pathname.slice(import.meta.env.BASE_URL.length)
+  : window.location.pathname.replace(/^\//, '')
+const isPaViewer = /^pa-viewer\/?$/.test(relativePath)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary title="アプリケーションエラー">
-      {publicCircleId ? (
+      {isPaViewer ? (
+        <Suspense fallback={null}>
+          <PaViewerRoot />
+        </Suspense>
+      ) : publicCircleId ? (
         <Suspense fallback={null}>
           <PublicPamphletRoot circleId={publicCircleId} />
         </Suspense>
