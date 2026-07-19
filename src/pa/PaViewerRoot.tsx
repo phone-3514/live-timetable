@@ -205,6 +205,7 @@ export function PaViewerRoot() {
   const [publicProgress, setPublicProgress] = useState<StageProgress | null>(null);
   const [syncState, setSyncState] = useState<SyncState>(roomId ? "connecting" : "offline");
   const [manualSlotId, setManualSlotId] = useState<string | null>(null);
+  const [manualDayId, setManualDayId] = useState<string | null>(null);
   const [confirmingEventChange, setConfirmingEventChange] = useState(false);
   const [now, setNow] = useState(Date.now());
   const online = useOnlineStatus();
@@ -359,13 +360,38 @@ export function PaViewerRoot() {
     return null;
   }, [progress?.slotId, room?.days]);
 
-  const manualIndex = manualSlotId ? scheduled.findIndex((item) => item.slot.id === manualSlotId) : -1;
-  const selectedIndex = manualIndex >= 0 ? manualIndex : liveIndex;
-  const selected = scheduled[selectedIndex] ?? null;
   const live = scheduled[liveIndex] ?? null;
   const nextLive = live
     ? scheduled.slice(liveIndex + 1).find((item) => item.day.id === live.day.id) ?? null
     : null;
+  const availablePaDays = (room?.days ?? []).filter((day) =>
+    scheduled.some((item) => item.day.id === day.id),
+  );
+  const validManualDayId = manualDayId && availablePaDays.some((day) => day.id === manualDayId)
+    ? manualDayId
+    : null;
+  const selectedDayId = validManualDayId
+    ?? progressDayId
+    ?? live?.day.id
+    ?? availablePaDays[0]?.id
+    ?? null;
+  const daySchedule = selectedDayId
+    ? scheduled.filter((item) => item.day.id === selectedDayId)
+    : scheduled;
+  const liveIndexInDay = live
+    ? daySchedule.findIndex((item) => item.slot.id === live.slot.id)
+    : -1;
+  const manualIndex = manualSlotId
+    ? daySchedule.findIndex((item) => item.slot.id === manualSlotId)
+    : -1;
+  const selectedIndex = manualIndex >= 0
+    ? manualIndex
+    : liveIndexInDay >= 0
+      ? liveIndexInDay
+      : 0;
+  const selected = daySchedule[selectedIndex] ?? null;
+  const nextSelected = daySchedule[selectedIndex + 1] ?? null;
+  const isManualMode = validManualDayId !== null || manualSlotId !== null;
   const activeBand = activeSlot?.bandId
     ? (room?.bands ?? []).find((band) => band.id === activeSlot.bandId)
     : null;
@@ -376,10 +402,14 @@ export function PaViewerRoot() {
     || Boolean(activeBand && live
       && (normalizeBandName(activeBand.name) || activeBand.id)
         === (normalizeBandName(live.band.name) || live.band.id));
-  const currentHeaderName = activeSlot
-    ? (liveIsActiveSlot ? live.band.name : activeSlot.customLabel || "バンド出演なし")
-    : live?.band.name ?? "—";
-  const nextHeaderEntry = liveIsActiveSlot ? nextLive : live;
+  const currentHeaderName = isManualMode
+    ? selected?.band.name ?? "—"
+    : activeSlot
+      ? (liveIsActiveSlot ? live.band.name : activeSlot.customLabel || "バンド出演なし")
+      : live?.band.name ?? "—";
+  const nextHeaderEntry = isManualMode
+    ? nextSelected
+    : liveIsActiveSlot ? nextLive : live;
   const matchingLinks = selected
     ? (room?.paConfig?.links ?? []).filter((link) => {
         // Revalidate the saved match against today's band name. A band
@@ -397,10 +427,16 @@ export function PaViewerRoot() {
       ? [{ label: "PAフォルダ", url: room.paConfig.folderUrl }]
       : [];
 
-  const countdownTarget = progress?.phase === "performing" && liveIsActiveSlot && activeSlot && activeDay
-    ? dateAtTime(activeDay, activeSlot.endTime)
-    : nextHeaderEntry ? dateAtTime(nextHeaderEntry.day, nextHeaderEntry.slot.startTime) : null;
-  const countdownLabel = progress?.phase === "performing" ? "終了まで" : "次の開始まで";
+  const countdownTarget = isManualMode
+    ? nextSelected
+      ? dateAtTime(nextSelected.day, nextSelected.slot.startTime)
+      : selected ? dateAtTime(selected.day, selected.slot.endTime) : null
+    : progress?.phase === "performing" && liveIsActiveSlot && activeSlot && activeDay
+      ? dateAtTime(activeDay, activeSlot.endTime)
+      : nextHeaderEntry ? dateAtTime(nextHeaderEntry.day, nextHeaderEntry.slot.startTime) : null;
+  const countdownLabel = isManualMode
+    ? nextSelected ? "次の開始まで" : "表示枠の終了まで"
+    : progress?.phase === "performing" ? "終了まで" : "次の開始まで";
 
   const join = (id: string) => {
     const url = new URL(window.location.href);
@@ -408,6 +444,17 @@ export function PaViewerRoot() {
     window.history.replaceState(null, "", url.toString());
     try { localStorage.setItem(PA_ROOM_KEY, id); } catch { /* continue without remembered event */ }
     setRoomId(id);
+  };
+  const selectPaDay = (dayId: string) => {
+    const entries = scheduled.filter((item) => item.day.id === dayId);
+    const syncedEntry = live?.day.id === dayId ? live : null;
+    const clockEntry = entries.find((item) => {
+      const start = dateAtTime(item.day, item.slot.startTime)?.getTime();
+      const end = dateAtTime(item.day, item.slot.endTime)?.getTime();
+      return start != null && end != null && now >= start && now < end;
+    });
+    setManualDayId(dayId);
+    setManualSlotId((syncedEntry ?? clockEntry ?? entries[0])?.slot.id ?? null);
   };
   const leave = () => {
     const url = new URL(window.location.href);
@@ -417,6 +464,7 @@ export function PaViewerRoot() {
     setRoomId(null);
     setRoom(null);
     setManualSlotId(null);
+    setManualDayId(null);
     setConfirmingEventChange(false);
   };
 
@@ -433,12 +481,13 @@ export function PaViewerRoot() {
           <div className="min-w-0"><p className="truncate text-xs font-bold tracking-[0.12em] text-blue-300">{room?.liveName || "PA / ROADIE SYNC"}</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><span className={`h-2 w-2 rounded-full ${syncColor}`} />{syncLabel}</p></div>
           <button type="button" onClick={() => setConfirmingEventChange(true)} className="min-h-10 shrink-0 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">イベント変更</button>
         </div>
+        {availablePaDays.length > 1 && <div className="mx-auto mt-2 flex max-w-5xl items-center gap-2"><label htmlFor="pa-live-day" className="shrink-0 text-xs font-bold text-slate-400">ライブ日</label><select id="pa-live-day" value={selectedDayId ?? ""} onChange={(event) => selectPaDay(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950 px-3 text-sm font-black text-white outline-none focus:border-blue-500 sm:max-w-xs"><option value="" disabled>日程を選択</option>{availablePaDays.map((day) => <option key={day.id} value={day.id}>{day.label}{day.date ? ` · ${day.date}` : ""}</option>)}</select></div>}
         <div className="mx-auto mt-3 grid max-w-5xl grid-cols-[1fr_1fr_auto] gap-2">
-          <section className="min-w-0 rounded-xl border border-blue-800/70 bg-blue-950/60 px-3 py-2"><p className="text-[10px] font-bold tracking-wider text-blue-300">CURRENT · {phaseLabel(progress?.phase)}</p><p className="mt-0.5 truncate text-sm font-black text-white">{currentHeaderName}</p></section>
+          <section className="min-w-0 rounded-xl border border-blue-800/70 bg-blue-950/60 px-3 py-2"><p className="text-[10px] font-bold tracking-wider text-blue-300">CURRENT · {isManualMode ? "手動表示" : phaseLabel(progress?.phase)}</p><p className="mt-0.5 truncate text-sm font-black text-white">{currentHeaderName}</p></section>
           <section className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/70 px-3 py-2"><p className="text-[10px] font-bold tracking-wider text-slate-400">NEXT</p><p className="mt-0.5 truncate text-sm font-black text-slate-100">{nextHeaderEntry?.band.name ?? "—"}</p></section>
           <section className="min-w-[5.25rem] rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-right"><p className="text-[9px] font-bold text-slate-500">{countdownLabel}</p><time className="font-mono text-base font-black tabular-nums text-blue-300">{countdownTarget ? formatCountdown(countdownTarget.getTime() - now) : "--:--"}</time></section>
         </div>
-        {manualSlotId && <div className="mx-auto mt-2 flex max-w-5xl items-center justify-between gap-3 rounded-lg border border-amber-700/80 bg-amber-950/50 px-3 py-2"><p className="truncate text-xs font-bold text-amber-200">手動表示中 · 自動切替を停止</p><button type="button" onClick={() => setManualSlotId(null)} className="min-h-9 shrink-0 rounded-lg bg-amber-500 px-3 text-xs font-black text-slate-950 hover:bg-amber-400">ライブ同期へ戻る</button></div>}
+        {isManualMode && <div className="mx-auto mt-2 flex max-w-5xl items-center justify-between gap-3 rounded-lg border border-amber-700/80 bg-amber-950/50 px-3 py-2"><p className="truncate text-xs font-bold text-amber-200">手動表示中 · 自動切替を停止</p><button type="button" onClick={() => { setManualSlotId(null); setManualDayId(null); }} className="min-h-9 shrink-0 rounded-lg bg-amber-500 px-3 text-xs font-black text-slate-950 hover:bg-amber-400">ライブ同期へ戻る</button></div>}
       </header>
 
       <main className="min-h-0 flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
@@ -450,8 +499,8 @@ export function PaViewerRoot() {
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl" aria-label="PAシート手動切り替え">
         <div className="mx-auto grid max-w-2xl grid-cols-2 gap-3">
-          <button type="button" disabled={selectedIndex <= 0} onClick={() => setManualSlotId(scheduled[selectedIndex - 1]?.slot.id ?? null)} className="min-h-14 rounded-xl border border-slate-600 bg-slate-800 px-4 text-left font-black text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-35"><span className="mr-2 text-blue-300">‹</span>前のシート</button>
-          <button type="button" disabled={selectedIndex < 0 || selectedIndex >= scheduled.length - 1} onClick={() => setManualSlotId(scheduled[selectedIndex + 1]?.slot.id ?? null)} className="min-h-14 rounded-xl bg-blue-600 px-4 text-right font-black text-white shadow-lg shadow-blue-950/60 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-35">次のシート<span className="ml-2">›</span></button>
+          <button type="button" disabled={selectedIndex <= 0} onClick={() => { setManualDayId(selectedDayId); setManualSlotId(daySchedule[selectedIndex - 1]?.slot.id ?? null); }} className="min-h-14 rounded-xl border border-slate-600 bg-slate-800 px-4 text-left font-black text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-35"><span className="mr-2 text-blue-300">‹</span>前のシート</button>
+          <button type="button" disabled={selectedIndex < 0 || selectedIndex >= daySchedule.length - 1} onClick={() => { setManualDayId(selectedDayId); setManualSlotId(daySchedule[selectedIndex + 1]?.slot.id ?? null); }} className="min-h-14 rounded-xl bg-blue-600 px-4 text-right font-black text-white shadow-lg shadow-blue-950/60 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-35">次のシート<span className="ml-2">›</span></button>
         </div>
       </nav>
       {confirmingEventChange && (
