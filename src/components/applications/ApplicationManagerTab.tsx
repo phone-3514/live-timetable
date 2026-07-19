@@ -97,7 +97,7 @@ export function ApplicationManagerTab() {
             type="button"
             onClick={handleApproveAll}
             disabled={pendingCount === 0}
-            className="min-h-11 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 disabled:opacity-60"
+            className="min-h-11 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:opacity-100"
           >
             ✓ 一括承認（{pendingCount}件）
           </button>
@@ -105,7 +105,7 @@ export function ApplicationManagerTab() {
             type="button"
             onClick={handleReset}
             disabled={applications.length === 0}
-            className="min-h-11 rounded-md border-2 border-red-600 px-4 text-sm font-semibold text-red-400 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-600"
+            className="min-h-11 rounded-md border-2 border-rose-600 px-4 text-sm font-semibold text-rose-400 hover:bg-rose-950/50 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-400"
           >
             🗑 エントリー初期化
           </button>

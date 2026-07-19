@@ -79,7 +79,7 @@ export function HighParticipationBadge({ info }: { info: HighParticipationInfo }
         onClick={() => setExpanded((v) => !v)}
         title={breakdownText}
         aria-expanded={expanded}
-        className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-200 hover:border-amber-400 md:min-h-0"
+        className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-300 hover:border-amber-400 md:min-h-0"
       >
         ⚠ 3枠以上: {info.highCount}人
       </button>
@@ -363,7 +363,7 @@ export function ApplicationTable({
                       <button
                         type="button"
                         onClick={() => onRequestReject(app)}
-                        className="rounded border border-red-800 px-2 py-1 text-[11px] font-medium text-red-400 hover:bg-red-950/40"
+                        className="rounded border border-rose-700 px-2 py-1 text-[11px] font-medium text-rose-400 hover:bg-rose-950/40"
                       >
                         却下
                       </button>

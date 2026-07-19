@@ -30,13 +30,13 @@ export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }
 
         {zeroedOut.length > 0 && (
           <div
-            className="mt-3 rounded-md border-2 border-red-500 bg-red-950/40 p-3"
+            className="mt-3 rounded-md border-2 border-rose-500 bg-rose-950/40 p-3"
             role="alert"
           >
-            <p className="text-xs font-semibold text-red-300">
+            <p className="text-xs font-semibold text-rose-300">
               ⚠️ 警告: このバンドを却下すると、以下のメンバーはライブに一度も出演できなくなります
             </p>
-            <ul className="mt-2 list-disc pl-5 text-xs text-red-300">
+            <ul className="mt-2 list-disc pl-5 text-xs text-rose-300">
               {zeroedOut.map((m) => (
                 <li key={m.name}>
                   {m.name}（{m.part}）— 他に出演枠なし
@@ -67,7 +67,7 @@ export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }
             onClick={onConfirm}
             className={
               zeroedOut.length > 0
-                ? "min-h-11 rounded bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-500 sm:min-h-0 sm:py-1.5 sm:text-xs"
+                ? "min-h-11 rounded bg-rose-600 px-4 text-sm font-medium text-white hover:bg-rose-500 sm:min-h-0 sm:py-1.5 sm:text-xs"
                 : "min-h-11 rounded bg-slate-600 px-4 text-sm font-medium text-white hover:bg-slate-500 sm:min-h-0 sm:py-1.5 sm:text-xs"
             }
           >

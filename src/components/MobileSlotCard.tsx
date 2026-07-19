@@ -162,7 +162,7 @@ export function MobileSlotCard({
         </span>
       )}
 
-      <div className="flex w-[5.75rem] shrink-0 flex-col gap-0.5">
+      <div className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
         <input
           type="time"
           value={slot.startTimeOverride ?? slot.startTime}
@@ -174,7 +174,7 @@ export function MobileSlotCard({
             })
           }
           aria-label={`${slot.customLabel ?? band?.name ?? "空き枠"}の開始時刻`}
-          className={`w-full rounded border bg-slate-800 px-0.5 py-0.5 font-mono text-[10px] outline-none ${
+          className={`w-full min-w-0 appearance-none rounded border bg-slate-800 px-1 py-0.5 font-mono text-[10px] tabular-nums outline-none [&::-webkit-calendar-picker-indicator]:hidden ${
             slot.startTimeOverride
               ? "border-indigo-500 text-indigo-200"
               : "border-slate-600 text-slate-400"

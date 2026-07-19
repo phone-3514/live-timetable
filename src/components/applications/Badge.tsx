@@ -22,9 +22,9 @@ const TONE_CLASSES: Record<BadgeTone, string> = {
   grade: "bg-slate-700 text-slate-100 border border-slate-500",
   "sync-on": "bg-violet-950 text-violet-200 border border-violet-500",
   "sync-off": "bg-slate-800 text-slate-400 border border-slate-600",
-  "status-approved": "bg-emerald-950 text-emerald-200 border border-emerald-500",
+  "status-approved": "bg-emerald-950 text-emerald-300 border border-emerald-500",
   "status-pending": "bg-slate-800 text-slate-400 border border-slate-600",
-  warning: "bg-amber-950 text-amber-200 border border-amber-500",
+  warning: "bg-amber-950 text-amber-300 border border-amber-500",
 };
 
 interface Props {

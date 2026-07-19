@@ -266,39 +266,39 @@ function App() {
             </button>
           </nav>
           {activeTab === "timetable" && (
-            <details ref={eventInfoDetailsRef} className="group relative shrink-0">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center rounded px-2.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200 md:min-h-0 md:py-1.5">
+            <details ref={eventInfoDetailsRef} className="group relative w-full min-w-0 shrink-0 md:w-auto">
+              <summary className="flex min-h-11 w-full cursor-pointer list-none items-center justify-between rounded px-2.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200 md:min-h-0 md:w-auto md:justify-start md:py-1.5">
                 <span className="md:hidden xl:inline">イベント情報</span>
                 <span className="hidden md:inline xl:hidden">情報</span>
                 <span className="ml-1 text-[9px] transition-transform group-open:rotate-180">▼</span>
               </summary>
-              <div className="mt-2 flex w-full flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-xl md:absolute md:left-0 md:top-full md:mt-1 md:w-80">
-                <label className="text-[11px] font-medium text-slate-400">
+              <div className="mt-2 flex w-full min-w-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-xl md:absolute md:left-0 md:top-full md:mt-1 md:w-80">
+                <label className="min-w-0 text-[11px] font-medium text-slate-400">
                   ライブ名
                   <input
                     value={eventInfo.liveName}
                     onChange={(e) => updateEventInfo({ liveName: e.target.value })}
                     placeholder="例：軽音祭 vol.5"
-                    className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                    className="mt-1 min-h-11 w-full min-w-0 rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="text-[11px] font-medium text-slate-400">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="min-w-0 text-[11px] font-medium text-slate-400">
                     会場
                     <input
                       value={eventInfo.venue}
                       onChange={(e) => updateEventInfo({ venue: e.target.value })}
                       placeholder="会場名"
-                      className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                      className="mt-1 min-h-11 w-full min-w-0 rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
                     />
                   </label>
-                  <label className="text-[11px] font-medium text-slate-400">
+                  <label className="min-w-0 text-[11px] font-medium text-slate-400">
                     団体名
                     <input
                       value={eventInfo.organizationName}
                       onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
                       placeholder="団体名"
-                      className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                      className="mt-1 min-h-11 w-full min-w-0 rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
                     />
                   </label>
                 </div>

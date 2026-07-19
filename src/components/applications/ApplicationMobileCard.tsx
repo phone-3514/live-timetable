@@ -101,7 +101,7 @@ export function ApplicationMobileCard({
           onClick={() => (app.approved ? onUnapprove(app.id) : onApprove(app.id))}
           className={`min-h-11 flex-1 rounded-md text-sm font-semibold ${
             app.approved
-              ? "border border-emerald-600 bg-emerald-900/40 text-emerald-200"
+              ? "border border-emerald-600 bg-emerald-900/40 text-emerald-300"
               : "bg-emerald-600 text-white hover:bg-emerald-500"
           }`}
         >
@@ -110,7 +110,7 @@ export function ApplicationMobileCard({
         <button
           type="button"
           onClick={() => onRequestReject(app)}
-          className="min-h-11 flex-1 rounded-md border-2 border-red-600 text-sm font-semibold text-red-400 hover:bg-red-950/50"
+          className="min-h-11 flex-1 rounded-md border-2 border-rose-600 text-sm font-semibold text-rose-400 hover:bg-rose-950/50"
         >
           却下
         </button>
