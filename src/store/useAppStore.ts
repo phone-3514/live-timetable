@@ -14,7 +14,7 @@ import {
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
-import { recomputeTimes } from "../utils/scheduleTimes";
+import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import { solveDayAssignment } from "../utils/autoScheduleSolver";
 
@@ -77,7 +77,9 @@ type AppState = {
   updateSlotContent: (
     dayId: string,
     slotId: string,
-    partial: Partial<Pick<TimetableSlot, "customLabel" | "customDurationMinutes">>,
+    partial: Partial<
+      Pick<TimetableSlot, "customLabel" | "customDurationMinutes" | "startTimeOverride">
+    >,
   ) => void;
   removeSlot: (dayId: string, slotId: string) => void;
   // Band assignment/unassignment/reordering look up which day a slot
@@ -140,6 +142,8 @@ function makeBlankSlot(): TimetableSlot {
     bandId: null,
     customLabel: null,
     customDurationMinutes: null,
+    startTimeOverride: null,
+    delayMinutes: 0,
     startTime: "",
     endTime: "",
   };
@@ -162,7 +166,9 @@ export function computeDropPreviewStartTime(
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   let cursor = timeToMinutes(day.settings.startTime);
   for (const slot of day.slots) {
-    if (slot.id === targetSlotId) break;
+    if (slot.id === targetSlotId) {
+      return slot.startTimeOverride || minutesToTime(cursor);
+    }
     const effectiveBandId = slot.bandId === draggedBandId ? null : slot.bandId;
     let duration = day.settings.performanceMinutes;
     let transitionAfter = 0;
@@ -174,7 +180,10 @@ export function computeDropPreviewStartTime(
     } else if (slot.customLabel !== null) {
       duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
     }
-    cursor += duration + transitionAfter;
+    const start = slot.startTimeOverride
+      ? alignTimeToReference(slot.startTimeOverride, cursor)
+      : cursor;
+    cursor = start + duration + transitionAfter;
   }
   return minutesToTime(cursor);
 }
@@ -454,6 +463,8 @@ export const useAppStore = create<AppState>()(
           bandId: null,
           customLabel: label,
           customDurationMinutes: durationMinutes,
+          startTimeOverride: null,
+          delayMinutes: 0,
           startTime: "",
           endTime: "",
         },

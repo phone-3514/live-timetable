@@ -100,20 +100,20 @@ export function PublishPamphletButton({ roomId }: Props) {
       </button>
 
       {publishedUrl && (
-        <div className="flex min-h-11 flex-1 items-center gap-1.5 rounded border border-slate-700 bg-slate-800 pl-2 md:min-h-0">
+        <div className="flex min-h-11 shrink-0 items-center rounded border border-slate-700 bg-slate-800 md:min-h-0 md:min-w-0 md:flex-1 md:gap-1.5 md:pl-2">
           <input
             type="text"
             readOnly
             value={publishedUrl}
             title="公開パンフレットのURL"
             onFocus={(e) => e.currentTarget.select()}
-            className="min-w-0 flex-1 bg-transparent text-xs text-slate-300 outline-none"
+            className="hidden min-w-0 flex-1 bg-transparent text-xs text-slate-300 outline-none md:block"
           />
           <button
             type="button"
             onClick={handleCopy}
             title="URLをコピー"
-            className="min-h-11 shrink-0 rounded-r border-l border-slate-700 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
+            className="min-h-11 shrink-0 rounded px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:rounded-r md:border-l md:border-slate-700 md:py-1"
           >
             {copied ? "✓ コピー済み" : "📋 コピー"}
           </button>

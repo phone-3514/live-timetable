@@ -132,15 +132,15 @@
    ~4.66:1 against the old card color but only barely, and subjectively
    read as too light) for real headroom, not just a bare pass. */
 :root {
-  --slate-50: #000000;
-  --slate-100: #1c1c1e;
-  --slate-200: #3a3a3c;
-  --slate-300: #48484a;
-  --slate-400: #52525b;
-  --slate-500: #71717a;
-  --slate-600: #c7c7cc;
-  --slate-700: #d1d1d6;
-  --slate-800: #ffffff;
+  --slate-50: #0f172a;
+  --slate-100: #0f172a;
+  --slate-200: #1e293b;
+  --slate-300: #334155;
+  --slate-400: #475569;
+  --slate-500: #475569;
+  --slate-600: #cbd5e1;
+  --slate-700: #e5e7eb;
+  --slate-800: #f8fafc;
   --slate-900: #ffffff;
   --slate-950: #f5f5f7;
 
@@ -159,14 +159,14 @@
      mode's own block below keeps the original vivid systemBlue
      untouched, so the two themes now deliberately look different here,
      not just light/dark-inverted copies of the same hue. */
-  --indigo-200: #1e3a5f;
-  --indigo-300: #9dcaff;
-  --indigo-400: #5aa9ff;
-  --indigo-500: #3968a8;
-  --indigo-600: #1f4e8c;
-  --indigo-700: #163a6b;
-  --indigo-900: #e8f2ff;
-  --indigo-950: #f0f7ff;
+  --indigo-200: #1e3a8a;
+  --indigo-300: #1d4ed8;
+  --indigo-400: #2563eb;
+  --indigo-500: #2563eb;
+  --indigo-600: #1d4ed8;
+  --indigo-700: #1e40af;
+  --indigo-900: #dbeafe;
+  --indigo-950: #eff6ff;
 
   /* Glassmorphism tokens for surfaces layered over a decorative
      background (see PublicPamphletRoot.tsx) rather than a flat page
@@ -361,26 +361,26 @@
 }
 
 :root[data-theme="light"] {
-  --slate-50: #000000;
-  --slate-100: #1c1c1e;
-  --slate-200: #3a3a3c;
-  --slate-300: #48484a;
-  --slate-400: #52525b;
-  --slate-500: #71717a;
-  --slate-600: #c7c7cc;
-  --slate-700: #d1d1d6;
-  --slate-800: #ffffff;
+  --slate-50: #0f172a;
+  --slate-100: #0f172a;
+  --slate-200: #1e293b;
+  --slate-300: #334155;
+  --slate-400: #475569;
+  --slate-500: #475569;
+  --slate-600: #cbd5e1;
+  --slate-700: #e5e7eb;
+  --slate-800: #f8fafc;
   --slate-900: #ffffff;
   --slate-950: #f5f5f7;
 
-  --indigo-200: #1e3a5f;
-  --indigo-300: #9dcaff;
-  --indigo-400: #5aa9ff;
-  --indigo-500: #3968a8;
-  --indigo-600: #1f4e8c;
-  --indigo-700: #163a6b;
-  --indigo-900: #e8f2ff;
-  --indigo-950: #f0f7ff;
+  --indigo-200: #1e3a8a;
+  --indigo-300: #1d4ed8;
+  --indigo-400: #2563eb;
+  --indigo-500: #2563eb;
+  --indigo-600: #1d4ed8;
+  --indigo-700: #1e40af;
+  --indigo-900: #dbeafe;
+  --indigo-950: #eff6ff;
 
   --glass-card-bg: rgba(15, 23, 42, 0.035);
   --glass-card-bg-hover: rgba(15, 23, 42, 0.07);
@@ -478,7 +478,7 @@ body {
    "smooth, high-quality transitions for hover/click/drag" without
    hand-adding transition classes to ~150 individual button elements.
    prefers-reduced-motion is respected via the media query below. */
-button, a, input, textarea, select {
+button, a, input, textarea, select, summary {
   transition:
     background-color 150ms ease,
     border-color 150ms ease,
@@ -486,6 +486,22 @@ button, a, input, textarea, select {
     opacity 150ms ease,
     box-shadow 150ms ease,
     transform 150ms ease;
+}
+
+/* Light mode has its own restrained interaction language: controls lift
+   against white surfaces with a neutral gray cue instead of borrowing the
+   luminous dark-mode hover treatment. Component-specific hover colors still
+   communicate semantic actions; this guarantees that every remaining plain
+   button/summary also has visible feedback. */
+:root[data-theme="light"] button:not(:disabled):hover,
+:root[data-theme="light"] summary:hover {
+  box-shadow: inset 0 0 0 999px rgba(148, 163, 184, 0.1);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) button:not(:disabled):hover,
+  :root:not([data-theme="dark"]) summary:hover {
+    box-shadow: inset 0 0 0 999px rgba(148, 163, 184, 0.1);
+  }
 }
 button:active {
   transform: scale(0.97);

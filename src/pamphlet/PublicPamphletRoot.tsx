@@ -284,6 +284,15 @@ function SlotRow({
   onSelectBand: (band: PublicBand) => void;
 }) {
   const label = band?.name ?? slot.customLabel ?? "（未定）";
+  const activeStatus = band
+    ? "出演中！"
+    : /リハーサル|リハ/.test(slot.customLabel ?? "")
+      ? "リハーサル中！"
+      : /休憩|ブレイク/.test(slot.customLabel ?? "")
+        ? "休憩中！"
+        : /転換/.test(slot.customLabel ?? "")
+          ? "転換中！"
+          : `${slot.customLabel ?? "イベント"}中！`;
   return (
     <li>
       <button
@@ -301,7 +310,7 @@ function SlotRow({
       >
         <span>
           <span className="block text-base font-semibold text-slate-100">
-            {isActive && <span className="mr-1.5 text-indigo-300">▶ 出演中</span>}
+            {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
             {label}
           </span>
           <span className="block text-sm text-slate-400">
@@ -342,7 +351,7 @@ function TransitionRow({
       >
         <span>
           <span className="block text-sm font-semibold text-slate-300">
-            {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中</span>}
+            {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中！</span>}
             転換
           </span>
           <span className="block text-sm text-slate-500">

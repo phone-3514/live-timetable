@@ -245,9 +245,51 @@ export function SlotCard({
         </div>
       )}
 
-      <div className="flex w-16 shrink-0 flex-col justify-center font-mono text-xs text-slate-300">
-        <span>{slot.startTime}</span>
-        <span className="text-slate-500">-{slot.endTime}</span>
+      <div className="flex w-[5.35rem] shrink-0 flex-col justify-center gap-0.5 font-mono text-xs text-slate-300">
+        <input
+          type="time"
+          value={slot.startTimeOverride ?? slot.startTime}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) =>
+            updateSlotContent(dayId, slot.id, {
+              startTimeOverride: e.target.value || null,
+            })
+          }
+          aria-label={`${slot.customLabel ?? band?.name ?? "空き枠"}の開始時刻`}
+          title="開始時刻を上書き（以降の枠へ連鎖反映）"
+          className={`w-full rounded border bg-slate-800 px-1 py-0.5 text-[11px] font-semibold outline-none transition-colors hover:bg-slate-700 focus:border-indigo-500 ${
+            slot.startTimeOverride
+              ? "border-indigo-500 text-indigo-200"
+              : "border-slate-600 text-slate-300"
+          }`}
+        />
+        <div className="flex items-center gap-1 whitespace-nowrap">
+          <span className="text-slate-500">〜{slot.endTime}</span>
+          {(slot.delayMinutes ?? 0) > 0 && (
+            <span
+              className="rounded-full bg-rose-950 px-1.5 py-0.5 text-[10px] font-bold text-rose-400"
+              title="基本スケジュールからの遅れ"
+            >
+              +{slot.delayMinutes}分
+            </span>
+          )}
+          {slot.startTimeOverride && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                updateSlotContent(dayId, slot.id, { startTimeOverride: null });
+              }}
+              className="rounded px-1 text-[10px] text-slate-500 hover:bg-slate-700 hover:text-slate-200"
+              title="時刻上書きを解除"
+              aria-label="時刻上書きを解除"
+            >
+              ↺
+            </button>
+          )}
+        </div>
       </div>
 
       {isCustom ? (

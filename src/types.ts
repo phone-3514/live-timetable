@@ -106,6 +106,13 @@ export type TimetableSlot = {
   // band-performance slot (whether filled or still empty).
   customLabel: string | null;
   customDurationMinutes: number | null;
+  /** Explicit row-level start-time override. null/undefined follows the
+   * previous row; setting it becomes a new anchor and ripples to all rows
+   * below it. Optional keeps older persisted/Firestore documents valid. */
+  startTimeOverride?: string | null;
+  /** Difference from the no-override baseline schedule, recomputed with
+   * start/end times. Positive values are shown as the admin delay badge. */
+  delayMinutes?: number;
   startTime: string;
   endTime: string;
 };

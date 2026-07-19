@@ -190,34 +190,9 @@ export function DayPanel({ day, daysCount }: Props) {
             className="min-h-11 w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
           />
         </label>
-        <button
-          onClick={handleCopyText}
-          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-700 md:ml-auto md:min-h-0 md:py-1"
-        >
-          コピー
-        </button>
-        <button
-          onClick={handlePasteReorder}
-          title="コピーしたテキストの行順を編集してから貼り付けると、その順番にバンドを並び替えます"
-          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-700 md:min-h-0 md:py-1"
-        >
-          貼り付けて並び替え
-        </button>
-        <button
-          onClick={() => setShowSharePreview(true)}
-          className="min-h-11 rounded border border-indigo-600 bg-indigo-950/40 px-2 text-indigo-300 hover:bg-indigo-900/50 md:min-h-0 md:py-1"
-        >
-          🎨 共有用画像
-        </button>
-        <button
-          onClick={() => setShowSetlistExport(true)}
-          className="min-h-11 rounded border border-emerald-600 bg-emerald-950/40 px-2 text-emerald-300 hover:bg-emerald-900/50 md:min-h-0 md:py-1"
-        >
-          📋 セットリストを出力
-        </button>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-1 text-xs">
+      <div className="relative flex shrink-0 flex-wrap items-center gap-1 text-xs">
         <button
           onClick={() => addSlot(day.id)}
           className="min-h-11 rounded bg-indigo-600 px-2 text-white hover:bg-indigo-500 md:min-h-0 md:py-1"
@@ -250,43 +225,42 @@ export function DayPanel({ day, daysCount }: Props) {
             +{preset.label}
           </button>
         ))}
-      </div>
-
-      {/* Arbitrary-name non-band events (準備・顔合わせ・写真撮影 etc.) —
-          same addCustomSlot as the presets above, so they're identical in
-          every way that matters: no transition time gets added after them
-          (recomputeTimes only adds one after a slot with a real bandId),
-          and the duration is set here, before the event is even added. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
-        <input
-          value={customName}
-          onChange={(e) => setCustomName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleAddCustomNamed();
-          }}
-          placeholder="例：準備、写真撮影"
-          aria-label={`${day.label}に追加する任意の非演奏枠の名前`}
-          className="min-h-11 w-32 rounded border border-slate-600 bg-slate-800 px-2 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:py-1"
-        />
-        <div className="flex items-center overflow-hidden rounded border border-slate-600">
-          <input
-            type="number"
-            min={1}
-            max={999}
-            value={customMinutes}
-            onChange={(e) => setCustomMinutes(Number(e.target.value))}
-            aria-label={`${day.label}に追加する任意の非演奏枠の所要時間（分）`}
-            className="min-h-11 w-12 bg-slate-800 px-1.5 text-center text-slate-100 outline-none md:min-h-0 md:py-1"
-          />
-          <span className="bg-slate-800 px-1.5 py-1 text-slate-400">分</span>
-        </div>
-        <button
-          onClick={handleAddCustomNamed}
-          disabled={!customName.trim()}
-          className="min-h-11 rounded bg-slate-600 px-2 font-medium text-white hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-0 md:py-1"
-        >
-          + 追加
-        </button>
+        <details className="group relative ml-auto shrink-0">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1">
+            設定・出力 <span className="ml-1 text-[9px] group-open:rotate-180">▼</span>
+          </summary>
+          <div className="absolute right-0 top-full z-30 mt-1 grid w-72 gap-2 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl">
+            <div className="grid grid-cols-2 gap-1.5">
+              <button onClick={handleCopyText} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">コピー</button>
+              <button onClick={handlePasteReorder} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">貼付で並び替え</button>
+              <button onClick={() => setShowSharePreview(true)} className="rounded border border-indigo-600 bg-indigo-950/40 px-2 py-2 text-indigo-300 hover:bg-indigo-900/50">🎨 共有用画像</button>
+              <button onClick={() => setShowSetlistExport(true)} className="rounded border border-emerald-600 bg-emerald-950/40 px-2 py-2 text-emerald-300 hover:bg-emerald-900/50">📋 セットリスト</button>
+            </div>
+            <div className="border-t border-slate-700 pt-2">
+              <p className="mb-1 text-[10px] font-semibold text-slate-400">任意イベントを追加</p>
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomNamed(); }}
+                  placeholder="例：準備、写真撮影"
+                  aria-label={`${day.label}に追加する任意の非演奏枠の名前`}
+                  className="min-h-11 min-w-0 flex-1 rounded border border-slate-600 bg-slate-800 px-2 text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:py-1.5"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={customMinutes}
+                  onChange={(e) => setCustomMinutes(Number(e.target.value))}
+                  aria-label={`${day.label}に追加する任意の非演奏枠の所要時間（分）`}
+                  className="min-h-11 w-14 rounded border border-slate-600 bg-slate-800 px-1 text-center text-slate-100 outline-none md:min-h-0 md:py-1.5"
+                />
+                <button onClick={handleAddCustomNamed} disabled={!customName.trim()} className="min-h-11 rounded bg-slate-600 px-2 font-medium text-white hover:bg-slate-500 disabled:opacity-40 md:min-h-0 md:py-1.5">追加</button>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="min-h-0 flex-1 rounded-lg bg-slate-900 p-1.5">

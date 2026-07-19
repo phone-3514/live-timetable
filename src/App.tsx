@@ -228,9 +228,12 @@ function App() {
       }}
     >
       <div className="flex min-h-screen flex-col bg-slate-950 md:h-screen md:overflow-hidden">
-        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-700/80 bg-slate-900/80 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/70 md:gap-x-6 md:px-6 md:py-2.5">
-          <h1 className="shrink-0 text-base font-bold tracking-tight text-slate-100 md:text-lg">
-            軽音ライブ タイムテーブル作成
+        <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700 bg-slate-900 px-3 py-2 shadow-sm md:h-12 md:flex-nowrap md:gap-1.5 md:py-1.5">
+          <h1 className="shrink-0 text-sm font-bold tracking-tight text-slate-100 md:px-1 md:text-base">
+            Live Timetable
+            <span className="ml-2 hidden text-[10px] font-medium text-slate-500 xl:inline">
+              軽音ライブ編成
+            </span>
           </h1>
           <nav className="flex shrink-0 gap-1" role="tablist" aria-label="表示切り替え">
             <button
@@ -244,7 +247,7 @@ function App() {
                   : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
-              タイムテーブル編集
+              編集
             </button>
             <button
               type="button"
@@ -257,9 +260,49 @@ function App() {
                   : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
-              出演申し込み管理
+              申込管理
             </button>
           </nav>
+          {activeTab === "timetable" && (
+            <details className="group relative shrink-0">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center rounded px-2.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200 md:min-h-0 md:py-1.5">
+                イベント情報
+                <span className="ml-1 text-[9px] transition-transform group-open:rotate-180">▼</span>
+              </summary>
+              <div className="mt-2 flex w-full flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-xl md:absolute md:left-0 md:top-full md:mt-1 md:w-80">
+                <label className="text-[11px] font-medium text-slate-400">
+                  ライブ名
+                  <input
+                    value={eventInfo.liveName}
+                    onChange={(e) => updateEventInfo({ liveName: e.target.value })}
+                    placeholder="例：軽音祭 vol.5"
+                    className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] font-medium text-slate-400">
+                    会場
+                    <input
+                      value={eventInfo.venue}
+                      onChange={(e) => updateEventInfo({ venue: e.target.value })}
+                      placeholder="会場名"
+                      className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                    />
+                  </label>
+                  <label className="text-[11px] font-medium text-slate-400">
+                    団体名
+                    <input
+                      value={eventInfo.organizationName}
+                      onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
+                      placeholder="団体名"
+                      className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 hover:bg-slate-700 focus:border-indigo-500 md:min-h-0 md:py-2"
+                    />
+                  </label>
+                </div>
+              </div>
+            </details>
+          )}
+          <div className="hidden min-w-0 flex-1 md:block" />
           <BackupControls />
           <ThemeToggle />
           {hasFirebaseConfig && (
@@ -275,34 +318,6 @@ function App() {
                 <CollabRoot />
               </Suspense>
             </ErrorBoundary>
-          )}
-          {/* Event-wide details (not per-day) — shown on the share image's
-              header (live name/venue) and footer (organization name). Only
-              relevant to the Timetable Editor. */}
-          {activeTab === "timetable" && (
-            <div className="flex flex-1 flex-wrap items-center gap-2">
-              <input
-                value={eventInfo.liveName}
-                onChange={(e) => updateEventInfo({ liveName: e.target.value })}
-                placeholder="ライブ名（例：軽音祭 vol.5）"
-                aria-label="ライブ名"
-                className="min-h-11 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-48 md:min-h-0"
-              />
-              <input
-                value={eventInfo.venue}
-                onChange={(e) => updateEventInfo({ venue: e.target.value })}
-                placeholder="会場"
-                aria-label="会場名"
-                className="min-h-11 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-36 sm:flex-none md:min-h-0"
-              />
-              <input
-                value={eventInfo.organizationName}
-                onChange={(e) => updateEventInfo({ organizationName: e.target.value })}
-                placeholder="団体名"
-                aria-label="団体名"
-                className="min-h-11 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 sm:w-36 sm:flex-none md:min-h-0"
-              />
-            </div>
           )}
         </header>
         {activeTab === "timetable" ? (
@@ -320,7 +335,7 @@ function App() {
           // textarea) — the timetable canvas is what users actually spend
           // their time in, so unplaced bands get just enough width for a
           // compact single-column list and everything else goes to 1fr.
-          <main className="grid flex-1 content-start grid-cols-1 gap-3 p-3 md:min-h-0 md:overflow-hidden md:p-4 lg:content-normal lg:grid-cols-[180px_1fr] lg:gap-4">
+          <main className="grid flex-1 content-start grid-cols-1 gap-3 p-3 md:min-h-0 md:overflow-hidden md:p-2.5 lg:content-normal lg:grid-cols-[168px_1fr] lg:gap-3">
             <BandListPanel />
             <div className="flex flex-col md:min-h-0 md:overflow-hidden">
               <Timetable />

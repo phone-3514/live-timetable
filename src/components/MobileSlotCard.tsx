@@ -70,6 +70,7 @@ export function MobileSlotCard({
   const [showDetails, setShowDetails] = useState(false);
   const [showCustomEdit, setShowCustomEdit] = useState(false);
   const removeSlot = useAppStore((s) => s.removeSlot);
+  const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
   const venueHours = useAppStore((s) => s.venueHours);
 
@@ -161,7 +162,30 @@ export function MobileSlotCard({
         </span>
       )}
 
-      <span className="w-9 shrink-0 font-mono text-[10px] text-slate-400">{slot.startTime}</span>
+      <div className="flex w-[5.75rem] shrink-0 flex-col gap-0.5">
+        <input
+          type="time"
+          value={slot.startTimeOverride ?? slot.startTime}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) =>
+            updateSlotContent(dayId, slot.id, {
+              startTimeOverride: e.target.value || null,
+            })
+          }
+          aria-label={`${slot.customLabel ?? band?.name ?? "空き枠"}の開始時刻`}
+          className={`w-full rounded border bg-slate-800 px-0.5 py-0.5 font-mono text-[10px] outline-none ${
+            slot.startTimeOverride
+              ? "border-indigo-500 text-indigo-200"
+              : "border-slate-600 text-slate-400"
+          }`}
+        />
+        {(slot.delayMinutes ?? 0) > 0 && (
+          <span className="self-start rounded-full bg-rose-950 px-1 text-[9px] font-bold text-rose-400">
+            +{slot.delayMinutes}分
+          </span>
+        )}
+      </div>
 
       {isCustom ? (
         <div

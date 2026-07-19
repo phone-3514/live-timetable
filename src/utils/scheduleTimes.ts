@@ -1,6 +1,16 @@
 import type { Band, TimetableSettings, TimetableSlot } from "../types";
 import { minutesToTime, timeToMinutes } from "./time";
 
+// A clock value has no date component. Keep an override on the occurrence
+// nearest the row's computed reference so 00:10 after a 23:50 row means
+// twenty minutes later, not 23 hours and 40 minutes earlier.
+export function alignTimeToReference(time: string, referenceMinutes: number): number {
+  let minutes = timeToMinutes(time);
+  while (minutes < referenceMinutes - 12 * 60) minutes += 24 * 60;
+  while (minutes > referenceMinutes + 12 * 60) minutes -= 24 * 60;
+  return minutes;
+}
+
 // A band's own durationMinutes (parsed from e.g. "演奏時間：10分") overrides
 // the timetable's default performance duration for its slot. Custom rows
 // (休憩・集合・リハーサル) use their own customDurationMinutes instead. The
@@ -21,6 +31,7 @@ export function recomputeTimes(
 ): TimetableSlot[] {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   let cursor = timeToMinutes(settings.startTime);
+  let baselineCursor = cursor;
   return slots.map((slot) => {
     let duration = settings.performanceMinutes;
     let transitionAfter = 0;
@@ -31,9 +42,20 @@ export function recomputeTimes(
     } else if (slot.customLabel !== null) {
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
     }
-    const start = cursor;
+    const baselineStart = baselineCursor;
+    const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
+    const start = hasOverride
+      ? alignTimeToReference(slot.startTimeOverride!, baselineStart)
+      : cursor;
     const end = start + duration;
     cursor = end + transitionAfter;
-    return { ...slot, startTime: minutesToTime(start), endTime: minutesToTime(end) };
+    baselineCursor = baselineStart + duration + transitionAfter;
+    return {
+      ...slot,
+      startTimeOverride: slot.startTimeOverride ?? null,
+      delayMinutes: start - baselineStart,
+      startTime: minutesToTime(start),
+      endTime: minutesToTime(end),
+    };
   });
 }
