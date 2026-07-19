@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDndContext, useDraggable } from "@dnd-kit/core";
+import { useDndContext } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canPlaceBandInSlot, useAppStore } from "../store/useAppStore";
@@ -8,6 +8,12 @@ import { useHoveringUsers, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 import { MobileCustomSlotModal } from "./MobileCustomSlotModal";
+
+// See SlotCard.tsx's identical type — same reasoning: `active.data.current`
+// replaces `active.id.startsWith("band:")` string-parsing now that an
+// already-placed band's drag shares the row's own sortable id instead of
+// a separate band-prefixed one (see below).
+type ActiveDragPayload = { type: "slot"; slot: TimetableSlot; band?: Band } | { type: "band"; band: Band };
 
 type Props = {
   dayId: string;
@@ -65,18 +71,22 @@ export function MobileSlotCard({
   const [showCustomEdit, setShowCustomEdit] = useState(false);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
-  const bands = useAppStore((s) => s.bands);
   const venueHours = useAppStore((s) => s.venueHours);
 
-  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging, isOver } =
-    useSortable({ id: slot.id, data: { type: "slot", slot, band } });
-
+  // Computed before useSortable below since it now feeds that hook's own
+  // `disabled` option — see SlotCard.tsx's identical comment.
   const lockedByNickname = useLockedBandOwner(band?.id);
-  const bandDraggable = useDraggable({
-    id: band ? `band:${band.id}` : `empty-band:${slot.id}`,
-    disabled: !band || lockedByNickname !== null,
-    data: band ? { type: "band", band } : undefined,
-  });
+
+  // One shared sortable session for the whole row — the ⠿ handle AND the
+  // band-content div further down are both activators for this SAME
+  // session now, not a separate useDraggable for the band. That's what
+  // makes SortableContext compute a real sibling-shift transform during a
+  // full-cell/long-press drag instead of only during a handle drag — see
+  // SlotCard.tsx's fuller comment on this (verified by comparing a
+  // neighboring row's computed `transform` mid-drag between the two).
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging, isOver } =
+    useSortable({ id: slot.id, data: { type: "slot", slot, band }, disabled: lockedByNickname !== null });
+
   // Keyed by slot.id, not band.id — a Rehearsal/Break custom slot (or
   // even an empty one) has no band to key off, but every slot has an id,
   // and that's what SlotCard's desktop-side onMouseEnter/onMouseLeave
@@ -85,9 +95,9 @@ export function MobileSlotCard({
   const hoveringUsers = useHoveringUsers(slot.id);
 
   const { active } = useDndContext();
-  const draggedBandId =
-    typeof active?.id === "string" && active.id.startsWith("band:") ? active.id.slice("band:".length) : null;
-  const draggedBand = draggedBandId ? bands.find((b) => b.id === draggedBandId) : undefined;
+  const activePayload = active?.data.current as ActiveDragPayload | undefined;
+  const draggedBand = activePayload?.band;
+  const draggedBandId = draggedBand ? draggedBand.id : null;
   const isDraggingBand = draggedBandId !== null;
   const isBlockedForDraggedBand =
     isDraggingBand && day && draggedBand ? !canPlaceBandInSlot(draggedBand, day, slot, venueHours) : false;
@@ -169,13 +179,16 @@ export function MobileSlotCard({
         </div>
       ) : band ? (
         <div
-          ref={bandDraggable.setNodeRef}
           id={`band-slot-${band.id}`}
-          {...bandDraggable.listeners}
-          {...bandDraggable.attributes}
-          className={`flex min-h-8 min-w-0 flex-1 items-center gap-1 transition-transform ${
+          // Same shared sortable session as the ⠿ handle — see the
+          // module-level comment and SlotCard.tsx's fuller one. isDragging
+          // is intentionally not re-applied here; the outer row already
+          // scales/dims for the whole card.
+          {...listeners}
+          {...attributes}
+          className={`flex min-h-8 min-w-0 flex-1 items-center gap-1 ${
             lockedByNickname ? "opacity-70" : "cursor-grab active:cursor-grabbing"
-          } ${bandDraggable.isDragging ? "scale-[1.03]" : ""}`}
+          }`}
         >
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-100">{band.name}</span>
           {lockedByNickname && (

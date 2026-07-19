@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDndContext, useDraggable } from "@dnd-kit/core";
+import { useDndContext } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -12,6 +12,18 @@ import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppSto
 import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
+
+// What `active.data.current` holds during a drag, from whichever of the
+// two activators started it: this row's own useSortable session
+// (id: slot.id — the ⠿ handle AND, as of this fix, the band-content area
+// too, see below) or BandChip's separate useDraggable (id: `band:<id>`,
+// for a genuinely unplaced band with no origin slot to be sortable
+// about). Reading `.band` off either shape is what replaced the old
+// `active.id.startsWith("band:")` string-parsing below — that scheme
+// stopped being able to tell "a band is being dragged" once the
+// band-content area started sharing the slot's own sortable id instead
+// of its own band-prefixed one.
+type ActiveDragPayload = { type: "slot"; slot: TimetableSlot; band?: Band } | { type: "band"; band: Band };
 
 type Props = {
   dayId: string;
@@ -66,6 +78,28 @@ export function SlotCard({
   const bands = useAppStore((s) => s.bands);
   const venueHours = useAppStore((s) => s.venueHours);
 
+  // Another collaborator's nickname if THEY currently have this exact
+  // band picked up (see useCollabStore/useLivePresence) — null the vast
+  // majority of the time (not in a collab room, or nobody else is
+  // dragging this specific band), in which case this behaves exactly as
+  // before real-time collaboration existed. Computed before useSortable
+  // below since it feeds that hook's own `disabled` option now.
+  const lockedByNickname = useLockedBandOwner(band?.id);
+
+  // One shared sortable session for the WHOLE row — both the ⠿ handle
+  // and (see the band-content div further down) the full band cell are
+  // activators for this SAME session now, not two separate dnd-kit
+  // hooks. That's what makes SortableContext compute a real sibling-shift
+  // transform for a full-cell/long-press drag: previously the band
+  // content used its own useDraggable, which isn't a member of this
+  // row's SortableContext `items` array, so no sibling ever animated for
+  // it — confirmed by comparing computed `transform` on a neighboring
+  // row mid-drag (handle: a real translate; band-content: "none").
+  // Disabling the whole session (not just the content sub-area) while
+  // locked is a small behavior tightening over the old per-activator
+  // disable: previously the handle stayed draggable even while another
+  // user had this exact band picked up, which is its own latent
+  // inconsistency this unification also happens to close.
   const {
     setNodeRef,
     setActivatorNodeRef,
@@ -75,28 +109,16 @@ export function SlotCard({
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: slot.id, data: { type: "slot", slot, band } });
-
-  // Another collaborator's nickname if THEY currently have this exact
-  // band picked up (see useCollabStore/useLivePresence) — null the vast
-  // majority of the time (not in a collab room, or nobody else is
-  // dragging this specific band), in which case this behaves exactly as
-  // before real-time collaboration existed.
-  const lockedByNickname = useLockedBandOwner(band?.id);
-  const bandDraggable = useDraggable({
-    id: band ? `band:${band.id}` : `empty-band:${slot.id}`,
-    disabled: !band || lockedByNickname !== null,
-    data: band ? { type: "band", band } : undefined,
+  } = useSortable({
+    id: slot.id,
+    data: { type: "slot", slot, band },
+    disabled: lockedByNickname !== null,
   });
 
   const { active } = useDndContext();
-  const draggedBandId =
-    typeof active?.id === "string" && active.id.startsWith("band:")
-      ? active.id.slice("band:".length)
-      : null;
-  const draggedBand = draggedBandId
-    ? bands.find((b) => b.id === draggedBandId)
-    : undefined;
+  const activePayload = active?.data.current as ActiveDragPayload | undefined;
+  const draggedBand = activePayload?.band;
+  const draggedBandId = draggedBand ? draggedBand.id : null;
   const isDraggingBand = draggedBandId !== null;
   const isBlockedForDraggedBand =
     isDraggingBand && day && draggedBand
@@ -154,10 +176,15 @@ export function SlotCard({
           → {previewStartTime} 開始予定
         </div>
       )}
-      {showDropHighlight && band && draggedBandId !== band.id && (
-        // "Magnetic" insert cue — dropping here won't replace this band,
-        // it'll open a new slot in front of it and push this one (and
-        // everyone after it that day) later. See insertBandAtSlot.
+      {showDropHighlight && band && draggedBandId !== band.id && activePayload?.type === "band" && (
+        // "Magnetic" insert cue — only for a genuinely UNPLACED band
+        // (dragged from BandListPanel, activePayload.type === "band"):
+        // dropping here won't replace this band, it'll open a new slot in
+        // front of it and push this one (and everyone after it that day)
+        // later. See insertBandAtSlot. An already-placed band's drag is a
+        // plain reorder now (App.tsx routes it through reorderSlots), so
+        // the live sibling-shift animation IS that cue for it — this
+        // static label would describe the wrong mechanic.
         <div className="pointer-events-none absolute -top-2 left-2 z-10 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-md shadow-black/40">
           ⬇ ここに挿入（後ろへずれます）
         </div>
@@ -253,7 +280,6 @@ export function SlotCard({
         </div>
       ) : (
         <div
-          ref={bandDraggable.setNodeRef}
           // Search-and-scroll target (see Timetable's search bar) — the
           // slot's own id isn't stable across a reorder/re-place the way
           // the band's own id is, so scrollIntoView/highlight target this
@@ -277,21 +303,26 @@ export function SlotCard({
                     : hasConcentrationWarning
                       ? "border-violet-700 border-dashed bg-violet-950/10"
                       : ""
-          } ${
-            bandDraggable.isDragging ? "opacity-50" : ""
           }`}
         >
           {band ? (
             <div
-              {...bandDraggable.listeners}
-              {...bandDraggable.attributes}
+              // Same session as the ⠿ handle (spread from this row's own
+              // useSortable above, not a separate useDraggable) — see the
+              // module-level comment on why that's what makes sibling
+              // rows animate live during a full-cell/long-press drag.
+              // isDragging styling is intentionally NOT duplicated here:
+              // the outer row already dims/scales for the whole card the
+              // instant either activator starts this one shared session.
+              {...listeners}
+              {...attributes}
               // No touch-action: none — see the slot drag-handle button's
               // comment above; same delay-based TouchSensor, same reason.
-              className={`w-full min-h-11 scale-100 transition-transform md:min-h-0 ${
+              className={`w-full min-h-11 md:min-h-0 ${
                 lockedByNickname
                   ? "cursor-not-allowed opacity-70"
                   : "cursor-grab active:cursor-grabbing"
-              } ${bandDraggable.isDragging ? "scale-[1.03]" : ""}`}
+              }`}
             >
               <p className="text-sm font-semibold text-slate-100">
                 {band.name}
@@ -434,8 +465,8 @@ export function SlotCard({
         // breakpoint (unlike the move/delete buttons above, which shrink on
         // desktop) — this is the one control on a placed band's card meant
         // to be reachable without any precision, on mobile or desktop
-        // alike. It sits outside the bandDraggable-wrapped div above, so it
-        // was never going to pick up drag listeners by accident anyway;
+        // alike. It sits outside the draggable band-content div above, so
+        // it was never going to pick up drag listeners by accident anyway;
         // stopPropagation on both handlers is still added defensively so
         // that stays true even if the drag wiring ever moves.
         <button
