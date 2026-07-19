@@ -228,13 +228,18 @@ export function DayPanel({ day, daysCount }: Props) {
           </button>
         ))}
         <details ref={settingsDetailsRef} className="group relative ml-auto shrink-0">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1">
-            設定・出力 <span className="ml-1 text-[9px] group-open:rotate-180">▼</span>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-indigo-500 bg-indigo-950/50 px-3 font-semibold text-indigo-300 shadow-sm hover:bg-indigo-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:min-h-0 md:py-1.5" aria-label={`${day.label}の設定と出力メニュー`}>
+            <span aria-hidden="true">⚙️</span>
+            <span>設定</span>
+            <span className="text-slate-500">/</span>
+            <span aria-hidden="true">⬇️</span>
+            <span>出力</span>
+            <span aria-hidden="true" className="ml-0.5 text-[9px] transition-transform group-open:rotate-180">▼</span>
           </summary>
           <div className="absolute right-0 top-full z-30 mt-1 grid w-72 gap-2 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl">
             <div className="grid grid-cols-2 gap-1.5">
-              <button onClick={handleCopyText} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">コピー</button>
-              <button onClick={handlePasteReorder} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">貼付で並び替え</button>
+              <button onClick={handleCopyText} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">📋 コピー</button>
+              <button onClick={handlePasteReorder} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">↕️ 貼付で並び替え</button>
               <button onClick={() => setShowSharePreview(true)} className="rounded border border-indigo-600 bg-indigo-950/40 px-2 py-2 text-indigo-300 hover:bg-indigo-900/50">🎨 共有用画像</button>
               <button onClick={() => setShowSetlistExport(true)} className="rounded border border-emerald-600 bg-emerald-950/40 px-2 py-2 text-emerald-300 hover:bg-emerald-900/50">📋 セットリスト</button>
             </div>

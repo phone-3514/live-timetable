@@ -259,8 +259,8 @@ export function DesktopTimetable() {
           )}
         </button>
         <details ref={moreDetailsRef} className="group relative ml-auto shrink-0">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center rounded border border-slate-600 px-3 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">
-            その他 <span className="ml-1 text-[9px] group-open:rotate-180">▼</span>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-500 bg-slate-800 px-3 text-xs font-semibold text-slate-200 shadow-sm hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:min-h-0 md:py-1.5" aria-label="管理と出力メニュー">
+            <span aria-hidden="true">🧰</span><span>管理・出力</span><span aria-hidden="true" className="text-[9px] transition-transform group-open:rotate-180">▼</span>
           </summary>
           <div className="absolute right-0 top-full z-30 mt-1 grid w-64 gap-1.5 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl">
             <button onClick={() => setShowHistoryPanel(true)} className="rounded px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700">🕘 操作履歴</button>
@@ -268,9 +268,9 @@ export function DesktopTimetable() {
               {exportingRoster ? "生成中…" : "📇 参加者名簿を出力"}
             </button>
             <button onClick={() => setShowFuriganaImport(true)} className="rounded px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700">📥 ふりがな取込</button>
-            <button onClick={autoDetectDayRestrictions} className="rounded px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-700">日程制限を再判定</button>
+            <button onClick={autoDetectDayRestrictions} className="rounded px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-700">🔄 日程制限を再判定</button>
             <div className="my-0.5 border-t border-slate-700" />
-            <button onClick={handleReset} className="rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/40">配置をリセット</button>
+            <button onClick={handleReset} className="rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/40">↩️ 配置をリセット</button>
             <button onClick={handleClearAllSlots} className="rounded px-3 py-2 text-left text-xs text-rose-400 hover:bg-rose-950/60">🗑 全枠削除</button>
           </div>
         </details>

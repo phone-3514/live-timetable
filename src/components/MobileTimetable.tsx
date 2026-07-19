@@ -279,14 +279,15 @@ export function MobileTimetable() {
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-700">
+      <div className="rounded-lg border border-indigo-500/70 bg-indigo-950/20 shadow-sm">
         <button
           type="button"
           onClick={() => setShowMoreTools((v) => !v)}
-          className="flex min-h-11 w-full items-center justify-between px-3 text-xs text-slate-400"
+          aria-expanded={showMoreTools}
+          className="flex min-h-12 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-indigo-300 hover:bg-indigo-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
-          <span>その他のツール（PC版と同じ機能）</span>
-          <span>{showMoreTools ? "▲" : "▼"}</span>
+          <span className="flex items-center gap-2"><span aria-hidden="true" className="text-lg">🧰</span><span><span className="block">設定・出力・その他</span><span className="block text-[10px] font-normal text-slate-500">履歴、名簿、取込、リセット</span></span></span>
+          <span aria-hidden="true">{showMoreTools ? "▲" : "▼"}</span>
         </button>
         {showMoreTools && (
           <div className="flex flex-col gap-1.5 border-t border-slate-700 p-2">
@@ -337,15 +338,15 @@ export function MobileTimetable() {
             </button>
             <button
               onClick={autoDetectDayRestrictions}
-              className="min-h-11 rounded border border-slate-700 px-3 text-xs text-slate-500"
+              className="min-h-11 rounded border border-slate-700 px-3 text-xs text-slate-500 hover:bg-slate-700"
             >
-              日程を再判定（リセット）
+              🔄 日程を再判定（リセット）
             </button>
             <button
               onClick={handleReset}
-              className="min-h-11 rounded border border-rose-700 px-3 text-rose-300"
+              className="min-h-11 rounded border border-rose-700 px-3 text-rose-300 hover:bg-rose-950/40"
             >
-              配置をリセット
+              ↩️ 配置をリセット
             </button>
             <button
               onClick={handleClearAllSlots}
