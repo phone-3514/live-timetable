@@ -8,13 +8,14 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
 import { useHistoryStore } from "./store/useHistoryStore";
 import { useCollabStore } from "./store/useCollabStore";
-import { useThemeStore } from "./store/useThemeStore";
 import { useIsMobile } from "./hooks/useViewport";
+import { useAsymmetricAutoScroll } from "./hooks/useAsymmetricAutoScroll";
+import { useSyncThemeAttribute } from "./hooks/useSyncThemeAttribute";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
@@ -57,22 +58,7 @@ function App() {
     null,
   );
 
-  // Keeps <html data-theme="..."> in sync with the store after the
-  // initial load (index.html's own inline script handles BEFORE first
-  // paint, straight from localStorage, to avoid a flash of the wrong
-  // theme — this effect is what makes the header toggle take effect
-  // live afterward without needing a reload). "system" removes the
-  // attribute entirely rather than setting it to some third value —
-  // index.css's plain `@media (prefers-color-scheme)` rule is only
-  // reachable when no [data-theme] override is present at all.
-  const themePreference = useThemeStore((s) => s.theme);
-  useEffect(() => {
-    if (themePreference === "system") {
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      document.documentElement.setAttribute("data-theme", themePreference);
-    }
-  }, [themePreference]);
+  useSyncThemeAttribute();
 
   // Mouse and touch get different activation rules on purpose: a mouse
   // drag on desktop should start the instant the cursor moves past a
@@ -95,26 +81,33 @@ function App() {
     useSensor(KeyboardSensor),
   );
 
-  // dnd-kit's default auto-scroll triggers within the outer 20% of the
-  // scroll container's height (`threshold.y: 0.2`) and accelerates at a
-  // rate tuned for a desktop-sized viewport (`acceleration: 10`, see
-  // useAutoScroller's defaults in @dnd-kit/core). On a phone-height
-  // screen, 20% is a big enough band that a long-press-drag anywhere in
-  // the lower third of the screen — nowhere near the actual bottom edge
-  // — could already start auto-scrolling, and at the default
-  // acceleration it moved fast enough to overshoot past the slot the
-  // user meant to drop on. `#root` is this app's real mobile scroll
-  // container (see index.css / the scroll-lock round's finding), which
-  // dnd-kit auto-detects as a scrollable ancestor via computed
-  // `overflow-y`, so no separate wiring is needed beyond this config.
+  // dnd-kit's built-in `autoScroll` prop only accepts one symmetric
+  // `threshold.y` fraction applied to both the top AND bottom edges of
+  // the scroll container (confirmed by reading getScrollDirectionAndSpeed
+  // in @dnd-kit/core's source — no per-edge option exists). Mobile wants
+  // an asymmetric setup: the bottom zone stays at the previously tuned
+  // 8% (see the earlier auto-scroll-sensitivity round), but the top zone
+  // needs to be noticeably bigger so scrolling up toward an earlier slot
+  // starts well before the finger/dragged card actually reaches the top
+  // few pixels of the screen — without going so large that it reaches
+  // the literal top edge (i.e., not so big that ordinary drags near the
+  // top of the visible content trigger it unintentionally). Since
+  // dnd-kit can't express that declaratively, mobile disables the
+  // built-in autoScroll entirely and uses useAsymmetricAutoScroll below
+  // instead, which reimplements the same formula/cadence for both zones
+  // (see that hook's own comment) so the bottom zone's feel is unchanged.
   // Desktop keeps dnd-kit's own defaults (`autoScroll={true}`) — DayPanel's
   // fixed-height, internally-scrolling panels are a different shape of
-  // problem this narrower mobile threshold isn't meant to solve, and
-  // nothing here suggested desktop's existing behavior was an issue.
+  // problem this mobile-only handling isn't meant to solve, and nothing
+  // here suggested desktop's existing behavior was an issue.
   const isMobile = useIsMobile();
-  const autoScroll = isMobile
-    ? { threshold: { x: 0.2, y: 0.08 }, acceleration: 2 }
-    : true;
+  const autoScroll = isMobile ? false : true;
+  const asymmetricAutoScroll = useAsymmetricAutoScroll({
+    enabled: isMobile,
+    topThreshold: 0.3,
+    bottomThreshold: 0.08,
+    acceleration: 2,
+  });
 
   // ⌘Z / Ctrl+Z and ⌘⇧Z / Ctrl+Y (redo) for the Timetable Editor's
   // placement history — skipped while focus is in a text input/textarea/
@@ -143,6 +136,7 @@ function App() {
   }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
+    asymmetricAutoScroll.onDragStart(event);
     const data = (event.active.data.current as ActiveDragData) ?? null;
     setActiveDragData(data);
     // Fires exactly when a sensor activates a drag — for TouchSensor
@@ -167,7 +161,12 @@ function App() {
     }
   };
 
+  const handleDragMove = (event: DragMoveEvent) => {
+    asymmetricAutoScroll.onDragMove(event);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    asymmetricAutoScroll.onDragEnd();
     setActiveDragData(null);
     useCollabStore.getState().setMyDragState({ isDragging: false, draggedBandId: null });
     const { active, over } = event;
@@ -235,8 +234,10 @@ function App() {
       sensors={sensors}
       autoScroll={autoScroll}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={() => {
+        asymmetricAutoScroll.onDragCancel();
         setActiveDragData(null);
         useCollabStore.getState().setMyDragState({ isDragging: false, draggedBandId: null });
       }}

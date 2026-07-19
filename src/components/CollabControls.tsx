@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCollabStore, type CollabStatus } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
+import { PublishPamphletButton } from "./PublishPamphletButton";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -112,6 +113,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
       >
         🔗 URLをコピー
       </button>
+      <PublishPamphletButton roomId={roomId} />
       {confirmingLeave ? (
         <span className="flex items-center gap-1 text-xs text-slate-400">
           このブラウザだけ抜けますか？
@@ -146,13 +148,14 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
 
       {confirmingKick && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[70] overflow-y-auto bg-black/60 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           onClick={() => setConfirmingKick(null)}
         >
+          <div className="flex min-h-full items-center justify-center p-4">
           <div
-            className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+            className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-sm font-semibold text-slate-100">
@@ -181,6 +184,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
                 退出させる
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

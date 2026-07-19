@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>軽音ライブ タイムテーブル作成</title>
+    <script>
+      // GitHub Pages serves this file for ANY path under this project site
+      // that isn't a real static file — including /:circleId/public (see
+      // src/main.tsx), which only exists as a client-side route, never as
+      // an actual file in the deployed dist/. There's no server-side
+      // rewrite available on GitHub Pages, so this is the standard static-
+      // hosting workaround: bounce back to index.html with the path that
+      // was actually requested preserved in a query param, which
+      // index.html's own inline script decodes back into a clean URL
+      // (history.replaceState) before the app ever reads it.
+      (function () {
+        var base = "/live-timetable/";
+        var pathname = location.pathname;
+        var path = pathname.indexOf(base) === 0 ? pathname.slice(base.length) : pathname.replace(/^\//, "");
+        var target =
+          base +
+          "?redirect=" +
+          encodeURIComponent(path) +
+          (location.search ? "&" + location.search.slice(1) : "") +
+          location.hash;
+        location.replace(target);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

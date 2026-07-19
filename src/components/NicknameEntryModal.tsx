@@ -32,13 +32,14 @@ export function NicknameEntryModal({ onSubmit }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
+      <div className="flex min-h-full items-center justify-center p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
       >
         <h2 className="text-sm font-semibold text-slate-100">👋 共同編集に参加</h2>
         <p className="mt-1 text-xs text-slate-400">
@@ -74,6 +75,7 @@ export function NicknameEntryModal({ onSubmit }: Props) {
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 }

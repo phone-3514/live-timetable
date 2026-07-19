@@ -108,11 +108,12 @@ export function BackupControls() {
 
       {pendingRestore && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl">
+          <div className="flex min-h-full items-center justify-center p-4">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl">
             <h2 className="text-sm font-semibold text-slate-100">データを復元しますか？</h2>
             <p className="mt-2 text-xs text-slate-400">
               現在の編集内容が上書きされます。よろしいですか？
@@ -136,6 +137,7 @@ export function BackupControls() {
                 上書きして復元する
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

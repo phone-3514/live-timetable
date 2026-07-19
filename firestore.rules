@@ -25,6 +25,38 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // The public pamphlet's whole reason to exist: a curated, read-only
+    // document (see src/pamphlet/buildPublicPamphletDoc.ts, the ONLY
+    // place that writes here) holding just what an audience should see —
+    // liveName/venue/organizationName/bands/days/publishedAt. It never
+    // contains Application Manager data (applicantName, raw Discord text,
+    // unapproved submissions) or a Band's scheduling/administrative
+    // fields (desiredTime, ngTime, raw, gearTags, etc. — see
+    // src/pamphlet/types.ts's PublicBand for the exact narrowed shape),
+    // because those simply never get copied into the payload in the
+    // first place — this rule additionally enforces that shape server-
+    // side, so even a hand-crafted write from outside this app's own UI
+    // can't smuggle an extra field (like `applications`) into a doc a
+    // public reader can see. Same no-auth trust model as `rooms/{roomId}`
+    // above (see that collection's own comment) — write access isn't
+    // restricted to "the room's admin" because there's no Auth to check
+    // that against; what's restricted is the DOCUMENT SHAPE, same as
+    // `rooms/{roomId}`.
+    match /publicPamphlets/{circleId} {
+      allow read: if true;
+      allow write: if isValidPublicPamphlet(request.resource.data);
+      allow delete: if true;
+
+      function isValidPublicPamphlet(data) {
+        return data.keys().hasOnly(['liveName', 'venue', 'organizationName', 'bands', 'days', 'publishedAt'])
+          && data.keys().hasAll(['liveName', 'bands', 'days', 'publishedAt'])
+          && data.liveName is string && data.liveName.size() < 200
+          && data.bands is list && data.bands.size() < 300
+          && data.days is list && data.days.size() < 20
+          && data.publishedAt is int;
+      }
+    }
+
     // Generous for a college club's live-event timetable (dozens of
     // bands, a handful of days) but still bounds the size of any single
     // write — the free tier's per-document 1MiB limit is already a
