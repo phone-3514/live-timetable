@@ -4,7 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canPlaceBandInSlot, useAppStore } from "../store/useAppStore";
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
-import { useCollabStore, useHoveringUsers, useLockedBandOwner } from "../store/useCollabStore";
+import { useHoveringUsers, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
@@ -76,7 +76,12 @@ export function MobileSlotCard({
     disabled: !band || lockedByNickname !== null,
     data: band ? { type: "band", band } : undefined,
   });
-  const hoveringUsers = useHoveringUsers(band?.id);
+  // Keyed by slot.id, not band.id — a Rehearsal/Break custom slot (or
+  // even an empty one) has no band to key off, but every slot has an id,
+  // and that's what SlotCard's desktop-side onMouseEnter/onMouseLeave
+  // broadcasts (see useCollabStore.ts). Works identically for all three
+  // slot kinds this row can render below.
+  const hoveringUsers = useHoveringUsers(slot.id);
 
   const { active } = useDndContext();
   const draggedBandId =
@@ -102,9 +107,17 @@ export function MobileSlotCard({
           ? "border-rose-500 bg-rose-950/40"
           : showDropHighlight
             ? "border-indigo-400 bg-indigo-950/40"
-            : isCustom
-              ? "border-amber-700 bg-amber-950/20"
-              : "border-slate-700 bg-slate-800"
+            : // A desktop collaborator hovering this exact slot — band,
+              // Rehearsal/Break, or empty — highlights the whole row's
+              // border, on top of the small 👀 name tag near the buttons
+              // below. Takes priority over the plain amber "this is a
+              // custom slot" tint so live presence is never invisible
+              // just because the row happens to be a Rehearsal/Break.
+              hoveringUsers.length > 0
+              ? "border-sky-400 bg-sky-950/20"
+              : isCustom
+                ? "border-amber-700 bg-amber-950/20"
+                : "border-slate-700 bg-slate-800"
       }`}
     >
       <button
@@ -146,8 +159,6 @@ export function MobileSlotCard({
           id={`band-slot-${band.id}`}
           {...bandDraggable.listeners}
           {...bandDraggable.attributes}
-          onMouseEnter={() => useCollabStore.getState().setMyHoveredElementId(band.id)}
-          onMouseLeave={() => useCollabStore.getState().setMyHoveredElementId(null)}
           className={`flex min-h-8 min-w-0 flex-1 items-center gap-1 transition-transform ${
             lockedByNickname ? "opacity-70" : "cursor-grab active:cursor-grabbing"
           } ${bandDraggable.isDragging ? "scale-[1.03]" : ""}`}
@@ -156,11 +167,6 @@ export function MobileSlotCard({
           {lockedByNickname && (
             <span className="shrink-0 text-xs" title={`${lockedByNickname}が移動中`}>
               🔒
-            </span>
-          )}
-          {hoveringUsers.length > 0 && (
-            <span className="shrink-0 text-xs" title={`${hoveringUsers.join("、")}が見ています`}>
-              👀
             </span>
           )}
           {hasWarning && (
@@ -172,6 +178,23 @@ export function MobileSlotCard({
       ) : (
         <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
           {isDraggingBand && !isBlockedForDraggedBand ? "ここにドロップ" : "空き枠"}
+        </span>
+      )}
+
+      {/* Live presence tag — "who's looking at this," universal across
+          band/Rehearsal/Break/empty (see hoveringUsers above, keyed by
+          slot.id). Placed outside the band/custom/empty branches so it
+          renders identically regardless of which one this row is,
+          rather than being duplicated inside each. Disappears the
+          instant the desktop collaborator's mouse leaves the card —
+          see SlotCard.tsx's onMouseLeave, no extra logic needed here. */}
+      {hoveringUsers.length > 0 && (
+        <span
+          className="inline-block max-w-[5.5rem] shrink-0 truncate whitespace-nowrap rounded border border-sky-400 bg-sky-950/70 px-1 text-[10px] font-medium text-sky-300"
+          title={`${hoveringUsers.join("、")}が見ています`}
+        >
+          👀 {hoveringUsers[0]}
+          {hoveringUsers.length > 1 && `+${hoveringUsers.length - 1}`}
         </span>
       )}
 

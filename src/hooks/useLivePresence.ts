@@ -103,6 +103,21 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
     }
     window.addEventListener("mousemove", handleMouseMove);
 
+    // Clears hover the instant this tab stops being the visible one —
+    // switching apps/tabs or minimizing doesn't fire mouseleave (the
+    // cursor never actually left the element, the whole window just lost
+    // focus), so without this a hover badge could keep showing on other
+    // collaborators' screens for however long this tab sits in the
+    // background. onDisconnect below still covers an outright close/
+    // network loss; this covers the "stepped away without closing
+    // anything" case the request specifically called out.
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        useCollabStore.getState().setMyHoveredElementId(null);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // Mirrors this client's OWN drag state (written to useCollabStore by
     // App.tsx's DndContext handlers, with zero Firebase dependency there
     // — see useCollabStore.ts) into RTDB whenever it changes.
@@ -127,6 +142,7 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       unsubscribe();
       unsubscribeDragState();
       unsubscribeHover();

@@ -13,11 +13,14 @@ export type PresenceEntry = {
   cursor: { xPct: number; yPct: number } | null;
   isDragging: boolean;
   draggedBandId: string | null;
-  // Which band's card this collaborator's mouse is currently over — a
-  // band id, or null when they're not hovering any tracked card. Unlike
-  // `cursor` above, this is layout-independent: a raw x/y position is
-  // meaningless translated onto a completely different DOM arrangement
-  // (desktop's side-by-side grid vs. mobile's accordion list), but "band
+  // Which slot's card this collaborator's mouse is currently over — a
+  // TimetableSlot id, or null when they're not hovering any tracked card.
+  // Keyed by slot id (not band id) specifically so a Rehearsal/Break
+  // custom slot — which has no band at all — tracks exactly the same way
+  // a band-filled slot does; every slot has an id, only some have a band.
+  // Unlike `cursor` above, this is layout-independent: a raw x/y position
+  // is meaningless translated onto a completely different DOM arrangement
+  // (desktop's side-by-side grid vs. mobile's accordion list), but "slot
   // X's card" refers to the same thing regardless of where either
   // viewer's layout happens to draw it. That's what lets a mobile viewer
   // render "someone's looking at this" directly on the matching
@@ -47,10 +50,12 @@ type CollabState = {
    * bundle. The lazy-loaded useLivePresence hook is the only thing that
    * reads `myDragState` and actually pushes it to RTDB. */
   myDragState: DragState;
-  /** This client's own currently-hovered band id, or null. Same
+  /** This client's own currently-hovered slot id, or null. Same
    * Firebase-free write pattern as myDragState — SlotCard writes here
-   * directly on mouse enter/leave, and the lazy-loaded useLivePresence
-   * hook is the only thing that reads it and pushes it to RTDB. */
+   * directly on mouse enter/leave (every slot, band-filled, empty, or a
+   * Rehearsal/Break custom slot alike), and the lazy-loaded
+   * useLivePresence hook is the only thing that reads it and pushes it
+   * to RTDB. */
   myHoveredElementId: string | null;
 
   setRoomState: (roomId: string | null, status: CollabStatus) => void;
@@ -91,12 +96,14 @@ export function useLockedBandOwner(bandId: string | undefined): string | null {
   });
 }
 
-/** Nicknames of every OTHER collaborator currently hovering this band's
- * card, empty when nobody is. Used by SlotCard's mobile presence badge —
- * see PresenceEntry.hoveredElementId for why element-id (not cursor
- * position) is what makes this meaningful on a layout completely
- * different from whichever one the hovering collaborator is using. */
-export function useHoveringUsers(bandId: string | undefined): string[] {
+/** Nicknames of every OTHER collaborator currently hovering this slot's
+ * card, empty when nobody is. `elementId` is a TimetableSlot id — works
+ * identically for a band-filled slot, an empty one, or a Rehearsal/Break
+ * custom slot, since all three are tracked the same way (see
+ * PresenceEntry.hoveredElementId for why element-id, not cursor
+ * position, is what makes this meaningful on a layout completely
+ * different from whichever one the hovering collaborator is using). */
+export function useHoveringUsers(elementId: string | undefined): string[] {
   // useShallow so the mapped array's element-by-element equality (not
   // reference equality) decides whether this actually changed — without
   // it, a plain selector returning `.filter().map()` hands back a brand
@@ -108,8 +115,8 @@ export function useHoveringUsers(bandId: string | undefined): string[] {
   // via ErrorBoundary with "Maximum update depth exceeded").
   return useCollabStore(
     useShallow((s) => {
-      if (!bandId) return [];
-      return s.others.filter((o) => o.hoveredElementId === bandId).map((o) => o.nickname);
+      if (!elementId) return [];
+      return s.others.filter((o) => o.hoveredElementId === elementId).map((o) => o.nickname);
     }),
   );
 }

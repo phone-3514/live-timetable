@@ -9,8 +9,7 @@ import {
   useAppStore,
 } from "../store/useAppStore";
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
-import { useCollabStore, useHoveringUsers, useLockedBandOwner } from "../store/useCollabStore";
-import { useIsMobile } from "../hooks/useViewport";
+import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 
@@ -90,16 +89,6 @@ export function SlotCard({
     data: band ? { type: "band", band } : undefined,
   });
 
-  // Nicknames of other collaborators currently hovering THIS band's card
-  // (see PresenceEntry.hoveredElementId) — rendered as a small badge only
-  // on the viewer's own mobile layout, since desktop viewers already see
-  // where others are looking via the floating LiveCursors overlay
-  // (coordinate-based, which only makes sense on a layout shaped like the
-  // sender's). isMobile is this viewer's own viewport, not the hovering
-  // collaborator's — see useViewport.ts.
-  const hoveringUsers = useHoveringUsers(band?.id);
-  const isMobile = useIsMobile();
-
   const { active } = useDndContext();
   const draggedBandId =
     typeof active?.id === "string" && active.id.startsWith("band:")
@@ -136,6 +125,14 @@ export function SlotCard({
     <div
       ref={setNodeRef}
       style={rowStyle}
+      // Element-based presence (see PresenceEntry.hoveredElementId):
+      // enter/leave on the WHOLE row, keyed by slot.id, is what makes a
+      // Rehearsal/Break custom slot (no band to key off) track hover
+      // exactly the same way a band-filled slot does — the only thing
+      // every slot type shares an id for. Leaving naturally clears it, no
+      // separate "moved to empty space" handling needed.
+      onMouseEnter={() => useCollabStore.getState().setMyHoveredElementId(slot.id)}
+      onMouseLeave={() => useCollabStore.getState().setMyHoveredElementId(null)}
       className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 transition-transform ${
         isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
@@ -288,14 +285,6 @@ export function SlotCard({
             <div
               {...bandDraggable.listeners}
               {...bandDraggable.attributes}
-              // Element-based presence (see PresenceEntry.hoveredElementId):
-              // enter/leave on this exact div is the "am I hovering a
-              // tracked card, or nothing" signal — leaving naturally clears
-              // it (requirement: no stale badge once the pointer moves off
-              // to an untracked area), no separate mousemove/empty-area
-              // handling needed.
-              onMouseEnter={() => useCollabStore.getState().setMyHoveredElementId(band.id)}
-              onMouseLeave={() => useCollabStore.getState().setMyHoveredElementId(null)}
               // No touch-action: none — see the slot drag-handle button's
               // comment above; same delay-based TouchSensor, same reason.
               className={`w-full min-h-11 scale-100 transition-transform md:min-h-0 ${
@@ -312,15 +301,6 @@ export function SlotCard({
                     title={`${lockedByNickname}が現在このバンドを移動中です`}
                   >
                     🔒 {lockedByNickname}が移動中
-                  </span>
-                )}
-                {isMobile && !lockedByNickname && hoveringUsers.length > 0 && (
-                  <span
-                    className="ml-1.5 inline-block max-w-[9rem] truncate align-bottom whitespace-nowrap rounded border border-sky-400 bg-sky-950/60 px-1 text-xs font-normal text-sky-300"
-                    title={`${hoveringUsers.join("、")}が現在このバンドを見ています`}
-                  >
-                    👀 {hoveringUsers[0]}
-                    {hoveringUsers.length > 1 && ` 他${hoveringUsers.length - 1}人`}
                   </span>
                 )}
                 {band.durationMinutes != null && (
