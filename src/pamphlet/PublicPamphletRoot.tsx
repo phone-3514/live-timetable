@@ -31,6 +31,10 @@ function todayIso(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+function normalizePerformerSearch(value: string): string {
+  return value.normalize("NFKC").replace(/[\s\u3000]+/g, "").toLocaleLowerCase("ja-JP");
+}
+
 // The entire public pamphlet route tree lives in this one directory
 // (src/pamphlet/) and imports NOTHING from the admin editor beyond two
 // deliberately Firebase-free, editing-free primitives: useThemeStore (via
@@ -49,6 +53,7 @@ export function PublicPamphletRoot({ circleId }: Props) {
   const screenMode = new URLSearchParams(window.location.search).get("mode") === "screen";
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myPerformerName, setMyPerformerName] = useState<string>(() => new URLSearchParams(window.location.search).get("performer") ?? "");
+  const [performerQuery, setPerformerQuery] = useState(() => new URLSearchParams(window.location.search).get("performer") ?? "");
   const activeRowId = activeRow?.id ?? null;
   const activeRowKind = activeRow?.kind ?? null;
   const effectiveActiveRow = useMemo(
@@ -76,11 +81,25 @@ export function PublicPamphletRoot({ circleId }: Props) {
       .sort((a, b) => a.localeCompare(b, "ja")),
     [data],
   );
+  const performerMatches = useMemo(() => {
+    const query = normalizePerformerSearch(performerQuery);
+    if (!query) return [];
+    return performerNames.filter((name) => normalizePerformerSearch(name).includes(query)).slice(0, 8);
+  }, [performerNames, performerQuery]);
   const myBands = useMemo(
     () => (data?.bands ?? []).filter((band) => band.members.some((name) => name.trim() === myPerformerName)),
     [data, myPerformerName],
   );
   const myBandIds = useMemo(() => new Set(myBands.map((band) => band.id)), [myBands]);
+
+  function choosePerformer(name: string) {
+    setMyPerformerName(name);
+    setPerformerQuery(name);
+    const url = new URL(window.location.href);
+    if (name) url.searchParams.set("performer", name);
+    else url.searchParams.delete("performer");
+    window.history.replaceState(null, "", url.toString());
+  }
 
   // My Timetable: only the rehearsal/performance rows that mention the
   // selected band. This app has no notion of a rehearsal being formally
@@ -176,22 +195,61 @@ export function PublicPamphletRoot({ circleId }: Props) {
         {data && (
           <>
             {performerNames.length > 0 && (
-              <label className="mt-2 flex min-h-11 flex-col gap-1 text-sm text-slate-300">
-                出演者マイページ
-                <select
-                  value={myPerformerName}
-                  onChange={(e) => setMyPerformerName(e.target.value)}
-                  className="min-h-11 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-base text-slate-100 outline-none backdrop-blur-md focus:border-indigo-500"
-                  aria-label="自分の名前を選択"
-                >
-                  <option value="">自分の名前を選択</option>
-                  {performerNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <section className="mt-2 rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-card-bg)] p-3 backdrop-blur-md" aria-labelledby="performer-search-title">
+                <h2 id="performer-search-title" className="text-sm font-semibold text-slate-200">出演者マイページ</h2>
+                <label className="mt-2 block text-xs font-medium text-slate-400" htmlFor="performer-name-search">名前を入力して検索</label>
+                <div className="relative mt-1">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">🔍</span>
+                  <input
+                    id="performer-name-search"
+                    type="search"
+                    value={performerQuery}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setPerformerQuery(value);
+                      if (normalizePerformerSearch(value) !== normalizePerformerSearch(myPerformerName)) setMyPerformerName("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      const exact = performerNames.find((name) => normalizePerformerSearch(name) === normalizePerformerSearch(performerQuery));
+                      const candidate = exact ?? (performerMatches.length === 1 ? performerMatches[0] : null);
+                      if (candidate) {
+                        event.preventDefault();
+                        choosePerformer(candidate);
+                      }
+                    }}
+                    placeholder="例：鈴木啓大郎"
+                    autoComplete="name"
+                    className="min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 py-2 pl-10 pr-11 text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                  />
+                  {performerQuery && <button type="button" onClick={() => choosePerformer("")} aria-label="名前の検索をクリア" className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-lg text-slate-500 hover:bg-slate-700 hover:text-slate-200">×</button>}
+                </div>
+
+                {performerQuery.trim() && !myPerformerName && (
+                  <div className="mt-2" aria-live="polite">
+                    {performerMatches.length > 0 ? (
+                      <ul className="grid gap-1.5" aria-label="名前の検索候補">
+                        {performerMatches.map((name) => (
+                          <li key={name}><button type="button" onClick={() => choosePerformer(name)} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-900/70 px-3 text-left text-sm font-semibold text-slate-200 hover:border-indigo-500 hover:bg-indigo-950/40"><span>👤 {name}</span><span className="text-xs text-indigo-300">選択 ›</span></button></li>
+                        ))}
+                      </ul>
+                    ) : <p className="rounded-lg border border-dashed border-slate-700 px-3 py-3 text-sm text-slate-400">該当する出演者が見つかりません</p>}
+                  </div>
+                )}
+
+                <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-400">
+                  または一覧から選択
+                  <select
+                    value={myPerformerName}
+                    onChange={(event) => choosePerformer(event.target.value)}
+                    className="min-h-11 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-base text-slate-100 outline-none focus:border-indigo-500"
+                    aria-label="自分の名前を一覧から選択"
+                  >
+                    <option value="">自分の名前を選択</option>
+                    {performerNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>
+              </section>
             )}
 
             {myPerformerName && myBands.length > 0 && (
