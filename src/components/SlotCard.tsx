@@ -396,9 +396,9 @@ export function SlotCard({
                 : gearConflict
                   ? "border-amber-500 bg-amber-950/30"
                   : hasFullConcentration
-                    ? "border-violet-500 bg-violet-950/30"
+                    ? "border-sky-500 bg-sky-950/60"
                     : hasConcentrationWarning
-                      ? "border-violet-700 border-dashed bg-violet-950/10"
+                      ? "border-sky-500/60 border-dashed bg-sky-950/30"
                       : ""
           }`}
         >
@@ -516,7 +516,7 @@ export function SlotCard({
                 <p
                   key={c.memberName}
                   className={`text-xs font-medium ${
-                    c.level === "full" ? "text-violet-400" : "text-violet-400/70"
+                    c.level === "full" ? "text-sky-400" : "text-sky-400/80"
                   }`}
                 >
                   ⚠️ {c.memberName}{" "}
