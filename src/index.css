@@ -98,6 +98,7 @@
   --color-sky-400: var(--sky-400);
   --color-sky-950: var(--sky-950);
 
+  --color-violet-200: var(--violet-200);
   --color-violet-300: var(--violet-300);
   --color-violet-400: var(--violet-400);
   --color-violet-950: var(--violet-950);
@@ -143,12 +144,27 @@
   --slate-900: #ffffff;
   --slate-950: #f5f5f7;
 
-  --indigo-200: #cfe6ff;
+  /* indigo-200: badge TEXT color (Badge.tsx's "part" tone: text-indigo-200
+     on bg-indigo-950), not a light background fill — every usage in the
+     app pairs it with a -950 tinted bg (confirmed via grep, no
+     bg-indigo-200 usage exists). The original #cfe6ff was a pale
+     light-blue tint designed for dark-mode-style "light text on dark
+     badge," which in light mode paired with indigo-950's near-white
+     #f0f7ff measured 1.19:1 contrast — essentially invisible (confirmed
+     via computed-style contrast check, not assumed). Dark, not light,
+     in light mode.
+     indigo-500/600/700 (primary buttons, active tab, focus rings, links)
+     desaturated from the original vivid Apple systemBlue to a more
+     muted, "professional tool" navy for light mode specifically — dark
+     mode's own block below keeps the original vivid systemBlue
+     untouched, so the two themes now deliberately look different here,
+     not just light/dark-inverted copies of the same hue. */
+  --indigo-200: #1e3a5f;
   --indigo-300: #9dcaff;
   --indigo-400: #5aa9ff;
-  --indigo-500: #1a8cff;
-  --indigo-600: #007aff; /* Apple systemBlue, light */
-  --indigo-700: #0062cc;
+  --indigo-500: #3968a8;
+  --indigo-600: #1f4e8c;
+  --indigo-700: #163a6b;
   --indigo-900: #e8f2ff;
   --indigo-950: #f0f7ff;
 
@@ -191,6 +207,7 @@
   --sky-400: #0369a1;
   --sky-950: #e0f2fe;
 
+  --violet-200: #3f2e5c;
   --violet-300: #6d28d9;
   --violet-400: #6d28d9;
   --violet-950: #ede9fe;
@@ -261,6 +278,7 @@
     --sky-400: #38bdf8;
     --sky-950: #082f49;
 
+    --violet-200: #ddd6fe;
     --violet-300: #c4b5fd;
     --violet-400: #a78bfa;
     --violet-950: #2e1065;
@@ -326,6 +344,7 @@
   --sky-400: #38bdf8;
   --sky-950: #082f49;
 
+  --violet-200: #ddd6fe;
   --violet-300: #c4b5fd;
   --violet-400: #a78bfa;
   --violet-950: #2e1065;
@@ -354,12 +373,12 @@
   --slate-900: #ffffff;
   --slate-950: #f5f5f7;
 
-  --indigo-200: #cfe6ff;
+  --indigo-200: #1e3a5f;
   --indigo-300: #9dcaff;
   --indigo-400: #5aa9ff;
-  --indigo-500: #1a8cff;
-  --indigo-600: #007aff;
-  --indigo-700: #0062cc;
+  --indigo-500: #3968a8;
+  --indigo-600: #1f4e8c;
+  --indigo-700: #163a6b;
   --indigo-900: #e8f2ff;
   --indigo-950: #f0f7ff;
 
@@ -386,6 +405,7 @@
   --sky-400: #0369a1;
   --sky-950: #e0f2fe;
 
+  --violet-200: #3f2e5c;
   --violet-300: #6d28d9;
   --violet-400: #6d28d9;
   --violet-950: #ede9fe;

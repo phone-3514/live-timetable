@@ -69,7 +69,7 @@ export function ApplicationImportPanel() {
         className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
           isDragOver
             ? "border-indigo-400 bg-indigo-950/40"
-            : "border-slate-700 hover:border-slate-500 hover:bg-slate-800/50"
+            : "border-slate-700 hover:border-slate-500 hover:bg-slate-700/50"
         } ${isProcessing ? "cursor-wait opacity-70" : ""}`}
       >
         {isProcessing ? (

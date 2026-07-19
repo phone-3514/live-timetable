@@ -5,7 +5,7 @@ import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { dataUrlToFile, shareOrDownloadFile, supportsFileShare } from "../utils/shareOrDownload";
+import { dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
 import { ModalPortal } from "./ModalPortal";
 import type { TimetableDay } from "../types";
 
@@ -69,10 +69,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
       const dataUrl = await toPng(el, { pixelRatio: 2 });
       const filename = `share-timetable-${day.label}-${themeId}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
-      await shareOrDownloadFile(file, {
-        title: eventInfo.liveName || "タイムテーブル",
-        text: `${day.label}のタイムテーブル`,
-      });
+      await downloadFile(file);
     } finally {
       setDownloading(false);
     }
@@ -88,20 +85,20 @@ export function SharePreviewModal({ day, onClose }: Props) {
         className="flex h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-700 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-100">
             共有用タイムテーブル・プレビュー
           </h2>
           <button
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-200 md:h-7 md:w-7"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-slate-200 md:h-7 md:w-7"
             title="閉じる"
           >
             ×
           </button>
         </div>
 
-        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-700 px-4 py-3">
           <div className="grid grid-cols-3 gap-2 min-[420px]:grid-cols-4 sm:grid-cols-5 md:grid-cols-7">
             {(Object.values(THEMES)).map((theme) => (
               <button
@@ -135,7 +132,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
             color theme can be combined with any layout. Defaults to
             "classic", which is byte-identical to this template's
             pre-existing rendering. */}
-        <div className="shrink-0 border-b border-slate-800 px-4 py-2.5">
+        <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
           <p className="mb-1.5 text-[11px] font-semibold text-slate-500">レイアウト構造</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.values(LAYOUTS).map((layout) => (
@@ -199,10 +196,10 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-800 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-700 px-4 py-3">
           <button
             onClick={onClose}
-            className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1.5"
+            className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
           >
             閉じる
           </button>
@@ -211,7 +208,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
             disabled={downloading}
             className="min-h-11 rounded bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 md:min-h-0 md:py-1.5"
           >
-            {downloading ? "画像を生成中…" : supportsFileShare ? "画像を共有 / 保存" : "画像をダウンロード"}
+            {downloading ? "画像を生成中…" : "画像をダウンロード"}
           </button>
         </div>
       </div>

@@ -118,7 +118,7 @@ export function DayPanel({ day, daysCount }: Props) {
   };
 
   return (
-    <div className="flex h-[75vh] flex-col gap-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40 p-2 md:h-auto md:min-h-0">
+    <div className="flex h-[75vh] flex-col gap-1.5 overflow-hidden rounded-lg border border-slate-700 bg-slate-900/40 p-2 shadow-[0_4px_12px_rgba(0,0,0,0.06)] md:h-auto md:min-h-0">
       <div className="flex shrink-0 items-center gap-1.5">
         <input
           value={day.label}
@@ -192,14 +192,14 @@ export function DayPanel({ day, daysCount }: Props) {
         </label>
         <button
           onClick={handleCopyText}
-          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-800 md:ml-auto md:min-h-0 md:py-1"
+          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-700 md:ml-auto md:min-h-0 md:py-1"
         >
           コピー
         </button>
         <button
           onClick={handlePasteReorder}
           title="コピーしたテキストの行順を編集してから貼り付けると、その順番にバンドを並び替えます"
-          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1"
+          className="min-h-11 rounded border border-slate-600 px-2 text-slate-200 hover:bg-slate-700 md:min-h-0 md:py-1"
         >
           貼り付けて並び替え
         </button>

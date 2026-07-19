@@ -209,7 +209,7 @@ export function ApplicationTable({
           <button
             type="button"
             onClick={() => onFilterTextChange("")}
-            className="min-h-11 rounded border border-slate-600 px-3 text-[11px] text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+            className="min-h-11 rounded border border-slate-600 px-3 text-[11px] text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
           >
             絞り込みを解除
           </button>
@@ -221,7 +221,7 @@ export function ApplicationTable({
           className={`min-h-11 rounded border px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
             sortKey === "highParticipationCount"
               ? "border-amber-500 bg-amber-950/50 text-amber-300"
-              : "border-slate-600 text-slate-300 hover:bg-slate-800"
+              : "border-slate-600 text-slate-300 hover:bg-slate-700"
           }`}
         >
           3枠以上の人数で並び替え{sortIndicator("highParticipationCount")}
@@ -307,7 +307,7 @@ export function ApplicationTable({
               {sorted.map((app) => (
                 <tr
                   key={app.id}
-                  className={`border-b border-slate-800 last:border-0 ${
+                  className={`border-b border-slate-700 last:border-0 ${
                     app.approved ? "bg-emerald-950/20" : ""
                   }`}
                 >
@@ -355,7 +355,7 @@ export function ApplicationTable({
                         className={
                           app.approved
                             ? "rounded border border-emerald-700 bg-emerald-900/40 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-900/70"
-                            : "rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-800"
+                            : "rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
                         }
                       >
                         {app.approved ? "✓ キャンセル" : "承認"}

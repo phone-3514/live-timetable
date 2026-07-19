@@ -232,7 +232,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
             <button
               type="button"
               onClick={startEditing}
-              className="flex h-9 shrink-0 items-center gap-1 rounded border border-slate-600 px-2 text-xs font-medium text-slate-300 hover:bg-slate-800"
+              className="flex h-9 shrink-0 items-center gap-1 rounded border border-slate-600 px-2 text-xs font-medium text-slate-300 hover:bg-slate-700"
               title="バンド名・演奏時間・メンバー・セットリスト・同期演奏を編集"
             >
               ✎ 編集
@@ -241,7 +241,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-slate-500 hover:bg-slate-700 hover:text-slate-300"
             title="閉じる"
           >
             ×
@@ -375,7 +375,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                   <button
                     type="button"
                     onClick={addEditMember}
-                    className="min-h-9 rounded border border-slate-600 px-2 text-xs text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+                    className="min-h-9 rounded border border-slate-600 px-2 text-xs text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
                   >
                     + メンバーを追加
                   </button>
@@ -426,7 +426,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
+                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
               >
                 キャンセル
               </button>
@@ -443,7 +443,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
+              className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
             >
               閉じる
             </button>

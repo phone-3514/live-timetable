@@ -49,7 +49,7 @@ function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen
   let order = 0;
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+    <div className="flex flex-col gap-1.5 rounded-lg border border-slate-700 bg-slate-900/40 p-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -255,7 +255,7 @@ export function MobileTimetable() {
         </button>
         <button
           onClick={addDay}
-          className="min-h-11 rounded border border-dashed border-slate-600 px-3 text-slate-400 hover:bg-slate-800"
+          className="min-h-11 rounded border border-dashed border-slate-600 px-3 text-slate-400 hover:bg-slate-700"
         >
           + 日を追加
         </button>
@@ -279,7 +279,7 @@ export function MobileTimetable() {
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-800">
+      <div className="rounded-lg border border-slate-700">
         <button
           type="button"
           onClick={() => setShowMoreTools((v) => !v)}
@@ -289,7 +289,7 @@ export function MobileTimetable() {
           <span>{showMoreTools ? "▲" : "▼"}</span>
         </button>
         {showMoreTools && (
-          <div className="flex flex-col gap-1.5 border-t border-slate-800 p-2">
+          <div className="flex flex-col gap-1.5 border-t border-slate-700 p-2">
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={undo}

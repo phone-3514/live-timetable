@@ -110,7 +110,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
         type="button"
         onClick={handleCopyUrl}
         title="このルームの共有URLをコピー"
-        className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+        className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
       >
         🔗 URLをコピー
       </button>
@@ -121,7 +121,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
           <button
             type="button"
             onClick={() => setConfirmingLeave(false)}
-            className="min-h-11 rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+            className="min-h-11 rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
           >
             キャンセル
           </button>
@@ -141,7 +141,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
           type="button"
           onClick={() => setConfirmingLeave(true)}
           title="このブラウザだけ共同編集ルームから抜けて、ローカル編集に戻ります（ルーム自体は残ります）"
-          className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-400 hover:bg-slate-800 md:min-h-0 md:py-1"
+          className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-400 hover:bg-slate-700 md:min-h-0 md:py-1"
         >
           退出
         </button>
@@ -171,7 +171,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
               <button
                 type="button"
                 onClick={() => setConfirmingKick(null)}
-                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
+                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
               >
                 キャンセル
               </button>

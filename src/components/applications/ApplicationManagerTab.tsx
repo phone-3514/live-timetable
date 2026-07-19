@@ -70,7 +70,7 @@ export function ApplicationManagerTab() {
           colors (solid green = primary/constructive, outlined red = a
           destructive one that still needs its own confirm dialog) so
           neither is mistakable for a routine secondary control. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-700 bg-slate-900 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-100">
           出演申し込み管理
           <span className="ml-2 font-normal text-slate-500">

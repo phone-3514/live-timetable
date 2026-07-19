@@ -33,7 +33,7 @@ export function HistoryPanel({ onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-lg leading-none text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-lg leading-none text-slate-500 hover:bg-slate-700 hover:text-slate-300"
             title="閉じる"
           >
             ×

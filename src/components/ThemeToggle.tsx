@@ -26,7 +26,7 @@ export function ThemeToggle() {
       onClick={cycleTheme}
       title={`外観: ${LABEL[theme]}（クリックで切り替え）`}
       aria-label={`外観を切り替え（現在: ${LABEL[theme]}）`}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-300 hover:bg-slate-800 md:h-8 md:w-8"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-300 hover:bg-slate-700 md:h-8 md:w-8"
     >
       {theme === "light" && (
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

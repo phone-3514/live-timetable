@@ -168,7 +168,7 @@ export function SlotCard({
       // browsers keep native text-field editing/selection working
       // regardless of an ancestor's user-select/touch-callout, both are
       // scoped to non-editable content and links.
-      className={`relative flex touch-pan-y select-none items-stretch gap-1.5 rounded-lg border p-1.5 transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
+      className={`relative flex touch-pan-y select-none items-stretch gap-1.5 rounded-lg border p-1.5 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
         showBlockedHighlight

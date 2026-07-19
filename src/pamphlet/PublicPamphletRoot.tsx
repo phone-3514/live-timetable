@@ -3,6 +3,7 @@ import { PamphletThemeToggle } from "./PamphletThemeToggle";
 import { useSyncThemeAttribute } from "../hooks/useSyncThemeAttribute";
 import { usePamphletCache } from "./usePamphletCache";
 import { useActiveSlotId } from "./useActiveSlotId";
+import { buildPamphletRows } from "./transitionGaps";
 import type { PublicBand, PublicDay, PublicSlot } from "./types";
 
 interface Props {
@@ -37,7 +38,7 @@ function todayIso(): string {
 export function PublicPamphletRoot({ circleId }: Props) {
   useSyncThemeAttribute();
   const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(circleId);
-  const activeSlotId = useActiveSlotId(data);
+  const activeRow = useActiveSlotId(data);
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myTimetableBandId, setMyTimetableBandId] = useState<string>("");
   // Set briefly right after the initial auto-scroll-to-now lands, so the
@@ -76,18 +77,18 @@ export function PublicPamphletRoot({ circleId }: Props) {
   // whose HH:MM range happens to contain the current clock time."
   const hasAutoFocusedRef = useRef(false);
   useEffect(() => {
-    if (hasAutoFocusedRef.current || !data || !activeSlotId) return;
+    if (hasAutoFocusedRef.current || !data || !activeRow) return;
     const today = todayIso();
     const isEventToday = data.days.some((d) => d.date === today);
     if (!isEventToday) return;
     hasAutoFocusedRef.current = true;
-    const el = document.getElementById(`pamphlet-slot-${activeSlotId}`);
+    const el = document.getElementById(`pamphlet-slot-${activeRow.id}`);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setJustAutoFocusedSlotId(activeSlotId);
+    setJustAutoFocusedSlotId(activeRow.id);
     const timer = setTimeout(() => setJustAutoFocusedSlotId(null), 2400);
     return () => clearTimeout(timer);
-  }, [data, activeSlotId]);
+  }, [data, activeRow]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
@@ -164,9 +165,10 @@ export function PublicPamphletRoot({ circleId }: Props) {
                 key={day.id}
                 day={day}
                 bandsById={bandsById}
-                activeSlotId={activeSlotId}
+                activeRow={activeRow}
                 justAutoFocusedSlotId={justAutoFocusedSlotId}
                 isRelevantSlot={isRelevantSlot}
+                showTransitions={!myTimetableBandId}
                 onSelectBand={setSelectedBand}
               />
             ))}
@@ -210,20 +212,32 @@ function PamphletBackground() {
 function PamphletDaySection({
   day,
   bandsById,
-  activeSlotId,
+  activeRow,
   justAutoFocusedSlotId,
   isRelevantSlot,
+  showTransitions,
   onSelectBand,
 }: {
   day: PublicDay;
   bandsById: Map<string, PublicBand>;
-  activeSlotId: string | null;
+  activeRow: { id: string; kind: "slot" | "transition" } | null;
   justAutoFocusedSlotId: string | null;
   isRelevantSlot: (slot: PublicSlot) => boolean;
+  showTransitions: boolean;
   onSelectBand: (band: PublicBand) => void;
 }) {
-  const visibleSlots = day.slots.filter(isRelevantSlot);
-  if (visibleSlots.length === 0) return null;
+  // buildPamphletRows interleaves a synthetic "転換中" row into any real
+  // gap between two consecutive slots' recorded times (see
+  // transitionGaps.ts — the admin schedule already bakes transition time
+  // into that gap, nothing extra to fetch or compute server-side).
+  // Filtered AFTER interleaving, not before: isRelevantSlot only ever
+  // applies to real `slot` rows, and My Timetable's band filter hides
+  // transition rows entirely (showTransitions=false) rather than trying
+  // to decide whether a changeover "belongs" to the selected band.
+  const rows = buildPamphletRows(day).filter(
+    (row) => (row.kind === "slot" ? isRelevantSlot(row.slot) : showTransitions),
+  );
+  if (rows.length === 0) return null;
 
   return (
     <section className="mt-5">
@@ -232,42 +246,111 @@ function PamphletDaySection({
         {day.date && <span className="ml-2 text-sm font-normal text-slate-500">{day.date}</span>}
       </h2>
       <ul className="mt-2 space-y-2.5">
-        {visibleSlots.map((slot) => {
-          const band = slot.bandId ? bandsById.get(slot.bandId) : undefined;
-          const isActive = slot.id === activeSlotId;
-          const isJustFocused = slot.id === justAutoFocusedSlotId;
-          const label = band?.name ?? slot.customLabel ?? "（未定）";
-          return (
-            <li key={slot.id}>
-              <button
-                id={`pamphlet-slot-${slot.id}`}
-                type="button"
-                disabled={!band}
-                onClick={() => band && onSelectBand(band)}
-                className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left backdrop-blur-md transition ${
-                  isActive
-                    ? "border-indigo-400/60 bg-indigo-500/15 ring-2 ring-indigo-400/50"
-                    : "border-[var(--glass-border)] bg-[var(--glass-card-bg)]"
-                } ${band ? "hover:bg-[var(--glass-card-bg-hover)]" : "cursor-default"} ${
-                  isJustFocused ? "pamphlet-auto-focus-pulse" : ""
-                }`}
-              >
-                <span>
-                  <span className="block text-base font-semibold text-slate-100">
-                    {isActive && <span className="mr-1.5 text-indigo-300">▶ 出演中</span>}
-                    {label}
-                  </span>
-                  <span className="block text-sm text-slate-400">
-                    {slot.startTime} 〜 {slot.endTime}
-                  </span>
-                </span>
-                {band && <span className="text-sm text-indigo-300">詳細 ›</span>}
-              </button>
-            </li>
-          );
-        })}
+        {rows.map((row) =>
+          row.kind === "transition" ? (
+            <TransitionRow
+              key={row.gap.id}
+              gap={row.gap}
+              isActive={activeRow?.id === row.gap.id}
+              isJustFocused={justAutoFocusedSlotId === row.gap.id}
+            />
+          ) : (
+            <SlotRow
+              key={row.slot.id}
+              slot={row.slot}
+              band={row.slot.bandId ? bandsById.get(row.slot.bandId) : undefined}
+              isActive={activeRow?.id === row.slot.id}
+              isJustFocused={justAutoFocusedSlotId === row.slot.id}
+              onSelectBand={onSelectBand}
+            />
+          ),
+        )}
       </ul>
     </section>
+  );
+}
+
+function SlotRow({
+  slot,
+  band,
+  isActive,
+  isJustFocused,
+  onSelectBand,
+}: {
+  slot: PublicSlot;
+  band: PublicBand | undefined;
+  isActive: boolean;
+  isJustFocused: boolean;
+  onSelectBand: (band: PublicBand) => void;
+}) {
+  const label = band?.name ?? slot.customLabel ?? "（未定）";
+  return (
+    <li>
+      <button
+        id={`pamphlet-slot-${slot.id}`}
+        type="button"
+        disabled={!band}
+        onClick={() => band && onSelectBand(band)}
+        className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left backdrop-blur-md transition ${
+          isActive
+            ? "border-indigo-400/60 bg-indigo-500/15 ring-2 ring-indigo-400/50"
+            : "border-[var(--glass-border)] bg-[var(--glass-card-bg)]"
+        } ${band ? "hover:bg-[var(--glass-card-bg-hover)]" : "cursor-default"} ${
+          isJustFocused ? "pamphlet-auto-focus-pulse" : ""
+        }`}
+      >
+        <span>
+          <span className="block text-base font-semibold text-slate-100">
+            {isActive && <span className="mr-1.5 text-indigo-300">▶ 出演中</span>}
+            {label}
+          </span>
+          <span className="block text-sm text-slate-400">
+            {slot.startTime} 〜 {slot.endTime}
+          </span>
+        </span>
+        {band && <span className="text-sm text-indigo-300">詳細 ›</span>}
+      </button>
+    </li>
+  );
+}
+
+// A "転換中" (mid-transition) row for the gap between two performances —
+// dashed border and no click action (there's no band/detail behind it)
+// deliberately distinguishes it from a real performance/custom slot at a
+// glance, while still using the identical id pattern
+// (`pamphlet-slot-<id>`) and highlight/pulse treatment as a real row, so
+// the same auto-scroll-on-load effect in PublicPamphletRoot works on it
+// with no special-casing needed there.
+function TransitionRow({
+  gap,
+  isActive,
+  isJustFocused,
+}: {
+  gap: { id: string; startTime: string; endTime: string };
+  isActive: boolean;
+  isJustFocused: boolean;
+}) {
+  return (
+    <li>
+      <div
+        id={`pamphlet-slot-${gap.id}`}
+        className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-dashed px-4 py-3 text-left backdrop-blur-md transition ${
+          isActive
+            ? "border-amber-400/60 bg-amber-500/15 ring-2 ring-amber-400/50"
+            : "border-[var(--glass-border)] bg-transparent"
+        } ${isJustFocused ? "pamphlet-auto-focus-pulse" : ""}`}
+      >
+        <span>
+          <span className="block text-sm font-semibold text-slate-300">
+            {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中</span>}
+            転換
+          </span>
+          <span className="block text-sm text-slate-500">
+            {gap.startTime} 〜 {gap.endTime}
+          </span>
+        </span>
+      </div>
+    </li>
   );
 }
 

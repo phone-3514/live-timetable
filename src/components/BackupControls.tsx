@@ -66,7 +66,7 @@ export function BackupControls() {
       <button
         type="button"
         onClick={() => setShowExportDialog(true)}
-        className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+        className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
       >
         💾 データを保存
       </button>
@@ -90,7 +90,7 @@ export function BackupControls() {
         className={`min-h-11 rounded border px-2.5 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
           isDragOver
             ? "border-indigo-400 bg-indigo-950/60 text-indigo-200"
-            : "border-slate-600 text-slate-300 hover:bg-slate-800"
+            : "border-slate-600 text-slate-300 hover:bg-slate-700"
         } ${isProcessing ? "cursor-wait opacity-60" : ""}`}
       >
         {isProcessing ? "読み込み中…" : "📂 データを復元"}
@@ -124,7 +124,7 @@ export function BackupControls() {
               <button
                 type="button"
                 onClick={() => setPendingRestore(null)}
-                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
+                className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
               >
                 キャンセル
               </button>

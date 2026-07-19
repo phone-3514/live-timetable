@@ -119,7 +119,7 @@ export function MobileSlotCard({
       // touch-action: none) keeps this row scrollable by a normal swipe
       // that doesn't hold long enough to activate the 500ms TouchSensor
       // delay.
-      className={`flex w-full min-w-0 touch-pan-y select-none items-center gap-1 rounded-md border p-1 transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
+      className={`flex w-full min-w-0 touch-pan-y select-none items-center gap-1 rounded-md border p-1 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
         showBlockedHighlight

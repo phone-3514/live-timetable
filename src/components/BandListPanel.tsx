@@ -134,7 +134,7 @@ export function BandListPanel() {
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="min-h-9 rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-800 md:min-h-0 md:py-1"
+            className="min-h-9 rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
           >
             選択解除
           </button>

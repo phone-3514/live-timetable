@@ -243,7 +243,7 @@ function App() {
       }}
     >
       <div className="flex min-h-screen flex-col bg-slate-950 md:h-screen md:overflow-hidden">
-        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800/80 bg-slate-900/80 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/70 md:gap-x-6 md:px-6 md:py-2.5">
+        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-700/80 bg-slate-900/80 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/70 md:gap-x-6 md:px-6 md:py-2.5">
           <h1 className="shrink-0 text-base font-bold tracking-tight text-slate-100 md:text-lg">
             軽音ライブ タイムテーブル作成
           </h1>
@@ -256,7 +256,7 @@ function App() {
               className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
                 activeTab === "timetable"
                   ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
               タイムテーブル編集
@@ -269,7 +269,7 @@ function App() {
               className={`flex min-h-11 items-center rounded px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
                 activeTab === "applications"
                   ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
               }`}
             >
               出演申し込み管理

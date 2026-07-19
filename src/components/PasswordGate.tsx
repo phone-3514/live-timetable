@@ -127,7 +127,7 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:py-1.5 sm:text-xs"
+            className="min-h-11 rounded border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
           >
             キャンセル
           </button>
