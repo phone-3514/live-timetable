@@ -138,6 +138,16 @@ function makeDay(label: string): TimetableDay {
   };
 }
 
+function nextLocalCalendarDate(date: string | null): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date ?? "");
+  if (!match) return null;
+  const next = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1, 12);
+  const year = next.getFullYear();
+  const month = String(next.getMonth() + 1).padStart(2, "0");
+  const day = String(next.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function makeBlankSlot(): TimetableSlot {
   return {
     id: crypto.randomUUID(),
@@ -419,7 +429,11 @@ export const useAppStore = create<AppState>()(
   addDay: () =>
     set((state) => {
       const day = makeDay(`${state.days.length + 1}日目`);
-      return { days: [...state.days, day] };
+      const latestConfiguredDate = [...state.days].reverse().find((candidate) => candidate.date)?.date ?? null;
+      day.date = nextLocalCalendarDate(latestConfiguredDate);
+      const days = [...state.days, day];
+      const bands = autoResolveBandDays(state.bands, days);
+      return { bands, days: clearDisallowedPlacements(days, bands) };
     }),
 
   removeDay: (dayId) =>

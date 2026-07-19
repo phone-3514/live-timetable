@@ -155,9 +155,9 @@ function SheetLinkViewer({ matchedLinks, folders, bandName }: {
               href={link.url}
               target="_blank"
               rel="noreferrer"
-              className="flex min-h-16 items-center justify-between gap-3 rounded-2xl border border-blue-500/40 bg-blue-600 px-5 text-left text-base font-black text-white shadow-lg shadow-blue-950/60 transition-colors hover:bg-blue-500 active:bg-blue-700"
+              className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-2xl border border-blue-500/40 bg-blue-600 px-5 text-left text-base font-black text-white shadow-lg shadow-blue-950/60 transition-colors hover:bg-blue-500 active:bg-blue-700"
             >
-              <span className="min-w-0"><span className="block break-words">{link.label}</span>{link.detail && link.detail !== link.label && <span className="mt-1 block truncate text-xs font-semibold text-blue-100/70">{link.detail}</span>}</span>
+              <span className="min-w-0 flex-1 overflow-hidden"><span className="block truncate">{link.label}</span>{link.detail && link.detail !== link.label && <span className="mt-1 block truncate text-xs font-semibold text-blue-100/70">{link.detail}</span>}</span>
               <span className="shrink-0 text-xl" aria-hidden="true">↗</span>
             </a>
           ))}
