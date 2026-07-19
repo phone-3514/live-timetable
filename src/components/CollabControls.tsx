@@ -69,8 +69,16 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
           so the row never looks empty right after joining. */}
       <div className="flex items-center gap-1" title="現在参加中のメンバー">
         {myNickname && (
-          <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
+          <span className="flex items-center gap-1 rounded-full bg-indigo-950/60 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
             {myNickname}（自分）
+            {isAdmin && (
+              <span
+                className="rounded-full bg-amber-950/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300"
+                title="このタブは管理者モードで入室しています（他の参加者を退出させられます）"
+              >
+                👑 管理者
+              </span>
+            )}
           </span>
         )}
         {others.map((o) => (
