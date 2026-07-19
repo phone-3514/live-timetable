@@ -7,6 +7,7 @@ import {
   useAppStore,
 } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
+import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import { SetlistExportModal } from "./SetlistExportModal";
@@ -43,6 +44,7 @@ type Props = { day: TimetableDay; daysCount: number };
 // fixed two-column split) both made drag-and-drop reordering less direct
 // than a plain top-to-bottom list, so this reverts to that simpler shape.
 export function DayPanel({ day, daysCount }: Props) {
+  const settingsDetailsRef = useDismissibleDetails();
   const bands = useAppStore((s) => s.bands);
   const renameDay = useAppStore((s) => s.renameDay);
   const updateDayDate = useAppStore((s) => s.updateDayDate);
@@ -225,7 +227,7 @@ export function DayPanel({ day, daysCount }: Props) {
             +{preset.label}
           </button>
         ))}
-        <details className="group relative ml-auto shrink-0">
+        <details ref={settingsDetailsRef} className="group relative ml-auto shrink-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1">
             設定・出力 <span className="ml-1 text-[9px] group-open:rotate-180">▼</span>
           </summary>

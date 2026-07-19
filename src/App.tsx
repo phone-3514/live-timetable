@@ -15,6 +15,7 @@ import { useHistoryStore } from "./store/useHistoryStore";
 import { useCollabStore } from "./store/useCollabStore";
 import { useIsMobile } from "./hooks/useViewport";
 import { useAsymmetricAutoScroll } from "./hooks/useAsymmetricAutoScroll";
+import { useDismissibleDetails } from "./hooks/useDismissibleDetails";
 import { useSyncThemeAttribute } from "./hooks/useSyncThemeAttribute";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
@@ -57,6 +58,7 @@ function App() {
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
     null,
   );
+  const eventInfoDetailsRef = useDismissibleDetails();
 
   useSyncThemeAttribute();
 
@@ -264,7 +266,7 @@ function App() {
             </button>
           </nav>
           {activeTab === "timetable" && (
-            <details className="group relative shrink-0">
+            <details ref={eventInfoDetailsRef} className="group relative shrink-0">
               <summary className="flex min-h-11 cursor-pointer list-none items-center rounded px-2.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200 md:min-h-0 md:py-1.5">
                 <span className="md:hidden xl:inline">イベント情報</span>
                 <span className="hidden md:inline xl:hidden">情報</span>

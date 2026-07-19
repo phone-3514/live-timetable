@@ -8,6 +8,7 @@ import type { Band } from "../types";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useHistoryStore } from "../store/useHistoryStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
+import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
@@ -33,6 +34,7 @@ const EMPTY_DAYS: TimetableDay[] = [];
 // it. Both read the exact same useAppStore/useApplicationStore state, so
 // there's nothing here that owns data the mobile view doesn't also see.
 export function DesktopTimetable() {
+  const moreDetailsRef = useDismissibleDetails();
   // ?? [] defends against days ever being undefined/null at runtime — the
   // store's own type says TimetableDay[], but data arriving from outside
   // normal store actions (a Firestore room doc via useCollabRoom) isn't
@@ -256,7 +258,7 @@ export function DesktopTimetable() {
             </span>
           )}
         </button>
-        <details className="group relative ml-auto shrink-0">
+        <details ref={moreDetailsRef} className="group relative ml-auto shrink-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center rounded border border-slate-600 px-3 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">
             その他 <span className="ml-1 text-[9px] group-open:rotate-180">▼</span>
           </summary>

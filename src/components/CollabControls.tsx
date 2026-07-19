@@ -3,6 +3,7 @@ import { useCollabStore, type CollabStatus } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
 import { PublishPamphletButton } from "./PublishPamphletButton";
 import { ModalPortal } from "./ModalPortal";
+import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -32,6 +33,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
   const showToast = useToastStore((s) => s.show);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [confirmingKick, setConfirmingKick] = useState<string | null>(null);
+  const collabDetailsRef = useDismissibleDetails();
 
   function handleKick(clientId: string, nickname: string) {
     kickUser(clientId);
@@ -62,7 +64,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
   }
 
   return (
-    <details className="group relative shrink-0">
+    <details ref={collabDetailsRef} className="group relative shrink-0">
       <summary
         className="flex min-h-11 cursor-pointer list-none items-center rounded border border-emerald-600 bg-emerald-950/30 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-950/60 md:min-h-0 md:py-1"
         title={`共同編集メニュー（ルームID: ${roomId}）`}
