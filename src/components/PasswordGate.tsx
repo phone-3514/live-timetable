@@ -2,6 +2,7 @@ import { useState } from "react";
 import { storeNickname } from "../utils/nickname";
 import { storeRoomAuthFlag } from "../utils/roomAuth";
 import { storeAdminAuthFlag } from "../utils/adminAuth";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   onSuccess: (nickname: string, isAdmin: boolean) => void;
@@ -50,6 +51,7 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-[70] overflow-y-auto bg-black/60 backdrop-blur-sm"
       role="dialog"
@@ -139,5 +141,6 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
       </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

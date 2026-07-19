@@ -4,6 +4,7 @@ import { useToastStore } from "../store/useToastStore";
 import { hasUnsavedProgress, parseBackupFile, restoreBackup, type BackupData } from "../utils/backup";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { BackupExportDialog } from "./BackupExportDialog";
+import { ModalPortal } from "./ModalPortal";
 
 // Compact pair of buttons living in the header nav row (not a large
 // permanently-expanded card) — this app is tuned to fit one screen without
@@ -107,6 +108,7 @@ export function BackupControls() {
       )}
 
       {pendingRestore && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm"
           role="dialog"
@@ -140,6 +142,7 @@ export function BackupControls() {
           </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

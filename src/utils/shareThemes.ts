@@ -580,6 +580,114 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
   },
 };
 
+// ============================================================
+// Structural Layout — an INDEPENDENT axis from the 17 color themes
+// above, not a replacement for any of them. Every existing ThemeId
+// still exists exactly as before and supplies COLOR only (backgrounds,
+// borders, text, badges); LayoutId supplies STRUCTURE only (card shape,
+// number-badge style, title alignment, row separators). Any of the 17
+// themes can be combined with any of the 4 layouts — e.g. "Rock" colors
+// rendered in the "Notion" structural layout is a valid, supported
+// combination, not a special case. Defaults to "classic" everywhere
+// (ShareTimetableTemplate/SetlistExportTemplate's `layoutId` prop
+// default, and both export modals' initial state), which reproduces the
+// pre-existing rendering byte-for-byte — this is what makes the new
+// layouts strictly additive rather than a risk to any of the 17
+// existing options.
+export type LayoutId = "classic" | "apple" | "material" | "notion";
+
+export type LayoutStyle = {
+  id: LayoutId;
+  name: string;
+  description: string;
+  /** Corner radius (px) for a band card / list row. */
+  cardRadius: number;
+  /** 0 = no visible border around each card (relies on cardGap/dividers
+   * for separation instead); >0 = a themed border, same as the classic
+   * layout always had. */
+  cardBorderWidth: number;
+  /** Vertical gap (px) between cards in a column. Small/zero values
+   * (Apple/Notion) make adjacent rows visually group together, like an
+   * iOS grouped table or a Notion page's line-list, rather than reading
+   * as separate floating cards. */
+  cardGap: number;
+  /** Overrides the active ShareTheme's own `cardShadow` when set —
+   * Material wants a heavier elevation shadow than most of the 17 color
+   * themes define, Notion/Apple want none regardless of what the color
+   * theme specifies (a flat/grouped-list look shouldn't float). `null`
+   * defers to the theme's own value (classic's behavior, unchanged). */
+  cardShadowOverride: string | null;
+  /** How the performance-order number renders: "circle" (existing
+   * gradient badge chip), "square" (Material-style rounded-square
+   * avatar), or "none" (a plain small leading label — Apple/Notion both
+   * favor quiet, chip-free numbering). */
+  badgeShape: "circle" | "square" | "none";
+  titleAlign: "center" | "left";
+  /** false forces the hero title to render in the theme's solid
+   * `dayTitleColor` even when that theme defines a gradient — Apple/
+   * Material/Notion's own visual languages don't really do rainbow
+   * gradient hero text, regardless of which color theme is active. */
+  titleUseGradient: boolean;
+  /** Adds a thin rule under the header instead of the classic pill
+   * divider — Notion's document-header convention. */
+  headerRuleStyle: "pill" | "line" | "none";
+};
+
+export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
+  classic: {
+    id: "classic",
+    name: "クラシック",
+    description: "既存のカード型デザイン（すべてのテーマの元々の見た目）",
+    cardRadius: 16,
+    cardBorderWidth: 1,
+    cardGap: 16,
+    cardShadowOverride: null,
+    badgeShape: "circle",
+    titleAlign: "center",
+    titleUseGradient: true,
+    headerRuleStyle: "pill",
+  },
+  apple: {
+    id: "apple",
+    name: "Apple",
+    description: "iOSのグループリスト風。枠なしで行が連結し、余白広め",
+    cardRadius: 18,
+    cardBorderWidth: 0,
+    cardGap: 2,
+    cardShadowOverride: "0 1px 2px rgba(0,0,0,0.05)",
+    badgeShape: "none",
+    titleAlign: "left",
+    titleUseGradient: false,
+    headerRuleStyle: "line",
+  },
+  material: {
+    id: "material",
+    name: "Material",
+    description: "Googleマテリアル風。エレベーション影のついたカード",
+    cardRadius: 12,
+    cardBorderWidth: 0,
+    cardGap: 12,
+    cardShadowOverride: "0 3px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)",
+    badgeShape: "square",
+    titleAlign: "left",
+    titleUseGradient: false,
+    headerRuleStyle: "none",
+  },
+  notion: {
+    id: "notion",
+    name: "Notion",
+    description: "ドキュメント風。枠や影を排したシンプルな一覧",
+    cardRadius: 0,
+    cardBorderWidth: 0,
+    cardGap: 0,
+    cardShadowOverride: "none",
+    badgeShape: "none",
+    titleAlign: "left",
+    titleUseGradient: false,
+    headerRuleStyle: "line",
+  },
+};
+
 export type SetlistPalette = {
   pageBackground: string;
   kicker: string;

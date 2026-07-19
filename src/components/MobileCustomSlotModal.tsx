@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { ModalPortal } from "./ModalPortal";
 import type { TimetableSlot } from "../types";
 
 type Props = { dayId: string; slot: TimetableSlot; onClose: () => void };
@@ -33,6 +34,7 @@ export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
       onClick={onClose}
@@ -84,5 +86,6 @@ export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

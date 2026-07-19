@@ -62,6 +62,53 @@
   --color-indigo-700: var(--indigo-700);
   --color-indigo-900: var(--indigo-900);
   --color-indigo-950: var(--indigo-950);
+
+  /* The app's ~70 status/action badges (📋セットリストを出力, 🔗共同編集を開始,
+     etc.) all follow the same recurring pattern: `border-{color}-600
+     bg-{color}-950/opacity text-{color}-300` — light, high-luminance text
+     designed to read against a near-black tinted background. That's a
+     dark-mode-only assumption baked into the literal shade numbers
+     chosen; it was never adapted when slate/indigo got remapped for
+     light mode above, so in light mode these badges show light mint/
+     rose/amber text on an already-light page — genuinely illegible, not
+     just "less polished" (confirmed visually, not assumed). Fixing this
+     requires remapping the SAME 4 shade slots (300, 400, 900, 950) these
+     badges actually use, for every accent color that appears in this
+     pattern — 500–800 (mostly borders) are left alone since those
+     already read fine at normal saturation against both page
+     backgrounds. Dark mode's values below are Tailwind's own literal
+     stock hex codes for each shade — i.e. dark mode is visually
+     unchanged by this; only the light-mode values differ. */
+  --color-emerald-300: var(--emerald-300);
+  --color-emerald-400: var(--emerald-400);
+  --color-emerald-900: var(--emerald-900);
+  --color-emerald-950: var(--emerald-950);
+
+  --color-rose-300: var(--rose-300);
+  --color-rose-400: var(--rose-400);
+  --color-rose-900: var(--rose-900);
+  --color-rose-950: var(--rose-950);
+
+  --color-amber-300: var(--amber-300);
+  --color-amber-400: var(--amber-400);
+  --color-amber-900: var(--amber-900);
+  --color-amber-950: var(--amber-950);
+
+  --color-sky-300: var(--sky-300);
+  --color-sky-400: var(--sky-400);
+  --color-sky-950: var(--sky-950);
+
+  --color-violet-300: var(--violet-300);
+  --color-violet-400: var(--violet-400);
+  --color-violet-950: var(--violet-950);
+
+  --color-cyan-300: var(--cyan-300);
+  --color-cyan-400: var(--cyan-400);
+  --color-cyan-950: var(--cyan-950);
+
+  --color-teal-300: var(--teal-300);
+  --color-teal-900: var(--teal-900);
+  --color-teal-950: var(--teal-950);
 }
 
 /* Light mode values (the base/default — dark mode overrides below).
@@ -92,6 +139,57 @@
   --indigo-700: #0062cc;
   --indigo-900: #e8f2ff;
   --indigo-950: #f0f7ff;
+
+  /* Glassmorphism tokens for surfaces layered over a decorative
+     background (see PublicPamphletRoot.tsx) rather than a flat page
+     color — a translucent WHITE tint (the naive "glass" choice) reads
+     as a barely-visible smudge on an already-light page, so light mode
+     uses a translucent DARK tint instead, same principle inverted. Both
+     directions still read as "frosted glass," just tinted toward
+     whichever end gives visible contrast against that theme's own
+     background. */
+  --glass-card-bg: rgba(15, 23, 42, 0.035);
+  --glass-card-bg-hover: rgba(15, 23, 42, 0.07);
+  --glass-border: rgba(15, 23, 42, 0.12);
+
+  /* Accent-badge shades — light mode. 300/400 (badge text) use each
+     color's stock 700 shade (dark, saturated, reads clearly on a light
+     page); 900/950 (badge background tints) use stock 200/100 (a light
+     pastel tint replacing what was a near-black tint) so the same
+     `/40`-`/50` opacity modifiers these badges already use still produce
+     a soft, appropriate tint instead of a washed-out near-transparent
+     smudge. See the @theme block's comment for why only these 4 slots
+     per color are touched. */
+  --emerald-300: #047857;
+  --emerald-400: #047857;
+  --emerald-900: #a7f3d0;
+  --emerald-950: #d1fae5;
+
+  --rose-300: #be123c;
+  --rose-400: #be123c;
+  --rose-900: #fecdd3;
+  --rose-950: #ffe4e6;
+
+  --amber-300: #b45309;
+  --amber-400: #b45309;
+  --amber-900: #fde68a;
+  --amber-950: #fef3c7;
+
+  --sky-300: #0369a1;
+  --sky-400: #0369a1;
+  --sky-950: #e0f2fe;
+
+  --violet-300: #6d28d9;
+  --violet-400: #6d28d9;
+  --violet-950: #ede9fe;
+
+  --cyan-300: #0e7490;
+  --cyan-400: #0e7490;
+  --cyan-950: #cffafe;
+
+  --teal-300: #0f766e;
+  --teal-900: #99f6e4;
+  --teal-950: #ccfbf1;
 
   color-scheme: light;
 }
@@ -124,6 +222,45 @@
     --indigo-900: #142d4a;
     --indigo-950: #0a1a2e;
 
+    --glass-card-bg: rgba(255, 255, 255, 0.04);
+    --glass-card-bg-hover: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.1);
+
+    /* Accent-badge shades — dark mode. These are Tailwind's own literal
+       stock hex values for each shade, i.e. dark mode's badges are
+       visually unchanged by this whole fix; only light mode (above)
+       differs. */
+    --emerald-300: #6ee7b7;
+    --emerald-400: #34d399;
+    --emerald-900: #064e3b;
+    --emerald-950: #022c22;
+
+    --rose-300: #fda4af;
+    --rose-400: #fb7185;
+    --rose-900: #881337;
+    --rose-950: #4c0519;
+
+    --amber-300: #fcd34d;
+    --amber-400: #fbbf24;
+    --amber-900: #78350f;
+    --amber-950: #451a03;
+
+    --sky-300: #7dd3fc;
+    --sky-400: #38bdf8;
+    --sky-950: #082f49;
+
+    --violet-300: #c4b5fd;
+    --violet-400: #a78bfa;
+    --violet-950: #2e1065;
+
+    --cyan-300: #67e8f9;
+    --cyan-400: #22d3ee;
+    --cyan-950: #083344;
+
+    --teal-300: #5eead4;
+    --teal-900: #134e4a;
+    --teal-950: #042f2e;
+
     color-scheme: dark;
   }
 }
@@ -154,6 +291,41 @@
   --indigo-900: #142d4a;
   --indigo-950: #0a1a2e;
 
+  --glass-card-bg: rgba(255, 255, 255, 0.04);
+  --glass-card-bg-hover: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.1);
+
+  --emerald-300: #6ee7b7;
+  --emerald-400: #34d399;
+  --emerald-900: #064e3b;
+  --emerald-950: #022c22;
+
+  --rose-300: #fda4af;
+  --rose-400: #fb7185;
+  --rose-900: #881337;
+  --rose-950: #4c0519;
+
+  --amber-300: #fcd34d;
+  --amber-400: #fbbf24;
+  --amber-900: #78350f;
+  --amber-950: #451a03;
+
+  --sky-300: #7dd3fc;
+  --sky-400: #38bdf8;
+  --sky-950: #082f49;
+
+  --violet-300: #c4b5fd;
+  --violet-400: #a78bfa;
+  --violet-950: #2e1065;
+
+  --cyan-300: #67e8f9;
+  --cyan-400: #22d3ee;
+  --cyan-950: #083344;
+
+  --teal-300: #5eead4;
+  --teal-900: #134e4a;
+  --teal-950: #042f2e;
+
   color-scheme: dark;
 }
 
@@ -179,6 +351,41 @@
   --indigo-900: #e8f2ff;
   --indigo-950: #f0f7ff;
 
+  --glass-card-bg: rgba(15, 23, 42, 0.035);
+  --glass-card-bg-hover: rgba(15, 23, 42, 0.07);
+  --glass-border: rgba(15, 23, 42, 0.12);
+
+  --emerald-300: #047857;
+  --emerald-400: #047857;
+  --emerald-900: #a7f3d0;
+  --emerald-950: #d1fae5;
+
+  --rose-300: #be123c;
+  --rose-400: #be123c;
+  --rose-900: #fecdd3;
+  --rose-950: #ffe4e6;
+
+  --amber-300: #b45309;
+  --amber-400: #b45309;
+  --amber-900: #fde68a;
+  --amber-950: #fef3c7;
+
+  --sky-300: #0369a1;
+  --sky-400: #0369a1;
+  --sky-950: #e0f2fe;
+
+  --violet-300: #6d28d9;
+  --violet-400: #6d28d9;
+  --violet-950: #ede9fe;
+
+  --cyan-300: #0e7490;
+  --cyan-400: #0e7490;
+  --cyan-950: #cffafe;
+
+  --teal-300: #0f766e;
+  --teal-900: #99f6e4;
+  --teal-950: #ccfbf1;
+
   color-scheme: light;
 }
 
@@ -186,14 +393,28 @@ html, body, #root {
   height: 100%;
 }
 
-/* Desktop is a fixed-viewport "app shell" — every panel manages its own
-   internal scroll (see the various overflow-y-auto containers), and the
-   page itself never scrolls. That model doesn't survive mobile stacking:
-   once the sidebar and timetable stack vertically instead of sitting side
-   by side, their combined natural height regularly exceeds one screen, so
-   the page itself needs to scroll below this breakpoint or the excess
-   content is simply clipped and unreachable. Desktop keeps the old
-   no-scroll behavior via the min-width override. */
+/* The admin editor (App.tsx) is a fixed-viewport "app shell" on desktop —
+   every panel manages its own internal scroll (see the various
+   overflow-y-auto containers), and the page itself never scrolls. That
+   model doesn't survive mobile stacking: once the sidebar and timetable
+   stack vertically instead of sitting side by side, their combined
+   natural height regularly exceeds one screen, so the page itself needs
+   to scroll below this breakpoint or the excess content is simply
+   clipped and unreachable.
+
+   This used to ALSO force `overflow: hidden` on html/body/#root at
+   desktop widths (a `@media (min-width: 768px)` block mirroring this
+   one) — redundant with, and less scoped than, App.tsx's own top-level
+   `md:h-screen md:overflow-hidden` (see App.tsx's root <div>), which
+   already reproduces the identical no-page-scroll behavior for the
+   admin app specifically. That global rule was a real bug for anything
+   else ever mounted into #root: the public pamphlet route
+   (src/pamphlet/PublicPamphletRoot.tsx) is a plain scrolling document by
+   design, but inherited the admin app's fixed-shell lockout purely
+   because both routes share this one #root — on any desktop-width
+   viewport, the pamphlet's content taller than one screen was
+   unreachable with no way to scroll to it. Removed; App.tsx's own local
+   class is sufficient and route-scoped correctly. */
 @media (max-width: 767px) {
   html, body, #root {
     overflow-y: auto;
@@ -201,15 +422,23 @@ html, body, #root {
   }
 }
 
-@media (min-width: 768px) {
-  html, body, #root {
-    overflow: hidden;
-  }
-}
-
 body {
   margin: 0;
   transition: background-color 200ms ease;
+}
+
+/* Public pamphlet: a one-time attention pulse on the row the page
+   auto-scrolled to on load (see PublicPamphletRoot.tsx's auto-focus
+   effect) — three quick glow pulses, then it stops on its own (the
+   class is removed by a timer, not left animating indefinitely, which
+   would be distracting for anyone lingering on the page). */
+@keyframes pamphlet-auto-focus-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 132, 255, 0); }
+  25%, 75% { box-shadow: 0 0 0 8px rgba(99, 132, 255, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(99, 132, 255, 0.55); }
+}
+.pamphlet-auto-focus-pulse {
+  animation: pamphlet-auto-focus-pulse 1.2s ease-in-out 2;
 }
 
 /* Smooth, consistent interaction feedback app-wide — every existing
@@ -233,6 +462,9 @@ button:active {
   body, button, a, input, textarea, select, button:active {
     transition: none;
     transform: none;
+  }
+  .pamphlet-auto-focus-pulse {
+    animation: none;
   }
 }
 

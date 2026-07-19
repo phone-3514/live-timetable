@@ -3,6 +3,7 @@ import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useToastStore } from "../store/useToastStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { parseFuriganaMasterData } from "../utils/furiganaImport";
+import { ModalPortal } from "./ModalPortal";
 
 interface Props {
   onClose: () => void;
@@ -60,6 +61,7 @@ export function FuriganaImportModal({ onClose }: Props) {
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
@@ -150,5 +152,6 @@ export function FuriganaImportModal({ onClose }: Props) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { ShareTimetableTemplate } from "./ShareTimetableTemplate";
-import { THEMES } from "../utils/shareThemes";
-import type { ThemeId } from "../utils/shareThemes";
+import { LAYOUTS, THEMES } from "../utils/shareThemes";
+import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { dataUrlToFile, shareOrDownloadFile, supportsFileShare } from "../utils/shareOrDownload";
+import { ModalPortal } from "./ModalPortal";
 import type { TimetableDay } from "../types";
 
 type Props = { day: TimetableDay; onClose: () => void };
@@ -19,6 +20,11 @@ export function SharePreviewModal({ day, onClose }: Props) {
   const previewRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const [themeId, setThemeId] = useState<ThemeId>("standard");
+  // Independent from themeId — see shareThemes.ts's LayoutId doc comment.
+  // Defaults to "classic", so every existing color theme keeps rendering
+  // exactly as it always has unless a user explicitly opts into a new
+  // structural layout.
+  const [layoutId, setLayoutId] = useState<LayoutId>("classic");
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -34,7 +40,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, themeId, eventInfo]);
+  }, [day, bands, themeId, layoutId, eventInfo]);
 
   // The scrollable area's own size (not the modal's, which also holds a
   // header/theme-picker/footer) — scaling by width alone left a tall image
@@ -73,6 +79,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -123,6 +130,31 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </div>
         </div>
 
+        {/* Structural Layout — an axis independent from the 17 color
+            themes above (see shareThemes.ts's LayoutId doc comment): any
+            color theme can be combined with any layout. Defaults to
+            "classic", which is byte-identical to this template's
+            pre-existing rendering. */}
+        <div className="shrink-0 border-b border-slate-800 px-4 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold text-slate-500">レイアウト構造</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.values(LAYOUTS).map((layout) => (
+              <button
+                key={layout.id}
+                onClick={() => setLayoutId(layout.id)}
+                title={layout.description}
+                className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                  layoutId === layout.id
+                    ? "border-indigo-400 bg-indigo-950/40 text-indigo-200"
+                    : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+                }`}
+              >
+                {layout.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
           <div
             style={{
@@ -159,6 +191,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
                 day={day}
                 bands={bands}
                 themeId={themeId}
+                layoutId={layoutId}
                 eventInfo={eventInfo}
                 isSingleDay={isSingleDay}
               />
@@ -194,11 +227,13 @@ export function SharePreviewModal({ day, onClose }: Props) {
             day={day}
             bands={bands}
             themeId={themeId}
+            layoutId={layoutId}
             eventInfo={eventInfo}
             isSingleDay={isSingleDay}
           />
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

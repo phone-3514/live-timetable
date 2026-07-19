@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCollabStore, type CollabStatus } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
 import { PublishPamphletButton } from "./PublishPamphletButton";
+import { ModalPortal } from "./ModalPortal";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -147,6 +148,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
       )}
 
       {confirmingKick && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-[70] overflow-y-auto bg-black/60 backdrop-blur-sm"
           role="dialog"
@@ -187,6 +189,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
           </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

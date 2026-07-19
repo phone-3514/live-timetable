@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
 import { useSyncThemeAttribute } from "../hooks/useSyncThemeAttribute";
 import { usePamphletCache } from "./usePamphletCache";
@@ -9,21 +9,42 @@ interface Props {
   circleId: string;
 }
 
+// Faint line-art instrument silhouettes, tiled — same technique as
+// shareThemes.ts's INSTRUMENTS_WATERMARK (a low-opacity tiled data-URI
+// SVG is cheaper and crisper at any zoom than a raster image), but using
+// `currentColor` instead of a hardcoded stroke so it reads correctly in
+// both light and dark mode: the wrapping element sets `color` from this
+// app's own theme tokens, and the browser resolves `currentColor` at
+// render time — no separate light/dark SVG needed.
+const INSTRUMENTS_BG_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(16,14)"><circle cx="18" cy="50" r="16"/><circle cx="18" cy="27" r="10"/><line x1="18" y1="10" x2="18" y2="-6"/></g><g transform="translate(128,10)"><rect x="4" y="0" width="15" height="24" rx="7"/><path d="M0 18a13 13 0 0 0 26 0"/><line x1="13" y1="31" x2="13" y2="46"/></g><g transform="translate(24,128)"><ellipse cx="28" cy="14" rx="28" ry="9"/><line x1="0" y1="14" x2="0" y2="42"/><line x1="56" y1="14" x2="56" y2="42"/><ellipse cx="28" cy="42" rx="28" ry="9"/></g><g transform="translate(128,140)"><rect x="0" y="0" width="64" height="22"/><line x1="9" y1="0" x2="9" y2="22"/><line x1="18" y1="0" x2="18" y2="15"/><line x1="27" y1="0" x2="27" y2="22"/><line x1="36" y1="0" x2="36" y2="15"/><line x1="45" y1="0" x2="45" y2="22"/><line x1="54" y1="0" x2="54" y2="15"/></g></g></svg>`;
+const INSTRUMENTS_BG = `url("data:image/svg+xml,${encodeURIComponent(INSTRUMENTS_BG_SVG)}")`;
+
+function todayIso(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 // The entire public pamphlet route tree lives in this one directory
 // (src/pamphlet/) and imports NOTHING from the admin editor beyond two
 // deliberately Firebase-free, editing-free primitives: useThemeStore (via
-// ThemeToggle) and useSyncThemeAttribute. No dnd-kit, no useAppStore, no
-// CSV/Excel/PDF export code, no drag-and-drop, no room password gate —
-// this route is read-only by construction, not just by omitted buttons,
-// since none of the code that could mutate anything is even imported
-// here. See firestore.rules for the matching server-side enforcement
-// (this collection has no client write rule at all).
+// PamphletThemeToggle) and useSyncThemeAttribute. No dnd-kit, no
+// useAppStore, no CSV/Excel/PDF export code, no drag-and-drop, no room
+// password gate — this route is read-only by construction, not just by
+// omitted buttons, since none of the code that could mutate anything is
+// even imported here. See firestore.rules for the matching server-side
+// enforcement (this collection has no client write rule at all).
 export function PublicPamphletRoot({ circleId }: Props) {
   useSyncThemeAttribute();
   const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(circleId);
   const activeSlotId = useActiveSlotId(data);
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myTimetableBandId, setMyTimetableBandId] = useState<string>("");
+  // Set briefly right after the initial auto-scroll-to-now lands, so the
+  // "you are here" row gets a one-time attention pulse on top of its
+  // steady "出演中" highlight — not a permanently-animating element,
+  // which would be distracting for anyone lingering on the page.
+  const [justAutoFocusedSlotId, setJustAutoFocusedSlotId] = useState<string | null>(null);
 
   const bandsById = useMemo(() => {
     const map = new Map<string, PublicBand>();
@@ -44,11 +65,37 @@ export function PublicPamphletRoot({ circleId }: Props) {
     return false;
   };
 
+  // Auto-focus the currently-playing band on load — but only ONCE per
+  // page load (a ref guard, not a dependency-driven re-trigger), and
+  // only when today's device date actually matches one of the event's
+  // days: `useActiveSlotId` already only returns non-null when "now" is
+  // genuinely inside some slot's time window, but a stale cached
+  // pamphlet from a past or future event could otherwise still produce
+  // a same-time-of-day coincidence — checking the date explicitly is
+  // what makes this "the live event happening today," not "any slot
+  // whose HH:MM range happens to contain the current clock time."
+  const hasAutoFocusedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoFocusedRef.current || !data || !activeSlotId) return;
+    const today = todayIso();
+    const isEventToday = data.days.some((d) => d.date === today);
+    if (!isEventToday) return;
+    hasAutoFocusedRef.current = true;
+    const el = document.getElementById(`pamphlet-slot-${activeSlotId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setJustAutoFocusedSlotId(activeSlotId);
+    const timer = setTimeout(() => setJustAutoFocusedSlotId(null), 2400);
+    return () => clearTimeout(timer);
+  }, [data, activeSlotId]);
+
   return (
-    <div className="min-h-screen bg-slate-950 pb-8 text-slate-100">
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-slate-900/80 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/70">
+    <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
+      <PamphletBackground />
+
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-slate-900/70 px-4 py-3 backdrop-blur-xl">
         <div>
-          <h1 className="text-lg font-bold text-slate-100 md:text-xl">
+          <h1 className="text-lg font-bold tracking-tight text-slate-100 md:text-xl">
             {data?.liveName || "タイムテーブル"}
           </h1>
           {(data?.venue || data?.organizationName) && (
@@ -63,7 +110,7 @@ export function PublicPamphletRoot({ circleId }: Props) {
             onClick={() => void refresh()}
             disabled={refreshing}
             title="最新の公開情報を再取得します"
-            className="flex min-h-11 items-center gap-1.5 rounded-full border border-slate-600 px-3 text-sm font-medium text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-11 items-center gap-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-sm font-medium text-slate-300 backdrop-blur-md hover:bg-[var(--glass-card-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {refreshing ? "更新中…" : "🔄 更新"}
           </button>
@@ -72,12 +119,12 @@ export function PublicPamphletRoot({ circleId }: Props) {
       </header>
 
       {cachedAt && (
-        <p className="px-4 pt-2 text-right text-xs text-slate-500">
+        <p className="relative px-4 pt-2 text-right text-xs text-slate-500">
           最終更新: {new Date(cachedAt).toLocaleString("ja-JP")}
         </p>
       )}
 
-      <main className="mx-auto max-w-2xl px-4 pt-3">
+      <main className="relative mx-auto max-w-2xl px-4 pt-3">
         {state === "loading" && (
           <p className="mt-16 text-center text-base text-slate-400">読み込み中…</p>
         )}
@@ -100,7 +147,7 @@ export function PublicPamphletRoot({ circleId }: Props) {
                 <select
                   value={myTimetableBandId}
                   onChange={(e) => setMyTimetableBandId(e.target.value)}
-                  className="min-h-11 rounded-lg border border-slate-600 bg-slate-900 px-3 text-base text-slate-100 outline-none focus:border-indigo-500"
+                  className="min-h-11 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-base text-slate-100 outline-none backdrop-blur-md focus:border-indigo-500"
                 >
                   <option value="">すべて表示</option>
                   {data.bands.map((b) => (
@@ -118,6 +165,7 @@ export function PublicPamphletRoot({ circleId }: Props) {
                 day={day}
                 bandsById={bandsById}
                 activeSlotId={activeSlotId}
+                justAutoFocusedSlotId={justAutoFocusedSlotId}
                 isRelevantSlot={isRelevantSlot}
                 onSelectBand={setSelectedBand}
               />
@@ -133,16 +181,44 @@ export function PublicPamphletRoot({ circleId }: Props) {
   );
 }
 
+// Concert-like dynamic gradient + faint instrument silhouettes — purely
+// decorative, `pointer-events-none` and `aria-hidden`, sitting behind
+// every other layer (`-z-10`) so it never affects legibility or
+// interaction. Uses this app's own theme CSS variables (--indigo-*)
+// rather than hardcoded colors, so it automatically matches whichever of
+// light/dark/system the visitor has selected (see useSyncThemeAttribute)
+// with no separate light/dark branching needed here.
+function PamphletBackground() {
+  return (
+    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 50% at 15% -10%, var(--indigo-950), transparent), " +
+            "radial-gradient(ellipse 60% 40% at 100% 0%, var(--indigo-900), transparent)",
+        }}
+      />
+      <div
+        className="absolute inset-0 text-slate-500 opacity-[0.06]"
+        style={{ backgroundImage: INSTRUMENTS_BG, backgroundRepeat: "repeat" }}
+      />
+    </div>
+  );
+}
+
 function PamphletDaySection({
   day,
   bandsById,
   activeSlotId,
+  justAutoFocusedSlotId,
   isRelevantSlot,
   onSelectBand,
 }: {
   day: PublicDay;
   bandsById: Map<string, PublicBand>;
   activeSlotId: string | null;
+  justAutoFocusedSlotId: string | null;
   isRelevantSlot: (slot: PublicSlot) => boolean;
   onSelectBand: (band: PublicBand) => void;
 }) {
@@ -151,26 +227,30 @@ function PamphletDaySection({
 
   return (
     <section className="mt-5">
-      <h2 className="text-base font-semibold text-slate-200">
+      <h2 className="text-base font-semibold tracking-tight text-slate-200">
         {day.label}
         {day.date && <span className="ml-2 text-sm font-normal text-slate-500">{day.date}</span>}
       </h2>
-      <ul className="mt-2 space-y-2">
+      <ul className="mt-2 space-y-2.5">
         {visibleSlots.map((slot) => {
           const band = slot.bandId ? bandsById.get(slot.bandId) : undefined;
           const isActive = slot.id === activeSlotId;
+          const isJustFocused = slot.id === justAutoFocusedSlotId;
           const label = band?.name ?? slot.customLabel ?? "（未定）";
           return (
             <li key={slot.id}>
               <button
+                id={`pamphlet-slot-${slot.id}`}
                 type="button"
                 disabled={!band}
                 onClick={() => band && onSelectBand(band)}
-                className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
+                className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left backdrop-blur-md transition ${
                   isActive
-                    ? "border-indigo-500 bg-indigo-950/50 ring-2 ring-indigo-500/60"
-                    : "border-slate-700 bg-slate-900"
-                } ${band ? "hover:bg-slate-800" : "cursor-default"}`}
+                    ? "border-indigo-400/60 bg-indigo-500/15 ring-2 ring-indigo-400/50"
+                    : "border-[var(--glass-border)] bg-[var(--glass-card-bg)]"
+                } ${band ? "hover:bg-[var(--glass-card-bg-hover)]" : "cursor-default"} ${
+                  isJustFocused ? "pamphlet-auto-focus-pulse" : ""
+                }`}
               >
                 <span>
                   <span className="block text-base font-semibold text-slate-100">
@@ -209,11 +289,11 @@ function BandDetailSheet({ band, onClose }: { band: PublicBand; onClose: () => v
     >
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+          className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--glass-border)] bg-slate-900/90 p-5 shadow-2xl backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start justify-between gap-2">
-            <h2 className="text-lg font-bold text-slate-100">{band.name}</h2>
+            <h2 className="text-lg font-bold tracking-tight text-slate-100">{band.name}</h2>
             <button
               type="button"
               onClick={onClose}

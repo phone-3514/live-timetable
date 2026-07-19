@@ -1,8 +1,8 @@
 import type { TimetableDay } from "../types";
 import type { EventInfo } from "../store/useAppStore";
 import type { SetlistBandEntry } from "../utils/setlistExport";
-import { THEMES, getSetlistPalette } from "../utils/shareThemes";
-import type { ThemeId } from "../utils/shareThemes";
+import { LAYOUTS, THEMES, getSetlistPalette } from "../utils/shareThemes";
+import type { LayoutId, ThemeId } from "../utils/shareThemes";
 
 // A4 at 96dpi for the single-column (PDF/print) layout. The multi-column
 // (PNG) layout ignores this and sizes itself from COLUMN_WIDTH * columns
@@ -32,6 +32,10 @@ type Props = {
    * it from — same reasoning as ShareTimetableTemplate's identical prop.
    * For a single-day event this hides the day label from the header. */
   isSingleDay: boolean;
+  /** Independent from `themeId` — see shareThemes.ts's LayoutId doc
+   * comment and ShareTimetableTemplate's identical prop. Defaults to
+   * "classic" (pre-existing rendering, unchanged). */
+  layoutId?: LayoutId;
 };
 
 function formatDate(iso: string | null): string | null {
@@ -53,9 +57,11 @@ function formatDate(iso: string | null): string | null {
 function SetlistTable({
   entries,
   COLORS,
+  layout,
 }: {
   entries: SetlistBandEntry[];
   COLORS: ReturnType<typeof getSetlistPalette>;
+  layout: (typeof LAYOUTS)[LayoutId];
 }) {
   return (
     <div>
@@ -64,13 +70,13 @@ function SetlistTable({
           display: "grid",
           gridTemplateColumns: "60px 1fr 1fr",
           gap: 10,
-          background: COLORS.headerBg,
-          color: COLORS.headerText,
           fontSize: 10,
           fontWeight: 700,
           letterSpacing: "0.08em",
           padding: "5px 8px",
-          borderRadius: 4,
+          ...(layout.headerRuleStyle === "line"
+            ? { background: "transparent", color: COLORS.title, borderBottom: `2px solid ${COLORS.rowBorder}` }
+            : { background: COLORS.headerBg, color: COLORS.headerText, borderRadius: 4 }),
         }}
       >
         <span>時間</span>
@@ -87,7 +93,7 @@ function SetlistTable({
             gridTemplateColumns: "60px 1fr 1fr",
             gap: 10,
             padding: "7px 8px",
-            background: i % 2 === 1 ? COLORS.zebra : "transparent",
+            background: layout.id === "notion" ? "transparent" : i % 2 === 1 ? COLORS.zebra : "transparent",
             borderBottom: `1px solid ${COLORS.rowBorder}`,
             // html-to-image screenshots the DOM into a canvas — it has no
             // concept of print pagination, so these CSS break properties
@@ -102,23 +108,37 @@ function SetlistTable({
         >
           {/* Time / order column */}
           <div>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: 20,
-                height: 16,
-                borderRadius: 8,
-                background: COLORS.orderBadgeBg,
-                color: COLORS.orderBadgeText,
-                fontSize: 9.5,
-                fontWeight: 700,
-                padding: "0 5px",
-              }}
-            >
-              {String(entry.order).padStart(2, "0")}
-            </span>
+            {layout.badgeShape === "none" ? (
+              <span
+                style={{
+                  display: "inline-block",
+                  fontFamily: "monospace",
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  color: COLORS.subtitle,
+                }}
+              >
+                {String(entry.order).padStart(2, "0")}
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 20,
+                  height: 16,
+                  borderRadius: layout.badgeShape === "circle" ? 8 : 3,
+                  background: COLORS.orderBadgeBg,
+                  color: COLORS.orderBadgeText,
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  padding: "0 5px",
+                }}
+              >
+                {String(entry.order).padStart(2, "0")}
+              </span>
+            )}
             <div
               style={{
                 marginTop: 3,
@@ -225,8 +245,10 @@ export function SetlistExportTemplate({
   columns = 1,
   themeId = "standard",
   isSingleDay,
+  layoutId = "classic",
 }: Props) {
   const COLORS = getSetlistPalette(THEMES[themeId]);
+  const layout = LAYOUTS[layoutId];
   const dateLabel = formatDate(day.date);
   const showDayLabel = !isSingleDay;
   const isMultiColumn = columns > 1;
@@ -312,12 +334,12 @@ export function SetlistExportTemplate({
         <div style={{ display: "flex", alignItems: "flex-start", gap: COLUMN_GAP }}>
           {columnGroups.map((group, gi) => (
             <div key={gi} style={{ width: COLUMN_WIDTH, flexShrink: 0 }}>
-              <SetlistTable entries={group} COLORS={COLORS} />
+              <SetlistTable entries={group} COLORS={COLORS} layout={layout} />
             </div>
           ))}
         </div>
       ) : (
-        <SetlistTable entries={entries} COLORS={COLORS} />
+        <SetlistTable entries={entries} COLORS={COLORS} layout={layout} />
       )}
 
       <footer style={{ marginTop: 16, textAlign: "center", fontSize: 8.5, color: COLORS.kicker }}>
