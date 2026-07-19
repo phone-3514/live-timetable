@@ -1,5 +1,187 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Apple HIG-inspired design tokens
+   ============================================================
+   Strategy: this app already uses Tailwind's stock `slate` (every
+   surface/border/text-neutral) and `indigo` (every primary action/
+   brand accent) color scale consistently across ~60 components —
+   REDEFINING those two scales here, rather than hand-editing every
+   className in every file, is what re-skins the whole app at once
+   without touching component-level layout markup (the redesign's own
+   "don't alter layout" constraint). `bg-slate-900`, `text-indigo-300`,
+   etc. keep meaning exactly what they meant before; only what color
+   they actually resolve to changes.
+
+   The remaining semantic accents (emerald/rose/red/amber/sky/violet/
+   cyan/teal — success/danger/warning/info/sync/etc. badges) are left
+   at Tailwind's own vivid defaults, unchanged in both themes. Those
+   already read as vibrant, high-contrast "colored chip" accents in
+   dark mode; in light mode they read as a dark-toned chip on a light
+   page, which is still a common, legible pattern — just not a full
+   from-scratch light-mode retune. Scoped deliberately given how many
+   individual badge usages a full retune would touch.
+
+   `--slate-*`/`--indigo-*` below hold the ACTUAL color per theme;
+   `@theme`'s `--color-slate-*`/`--color-indigo-*` just point at them
+   via var() — Tailwind's generated utilities (`.bg-slate-900` etc.)
+   re-resolve automatically whenever the underlying variable changes,
+   which is what makes the [data-theme]/prefers-color-scheme switch
+   below apply live with zero JS re-render needed for color.
+   ============================================================ */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+
+  /* Apple HIG leans on generous, consistently-rounded corners —
+     bumped from Tailwind's defaults (8px/6px/12px) across the board;
+     every existing `rounded-md`/`rounded-lg`/`rounded-xl` usage in the
+     app picks this up automatically. */
+  --radius-md: 0.625rem; /* 10px */
+  --radius-lg: 0.75rem; /* 12px — the requested reference value */
+  --radius-xl: 1rem; /* 16px */
+
+  --color-slate-50: var(--slate-50);
+  --color-slate-100: var(--slate-100);
+  --color-slate-200: var(--slate-200);
+  --color-slate-300: var(--slate-300);
+  --color-slate-400: var(--slate-400);
+  --color-slate-500: var(--slate-500);
+  --color-slate-600: var(--slate-600);
+  --color-slate-700: var(--slate-700);
+  --color-slate-800: var(--slate-800);
+  --color-slate-900: var(--slate-900);
+  --color-slate-950: var(--slate-950);
+
+  --color-indigo-200: var(--indigo-200);
+  --color-indigo-300: var(--indigo-300);
+  --color-indigo-400: var(--indigo-400);
+  --color-indigo-500: var(--indigo-500);
+  --color-indigo-600: var(--indigo-600);
+  --color-indigo-700: var(--indigo-700);
+  --color-indigo-900: var(--indigo-900);
+  --color-indigo-950: var(--indigo-950);
+}
+
+/* Light mode values (the base/default — dark mode overrides below).
+   "Pure/off-white" per spec: #fbfbfd/#f5f5f7 are Apple's own two most
+   common light-surface tones (apple.com, macOS Finder sidebars), not
+   literal #ffffff everywhere — a page that's ALL pure white has no
+   visible seam between stacked cards. Text end of the scale (100/200)
+   uses Apple's near-black (#1c1c1e), not literal #000, for the same
+   reason text-on-white usually looks slightly softer than pure black. */
+:root {
+  --slate-50: #000000;
+  --slate-100: #1c1c1e;
+  --slate-200: #3a3a3c;
+  --slate-300: #48484a;
+  --slate-400: #6e6e73;
+  --slate-500: #8e8e93;
+  --slate-600: #c7c7cc;
+  --slate-700: #d1d1d6;
+  --slate-800: #e5e5ea;
+  --slate-900: #f5f5f7;
+  --slate-950: #fbfbfd;
+
+  --indigo-200: #cfe6ff;
+  --indigo-300: #9dcaff;
+  --indigo-400: #5aa9ff;
+  --indigo-500: #1a8cff;
+  --indigo-600: #007aff; /* Apple systemBlue, light */
+  --indigo-700: #0062cc;
+  --indigo-900: #e8f2ff;
+  --indigo-950: #f0f7ff;
+
+  color-scheme: light;
+}
+
+/* Dark mode values — true black page background per spec, with
+   Apple's own iOS systemGray step values for the surfaces/text on top
+   of it (systemGray6 dark for cards, systemGray for muted text, etc.)
+   rather than Tailwind's stock (slightly blue-tinted, lower-contrast)
+   slate. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --slate-50: #ffffff;
+    --slate-100: #f2f2f7;
+    --slate-200: #d1d1d6;
+    --slate-300: #c7c7cc;
+    --slate-400: #aeaeb2;
+    --slate-500: #8e8e93;
+    --slate-600: #48484a;
+    --slate-700: #38383a;
+    --slate-800: #1c1c1e;
+    --slate-900: #0d0d0f;
+    --slate-950: #000000;
+
+    --indigo-200: #a8d4ff;
+    --indigo-300: #7ec2ff;
+    --indigo-400: #4fb0ff;
+    --indigo-500: #2f9dff;
+    --indigo-600: #0a84ff; /* Apple systemBlue, dark */
+    --indigo-700: #086bcc;
+    --indigo-900: #142d4a;
+    --indigo-950: #0a1a2e;
+
+    color-scheme: dark;
+  }
+}
+
+/* Manual override via the header toggle (see useThemeStore.ts) — wins
+   over the OS preference above in both directions, since a
+   [data-theme] attribute selector always beats a plain :root one
+   regardless of source order. */
+:root[data-theme="dark"] {
+  --slate-50: #ffffff;
+  --slate-100: #f2f2f7;
+  --slate-200: #d1d1d6;
+  --slate-300: #c7c7cc;
+  --slate-400: #aeaeb2;
+  --slate-500: #8e8e93;
+  --slate-600: #48484a;
+  --slate-700: #38383a;
+  --slate-800: #1c1c1e;
+  --slate-900: #0d0d0f;
+  --slate-950: #000000;
+
+  --indigo-200: #a8d4ff;
+  --indigo-300: #7ec2ff;
+  --indigo-400: #4fb0ff;
+  --indigo-500: #2f9dff;
+  --indigo-600: #0a84ff;
+  --indigo-700: #086bcc;
+  --indigo-900: #142d4a;
+  --indigo-950: #0a1a2e;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --slate-50: #000000;
+  --slate-100: #1c1c1e;
+  --slate-200: #3a3a3c;
+  --slate-300: #48484a;
+  --slate-400: #6e6e73;
+  --slate-500: #8e8e93;
+  --slate-600: #c7c7cc;
+  --slate-700: #d1d1d6;
+  --slate-800: #e5e5ea;
+  --slate-900: #f5f5f7;
+  --slate-950: #fbfbfd;
+
+  --indigo-200: #cfe6ff;
+  --indigo-300: #9dcaff;
+  --indigo-400: #5aa9ff;
+  --indigo-500: #1a8cff;
+  --indigo-600: #007aff;
+  --indigo-700: #0062cc;
+  --indigo-900: #e8f2ff;
+  --indigo-950: #f0f7ff;
+
+  color-scheme: light;
+}
+
 html, body, #root {
   height: 100%;
 }
@@ -25,12 +207,33 @@ html, body, #root {
   }
 }
 
-html {
-  color-scheme: dark;
-}
-
 body {
   margin: 0;
+  transition: background-color 200ms ease;
+}
+
+/* Smooth, consistent interaction feedback app-wide — every existing
+   button/link picks this up with no per-component change, matching
+   "smooth, high-quality transitions for hover/click/drag" without
+   hand-adding transition classes to ~150 individual button elements.
+   prefers-reduced-motion is respected via the media query below. */
+button, a, input, textarea, select {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+button:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  body, button, a, input, textarea, select, button:active {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* iOS Safari auto-zooms the page when a focused form field's computed

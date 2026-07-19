@@ -1,9 +1,8 @@
-import { DEFAULT_VENUE_HOURS, type VenueHours } from "./parseBands";
+import type { VenueHours } from "./parseBands";
 import type { Band, TimetableDay } from "../types";
 import { useAppStore, type EventInfo } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useUiStore, type AppTab } from "../store/useUiStore";
-import { useHistoryStore } from "../store/useHistoryStore";
 import type { Application } from "../types";
 
 const BACKUP_FORMAT_ID = "live-timetable-backup";
@@ -132,43 +131,3 @@ export function restoreBackup(data: BackupData): void {
   useUiStore.setState({ activeTab: data.ui?.activeTab ?? "timetable" });
 }
 
-const KICKED_BACKUP_KEY_PREFIX = "live-timetable-kicked-backup-";
-
-// Called by CollabRoot.tsx when this client is force-kicked from a room
-// (see useCollabStore.ts's `kicked` flag). Per an explicit product
-// decision (asked directly, rather than guessed, given how destructive
-// this is): the wipe below clears the ACTIVE session view back to blank
-// — including overwriting the normal `persist`-middleware-backed
-// localStorage keys, which is what makes the screen stay blank even
-// after a reload — but a full snapshot of what was there a moment
-// earlier is preserved FIRST, both as a downloaded .json file (the same
-// format/mechanism BackupControls' own "データを保存" button already
-// produces) and as a fallback copy under a distinctly-prefixed
-// localStorage key that `persist` never touches, in case the download
-// is silently blocked in some browser context. Neither of those two
-// safety nets is undone by the wipe that follows.
-export function saveKickedBackupAndWipe(): void {
-  try {
-    const payload = createBackupPayload();
-    localStorage.setItem(`${KICKED_BACKUP_KEY_PREFIX}${Date.now()}`, JSON.stringify(payload));
-  } catch (err) {
-    console.error("[backup] Failed to save a pre-kick localStorage backup", err);
-  }
-  try {
-    const liveName = useAppStore.getState().eventInfo.liveName || "kicked-backup";
-    downloadBackupFile(buildBackupFilename(liveName));
-  } catch (err) {
-    console.error("[backup] Failed to auto-download a pre-kick backup", err);
-  }
-
-  useAppStore.setState({
-    bands: [],
-    days: [],
-    venueHours: DEFAULT_VENUE_HOURS,
-    eventInfo: { liveName: "", venue: "", organizationName: "" },
-    lastDeleted: null,
-  });
-  useApplicationStore.setState({ applications: [] });
-  useUiStore.setState({ activeTab: "timetable" });
-  useHistoryStore.setState({ past: [], future: [] });
-}

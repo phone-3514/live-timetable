@@ -13,6 +13,7 @@ import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
 import { useHistoryStore } from "./store/useHistoryStore";
 import { useCollabStore } from "./store/useCollabStore";
+import { useThemeStore } from "./store/useThemeStore";
 import { useIsMobile } from "./hooks/useViewport";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
@@ -22,6 +23,7 @@ import { BandDragPreview } from "./components/BandDragPreview";
 import { SlotDragPreview } from "./components/SlotDragPreview";
 import { ApplicationManagerTab } from "./components/applications/ApplicationManagerTab";
 import { BackupControls } from "./components/BackupControls";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { Band, TimetableSlot } from "./types";
 
@@ -54,6 +56,23 @@ function App() {
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
     null,
   );
+
+  // Keeps <html data-theme="..."> in sync with the store after the
+  // initial load (index.html's own inline script handles BEFORE first
+  // paint, straight from localStorage, to avoid a flash of the wrong
+  // theme — this effect is what makes the header toggle take effect
+  // live afterward without needing a reload). "system" removes the
+  // attribute entirely rather than setting it to some third value —
+  // index.css's plain `@media (prefers-color-scheme)` rule is only
+  // reachable when no [data-theme] override is present at all.
+  const themePreference = useThemeStore((s) => s.theme);
+  useEffect(() => {
+    if (themePreference === "system") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.setAttribute("data-theme", themePreference);
+    }
+  }, [themePreference]);
 
   // Mouse and touch get different activation rules on purpose: a mouse
   // drag on desktop should start the instant the cursor moves past a
@@ -223,7 +242,7 @@ function App() {
       }}
     >
       <div className="flex min-h-screen flex-col bg-slate-950 md:h-screen md:overflow-hidden">
-        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800 bg-slate-900 px-3 py-2 md:gap-x-6 md:px-6 md:py-2.5">
+        <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-800/80 bg-slate-900/80 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/70 md:gap-x-6 md:px-6 md:py-2.5">
           <h1 className="shrink-0 text-base font-bold text-slate-100 md:text-lg">
             軽音ライブ タイムテーブル作成
           </h1>
@@ -256,6 +275,7 @@ function App() {
             </button>
           </nav>
           <BackupControls />
+          <ThemeToggle />
           {hasFirebaseConfig && (
             // Local boundary so a collaboration-feature crash (Firebase
             // misconfiguration, a bad room doc, etc.) only disables that

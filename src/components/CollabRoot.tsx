@@ -3,15 +3,14 @@ import { useCollabRoom } from "../hooks/useCollabRoom";
 import { useLivePresence } from "../hooks/useLivePresence";
 import { useCollabStore } from "../store/useCollabStore";
 import { useIsMobile } from "../hooks/useViewport";
-import { useToastStore } from "../store/useToastStore";
 import { CollabControls } from "./CollabControls";
 import { LiveCursors } from "./LiveCursors";
 import { NicknameEntryModal } from "./NicknameEntryModal";
 import { PasswordGate } from "./PasswordGate";
-import { readStoredNickname, clearStoredNickname } from "../utils/nickname";
-import { readRoomAuthFlag, clearRoomAuthFlag } from "../utils/roomAuth";
-import { readAdminAuthFlag, clearAdminAuthFlag } from "../utils/adminAuth";
-import { saveKickedBackupAndWipe } from "../utils/backup";
+import { readStoredNickname } from "../utils/nickname";
+import { readRoomAuthFlag } from "../utils/roomAuth";
+import { readAdminAuthFlag } from "../utils/adminAuth";
+import { hardWipeAndRedirect } from "../utils/hardWipe";
 
 // The single lazy-loaded entry point for every part of the real-time
 // collaboration feature (Firestore room sync + RTDB presence/cursors) —
@@ -72,28 +71,17 @@ export function CollabRoot() {
   // Reacts to useLivePresence noticing `forceKick: true` on this exact
   // client's own presence node (see useCollabStore.ts's `kicked` flag
   // comment for why the detection and the reaction live in different
-  // files). Runs once per kick: back up + wipe the local app state,
-  // leave the room, and clear every session flag (nickname, room auth,
-  // admin auth) so rejoining ANY room — this one or a different one —
-  // starts completely fresh rather than silently reusing the identity
-  // that was just removed. The `kicked` flag itself is reset at the end
-  // so this effect doesn't re-fire until the NEXT kick.
+  // files). hardWipeAndRedirect is a one-way door — it clears every
+  // storage mechanism this origin has and hard-reloads the page — so
+  // there's nothing left for this effect to do afterward (no leaveRoom(),
+  // no individual session-flag clearing, no resetting `kicked` back to
+  // false): the reload itself resets literally everything, including
+  // this component's own state.
   useEffect(() => {
     if (!kicked) return;
-    console.log("[CollabRoot] Kicked by an admin — wiping state and returning to the entry form");
-    saveKickedBackupAndWipe();
-    leaveRoom();
-    clearStoredNickname();
-    clearRoomAuthFlag();
-    clearAdminAuthFlag();
-    setNickname(null);
-    setPasswordVerified(false);
-    setIsAdminState(false);
-    useCollabStore.getState().setKicked(false);
-    useToastStore
-      .getState()
-      .show("管理者によってルームから退出させられました。作業内容はバックアップファイルとして保存されています", "info");
-  }, [kicked, leaveRoom]);
+    console.log("[CollabRoot] Kicked by an admin — wiping all local data and hard-reloading");
+    void hardWipeAndRedirect();
+  }, [kicked]);
 
   // roomId becomes non-null the instant a room is requested — either
   // ?room=<id> was already in the URL on load, or startRoom() below just

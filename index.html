@@ -5,6 +5,28 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>軽音ライブ タイムテーブル作成</title>
+    <!-- Applies a manually-chosen theme (see useThemeStore.ts) BEFORE
+         first paint, straight from localStorage — waiting for React/
+         Zustand to hydrate first would show a flash of the wrong theme
+         (system default, then a jump to the saved choice) on every load.
+         "system" (the default, nothing chosen yet) intentionally sets no
+         attribute at all, letting index.css's plain
+         `@media (prefers-color-scheme)` rule apply with no JS involved. -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("live-timetable-theme");
+          var theme = raw ? JSON.parse(raw).state.theme : "system";
+          if (theme === "light" || theme === "dark") {
+            document.documentElement.setAttribute("data-theme", theme);
+          }
+        } catch (err) {
+          // Storage inaccessible (private browsing, sandboxed iframe) or
+          // malformed — falls back to the OS-preference media query,
+          // never a crash before the app even loads.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

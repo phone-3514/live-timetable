@@ -160,7 +160,7 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
               を退出させますか？
             </h2>
             <p className="mt-2 text-xs text-slate-400">
-              対象の編集画面はすぐに空の状態に戻り、ルームから切断されます（作業内容はそのユーザーの端末にバックアップファイルとして保存されます）。
+              対象の編集画面はすぐに空の状態に戻り、ルームから切断されます。そのユーザーの端末に保存されていたデータ(ローカルバックアップを含む)はすべて完全に削除されます。
             </p>
             <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <button
