@@ -57,6 +57,15 @@ service cloud.firestore {
       }
     }
 
+    match /publicProgress/{circleId} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['dayId', 'slotId', 'phase', 'updatedAt', 'updatedBy'])
+        && request.resource.data.phase in ['standby', 'performing', 'transition', 'break', 'finished']
+        && request.resource.data.updatedAt is int
+        && request.resource.data.updatedBy is string
+        && request.resource.data.updatedBy.size() < 100;
+    }
+
     // Generous for a college club's live-event timetable (dozens of
     // bands, a handful of days) but still bounds the size of any single
     // write — the free tier's per-document 1MiB limit is already a

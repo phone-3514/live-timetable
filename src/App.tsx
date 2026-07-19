@@ -11,7 +11,7 @@ import {
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
-import { useHistoryStore } from "./store/useHistoryStore";
+import { setNextHistoryAction, useHistoryStore } from "./store/useHistoryStore";
 import { useCollabStore } from "./store/useCollabStore";
 import { useIsMobile } from "./hooks/useViewport";
 import { useAsymmetricAutoScroll } from "./hooks/useAsymmetricAutoScroll";
@@ -28,7 +28,11 @@ import { BackupControls } from "./components/BackupControls";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaStatus } from "./components/PwaStatus";
+import { AccessibilitySettings } from "./components/AccessibilitySettings";
+import { useSyncAccessibility } from "./hooks/useSyncAccessibility";
 import type { Band, TimetableSlot } from "./types";
+import { previewSlotReorder, type ScheduleChangePreview } from "./utils/scheduleChangePreview";
+import { ChangePreviewModal } from "./components/ChangePreviewModal";
 
 // CollabRoot pulls in the firebase SDK (~150kB gzipped) — same reasoning
 // as the jsPDF/exceljs/html2canvas dynamic imports elsewhere in this
@@ -50,6 +54,7 @@ function App() {
   const activeTab = useUiStore((s) => s.activeTab);
   const setActiveTab = useUiStore((s) => s.setActiveTab);
   const days = useAppStore((s) => s.days) ?? [];
+  const bands = useAppStore((s) => s.bands) ?? [];
   const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
   const insertBandAtSlot = useAppStore((s) => s.insertBandAtSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
@@ -59,9 +64,11 @@ function App() {
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
     null,
   );
+  const [pendingReorder, setPendingReorder] = useState<{ activeId: string; overId: string; preview: ScheduleChangePreview } | null>(null);
   const eventInfoDetailsRef = useDismissibleDetails();
 
   useSyncThemeAttribute();
+  useSyncAccessibility();
 
   // Mouse and touch get different activation rules on purpose: a mouse
   // drag on desktop should start the instant the cursor moves past a
@@ -193,7 +200,8 @@ function App() {
       const targetDay = days.find((d) => d.slots.some((s) => s.id === overId));
       if (originSlot && targetDay && originDay?.id === targetDay.id) {
         if (originSlot.id !== overId) {
-          reorderSlots(originSlot.id, overId);
+          const preview = previewSlotReorder(originDay, bands, originSlot.id, overId);
+          if (preview) setPendingReorder({ activeId: originSlot.id, overId, preview });
         }
         return;
       }
@@ -213,7 +221,9 @@ function App() {
 
     // Otherwise the drag is a slot reorder: activeId/overId are bare slot ids.
     if (activeId !== overId) {
-      reorderSlots(activeId, overId);
+      const day = days.find((candidate) => candidate.slots.some((slot) => slot.id === activeId));
+      const preview = day ? previewSlotReorder(day, bands, activeId, overId) : null;
+      if (preview) setPendingReorder({ activeId, overId, preview });
     }
   };
 
@@ -315,6 +325,7 @@ function App() {
           )}
           <div className="hidden min-w-0 flex-1 md:block" />
           <BackupControls />
+          <AccessibilitySettings />
           <ThemeToggle />
         </header>
         {activeTab === "timetable" ? (
@@ -344,6 +355,18 @@ function App() {
         <DeleteUndoToast />
         <Toast />
         <PwaStatus />
+        {pendingReorder && (
+          <ChangePreviewModal
+            preview={pendingReorder.preview}
+            title="出演順を変更"
+            onClose={() => setPendingReorder(null)}
+            onConfirm={() => {
+              setNextHistoryAction("出演順を変更", useCollabStore.getState().myNickname ?? "この端末");
+              reorderSlots(pendingReorder.activeId, pendingReorder.overId);
+              setPendingReorder(null);
+            }}
+          />
+        )}
       </div>
       <DragOverlay>
         {activeDragData?.type === "band" && (

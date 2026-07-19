@@ -5,6 +5,11 @@ import { usePamphletCache } from "./usePamphletCache";
 import { useActiveSlotId } from "./useActiveSlotId";
 import { buildPamphletRows } from "./transitionGaps";
 import type { PublicBand, PublicDay, PublicSlot } from "./types";
+import { usePublicProgress } from "./usePublicProgress";
+import { VenueScreen } from "./VenueScreen";
+import { PerformerDashboard } from "./PerformerDashboard";
+import { AccessibilitySettings } from "../components/AccessibilitySettings";
+import { useSyncAccessibility } from "../hooks/useSyncAccessibility";
 
 interface Props {
   circleId: string;
@@ -37,10 +42,23 @@ function todayIso(): string {
 // enforcement (this collection has no client write rule at all).
 export function PublicPamphletRoot({ circleId }: Props) {
   useSyncThemeAttribute();
+  useSyncAccessibility();
   const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(circleId);
   const activeRow = useActiveSlotId(data);
+  const liveProgress = usePublicProgress(circleId);
+  const screenMode = new URLSearchParams(window.location.search).get("mode") === "screen";
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
-  const [myTimetableBandId, setMyTimetableBandId] = useState<string>("");
+  const [myPerformerName, setMyPerformerName] = useState<string>(() => new URLSearchParams(window.location.search).get("performer") ?? "");
+  const activeRowId = activeRow?.id ?? null;
+  const activeRowKind = activeRow?.kind ?? null;
+  const effectiveActiveRow = useMemo(
+    () => liveProgress?.slotId
+      ? { id: liveProgress.slotId, kind: "slot" as const }
+      : activeRowId && activeRowKind
+        ? { id: activeRowId, kind: activeRowKind }
+        : null,
+    [liveProgress?.slotId, activeRowId, activeRowKind],
+  );
   // Set briefly right after the initial auto-scroll-to-now lands, so the
   // "you are here" row gets a one-time attention pulse on top of its
   // steady "出演中" highlight — not a permanently-animating element,
@@ -53,16 +71,27 @@ export function PublicPamphletRoot({ circleId }: Props) {
     return map;
   }, [data]);
 
+  const performerNames = useMemo(
+    () => [...new Set((data?.bands ?? []).flatMap((band) => band.members).map((name) => name.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "ja")),
+    [data],
+  );
+  const myBands = useMemo(
+    () => (data?.bands ?? []).filter((band) => band.members.some((name) => name.trim() === myPerformerName)),
+    [data, myPerformerName],
+  );
+  const myBandIds = useMemo(() => new Set(myBands.map((band) => band.id)), [myBands]);
+
   // My Timetable: only the rehearsal/performance rows that mention the
   // selected band. This app has no notion of a rehearsal being formally
   // "linked" to a band beyond the label text, so this matches
   // customLabel text against the band name in addition to bandId — a
   // "○○リハーサル" custom slot naming the band by name still shows up.
-  const selectedBandName = myTimetableBandId ? bandsById.get(myTimetableBandId)?.name ?? "" : "";
+  const selectedBandNames = myBands.map((band) => band.name);
   const isRelevantSlot = (slot: PublicSlot) => {
-    if (!myTimetableBandId) return true;
-    if (slot.bandId === myTimetableBandId) return true;
-    if (selectedBandName && slot.customLabel?.includes(selectedBandName)) return true;
+    if (!myPerformerName) return true;
+    if (slot.bandId && myBandIds.has(slot.bandId)) return true;
+    if (selectedBandNames.some((name) => slot.customLabel?.includes(name))) return true;
     return false;
   };
 
@@ -77,18 +106,20 @@ export function PublicPamphletRoot({ circleId }: Props) {
   // whose HH:MM range happens to contain the current clock time."
   const hasAutoFocusedRef = useRef(false);
   useEffect(() => {
-    if (hasAutoFocusedRef.current || !data || !activeRow) return;
+    if (hasAutoFocusedRef.current || !data || !effectiveActiveRow) return;
     const today = todayIso();
     const isEventToday = data.days.some((d) => d.date === today);
     if (!isEventToday) return;
     hasAutoFocusedRef.current = true;
-    const el = document.getElementById(`pamphlet-slot-${activeRow.id}`);
+    const el = document.getElementById(`pamphlet-slot-${effectiveActiveRow.id}`);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setJustAutoFocusedSlotId(activeRow.id);
+    setJustAutoFocusedSlotId(effectiveActiveRow.id);
     const timer = setTimeout(() => setJustAutoFocusedSlotId(null), 2400);
     return () => clearTimeout(timer);
-  }, [data, activeRow]);
+  }, [data, effectiveActiveRow]);
+
+  if (screenMode && data) return <VenueScreen data={data} progress={liveProgress} circleId={circleId} />;
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
@@ -106,6 +137,8 @@ export function PublicPamphletRoot({ circleId }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {data && <a href={`?mode=screen`} className="flex min-h-11 items-center rounded-full border border-[var(--glass-border)] px-3 text-sm font-medium text-slate-300 hover:bg-[var(--glass-card-bg-hover)]">会場表示</a>}
+          <AccessibilitySettings />
           <button
             type="button"
             onClick={() => void refresh()}
@@ -142,22 +175,27 @@ export function PublicPamphletRoot({ circleId }: Props) {
 
         {data && (
           <>
-            {data.bands.length > 0 && (
+            {performerNames.length > 0 && (
               <label className="mt-2 flex min-h-11 flex-col gap-1 text-sm text-slate-300">
-                マイタイムテーブル（バンドで絞り込み）
+                出演者マイページ
                 <select
-                  value={myTimetableBandId}
-                  onChange={(e) => setMyTimetableBandId(e.target.value)}
+                  value={myPerformerName}
+                  onChange={(e) => setMyPerformerName(e.target.value)}
                   className="min-h-11 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-base text-slate-100 outline-none backdrop-blur-md focus:border-indigo-500"
+                  aria-label="自分の名前を選択"
                 >
-                  <option value="">すべて表示</option>
-                  {data.bands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
+                  <option value="">自分の名前を選択</option>
+                  {performerNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
                   ))}
                 </select>
               </label>
+            )}
+
+            {myPerformerName && myBands.length > 0 && (
+              <PerformerDashboard data={data} performerName={myPerformerName} bands={myBands} progress={liveProgress} />
             )}
 
             {data.days.map((day) => (
@@ -165,10 +203,10 @@ export function PublicPamphletRoot({ circleId }: Props) {
                 key={day.id}
                 day={day}
                 bandsById={bandsById}
-                activeRow={activeRow}
+                activeRow={effectiveActiveRow}
                 justAutoFocusedSlotId={justAutoFocusedSlotId}
                 isRelevantSlot={isRelevantSlot}
-                showTransitions={!myTimetableBandId}
+                showTransitions={!myPerformerName}
                 onSelectBand={setSelectedBand}
               />
             ))}
@@ -315,6 +353,7 @@ function SlotRow({
           </span>
           <span className="block text-sm text-slate-400">
             {slot.startTime} 〜 {slot.endTime}
+            {(slot.delayMinutes ?? 0) !== 0 && <span className={`ml-2 font-semibold ${(slot.delayMinutes ?? 0) > 0 ? "text-amber-300" : "text-sky-300"}`}>{(slot.delayMinutes ?? 0) > 0 ? `予定より${slot.delayMinutes}分遅れ` : `予定より${Math.abs(slot.delayMinutes ?? 0)}分早い`}</span>}
           </span>
         </span>
         {band && <span className="text-sm text-indigo-300">詳細 ›</span>}

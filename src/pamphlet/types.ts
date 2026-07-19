@@ -25,6 +25,7 @@ export type PublicSlot = {
   customDurationMinutes: number | null;
   startTime: string;
   endTime: string;
+  delayMinutes?: number;
 };
 
 export type PublicDay = {

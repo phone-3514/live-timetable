@@ -112,6 +112,8 @@ type AppState = {
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
+  adjustScheduleFrom: (dayId: string, slotId: string, deltaMinutes: number) => void;
+  resetScheduleFrom: (dayId: string, slotId: string) => void;
   autoScheduleAllDays: () => void;
   resetAllPlacements: () => void;
   // Unlike resetAllPlacements (which only unassigns bands, keeping the
@@ -678,6 +680,44 @@ export const useAppStore = create<AppState>()(
         if (day.id !== dayId) return day;
         const settings = { ...day.settings, ...partial };
         return { ...day, settings, slots: recomputeTimes(day.slots, settings, state.bands) };
+      }),
+    })),
+
+  adjustScheduleFrom: (dayId, slotId, deltaMinutes) =>
+    set((state) => ({
+      days: state.days.map((day) => {
+        if (day.id !== dayId) return day;
+        const index = day.slots.findIndex((slot) => slot.id === slotId);
+        if (index < 0 || deltaMinutes === 0) return day;
+        const shifted = day.slots.map((slot, slotIndex) =>
+          slotIndex < index
+            ? slot
+            : {
+                ...slot,
+                startTimeOverride: minutesToTime(timeToMinutes(slot.startTime) + deltaMinutes),
+              },
+        );
+        return { ...day, slots: recomputeTimes(shifted, day.settings, state.bands) };
+      }),
+    })),
+
+  resetScheduleFrom: (dayId, slotId) =>
+    set((state) => ({
+      days: state.days.map((day) => {
+        if (day.id !== dayId) return day;
+        const index = day.slots.findIndex((slot) => slot.id === slotId);
+        if (index < 0) return day;
+        const baseline = recomputeTimes(
+          day.slots.map((slot) => ({ ...slot, startTimeOverride: null })),
+          day.settings,
+          state.bands,
+        );
+        const reset = day.slots.map((slot, slotIndex) =>
+          slotIndex < index
+            ? slot
+            : { ...slot, startTimeOverride: baseline[slotIndex].startTime },
+        );
+        return { ...day, slots: recomputeTimes(reset, day.settings, state.bands) };
       }),
     })),
 

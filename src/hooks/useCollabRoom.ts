@@ -5,6 +5,10 @@ import { useCollabStore } from "../store/useCollabStore";
 import type { Application, Band, TimetableDay } from "../types";
 import { DEFAULT_VENUE_HOURS, type VenueHours } from "../utils/parseBands";
 import { useFirestoreDocSync } from "./useFirestoreSync";
+import { getStageProgress, useProgressStore, type StageProgress } from "../store/useProgressStore";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
+import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
 
 const ROOM_PARAM = "room";
 type RoomEntryMode = "create" | "join";
@@ -24,6 +28,7 @@ export type RoomDoc = {
   // both in the same write/read cycle is what keeps that reference
   // consistent for every collaborator at the same moment.
   applications: Application[];
+  progress?: StageProgress;
   updatedAt: number;
 };
 
@@ -35,6 +40,7 @@ const EMPTY_ROOM: RoomDoc = {
   bands: [],
   days: [],
   applications: [],
+  progress: undefined,
   updatedAt: 0,
 };
 
@@ -66,6 +72,7 @@ function snapshotFromStore(): Omit<RoomDoc, "updatedAt"> {
     bands: s.bands,
     days: s.days,
     applications: useApplicationStore.getState().applications,
+    progress: getStageProgress(),
   };
 }
 
@@ -108,6 +115,7 @@ function applyRoomDocToStore(doc: RoomDoc) {
     venueHours: doc.venueHours ?? DEFAULT_VENUE_HOURS,
   });
   useApplicationStore.setState({ applications: doc.applications ?? [] });
+  useProgressStore.getState().hydrateProgress(doc.progress ?? null);
 }
 
 /**
@@ -237,6 +245,30 @@ export function useCollabRoom(isAuthenticated: boolean) {
 
   useEffect(() => {
     if (!roomId) return;
+    return useProgressStore.subscribe((state, previous) => {
+      if (!hydratedRef.current || suppressPushRef.current || state.updatedAt === previous.updatedAt) return;
+      pushSnapshot();
+      if (!db) return;
+      const progress = getStageProgress();
+      void setDoc(doc(db, "publicProgress", roomId), progress).catch((error) =>
+        console.error("[useCollabRoom] public progress write failed", error),
+      );
+      try {
+        if (localStorage.getItem(`live-timetable-pamphlet-published-${roomId}`)) {
+          const app = useAppStore.getState();
+          void setDoc(
+            doc(db, "publicPamphlets", roomId),
+            buildPublicPamphletDoc(app.eventInfo, app.bands, app.days),
+          ).catch((error) => console.error("[useCollabRoom] live pamphlet update failed", error));
+        }
+      } catch {
+        // Storage can be unavailable; live progress still updates independently.
+      }
+    });
+  }, [roomId, pushSnapshot]);
+
+  useEffect(() => {
+    if (!roomId) return;
     return useApplicationStore.subscribe((state, prev) => {
       if (!hydratedRef.current || suppressPushRef.current) return;
       if (state.applications === prev.applications) return;
@@ -265,6 +297,13 @@ export function useCollabRoom(isAuthenticated: boolean) {
 
   const startRoom = useCallback(() => {
     const id = generateRoomId();
+    const firstDay = useAppStore.getState().days.find((day) => day.slots.length > 0);
+    const firstSlot = firstDay?.slots[0];
+    useProgressStore.getState().setProgress(
+      { dayId: firstDay?.id ?? null, slotId: firstSlot?.id ?? null, phase: "standby" },
+      useCollabStore.getState().myNickname ?? "この端末",
+      "共同編集ルームを開始",
+    );
     const url = new URL(window.location.href);
     url.searchParams.set(ROOM_PARAM, id);
     window.history.replaceState(null, "", url.toString());

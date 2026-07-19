@@ -5,6 +5,7 @@ import { PublishPamphletButton } from "./PublishPamphletButton";
 import { ModalPortal } from "./ModalPortal";
 import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { QrShareModal } from "./QrShareModal";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "🟡 接続中…",
@@ -38,6 +39,7 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
   const [showEntry, setShowEntry] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [roomCodeError, setRoomCodeError] = useState<string | null>(null);
+  const [showQrShare, setShowQrShare] = useState(false);
   const collabDetailsRef = useDismissibleDetails();
   useEscapeKey(() => setShowEntry(false));
 
@@ -217,6 +219,7 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-700 pt-2">
+        <button type="button" onClick={() => setShowQrShare(true)} className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">▦ QR共有</button>
         <button
           type="button"
           onClick={handleCopyCode}
@@ -313,6 +316,7 @@ export function CollabControls({ roomId, status, startRoom, joinRoom, leaveRoom,
         </div>
         </ModalPortal>
       )}
+      {showQrShare && <QrShareModal roomId={roomId} onClose={() => setShowQrShare(false)} />}
     </details>
   );
 }

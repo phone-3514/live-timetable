@@ -35,6 +35,7 @@ export function buildPublicPamphletDoc(
         customDurationMinutes: s.customDurationMinutes,
         startTime: s.startTime,
         endTime: s.endTime,
+        delayMinutes: s.delayMinutes ?? 0,
       })),
     })),
     publishedAt: Date.now(),

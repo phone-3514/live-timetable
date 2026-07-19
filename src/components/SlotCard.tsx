@@ -266,12 +266,18 @@ export function SlotCard({
         />
         <div className="flex items-center gap-1 whitespace-nowrap">
           <span className="text-slate-500">〜{slot.endTime}</span>
-          {(slot.delayMinutes ?? 0) > 0 && (
+          {(slot.delayMinutes ?? 0) !== 0 && (
             <span
-              className="rounded-full bg-rose-950 px-1.5 py-0.5 text-[10px] font-bold text-rose-400"
-              title="基本スケジュールからの遅れ"
+              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                (slot.delayMinutes ?? 0) > 0
+                  ? "bg-amber-950 text-amber-300"
+                  : "bg-sky-950 text-sky-300"
+              }`}
+              title={(slot.delayMinutes ?? 0) > 0 ? "予定からの遅れ" : "予定より早い進行"}
             >
-              +{slot.delayMinutes}分
+              {(slot.delayMinutes ?? 0) > 0
+                ? `${slot.delayMinutes}分遅れ`
+                : `${Math.abs(slot.delayMinutes ?? 0)}分早い`}
             </span>
           )}
           {slot.startTimeOverride && (

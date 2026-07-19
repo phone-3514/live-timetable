@@ -180,9 +180,15 @@ export function MobileSlotCard({
               : "border-slate-600 text-slate-400"
           }`}
         />
-        {(slot.delayMinutes ?? 0) > 0 && (
-          <span className="self-start rounded-full bg-rose-950 px-1.5 py-0.5 font-sans text-[11px] font-semibold leading-none tabular-nums text-rose-400">
-            +{slot.delayMinutes}分
+        {(slot.delayMinutes ?? 0) !== 0 && (
+          <span className={`self-start rounded-full px-1.5 py-0.5 font-sans text-[11px] font-semibold leading-none tabular-nums ${
+            (slot.delayMinutes ?? 0) > 0
+              ? "bg-amber-950 text-amber-300"
+              : "bg-sky-950 text-sky-300"
+          }`}>
+            {(slot.delayMinutes ?? 0) > 0
+              ? `${slot.delayMinutes}分遅れ`
+              : `${Math.abs(slot.delayMinutes ?? 0)}分早い`}
           </span>
         )}
       </div>

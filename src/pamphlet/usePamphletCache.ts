@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import type { PublicPamphletDoc } from "./types";
 
@@ -27,16 +27,11 @@ function writeCache(circleId: string, publicDoc: PublicPamphletDoc) {
 
 export type PamphletLoadState = "loading" | "loaded" | "not-found" | "error";
 
-// Firestore quota discipline for a route with no login/rate-limiting of
-// its own: exactly one get() per page load (never an onSnapshot listener
-// — a live listener billed a read for every edit an admin makes for as
-// long as any audience member's tab stays open, which is the opposite of
-// "1 read per user load" on a free-tier project during an hours-long
-// live event). Cached data (if any) renders instantly on mount while that
-// one fetch resolves in the background — a repeat visitor never sees a
-// blank loading state — and the returned `refresh()` is the ONLY other
-// way this ever hits the network again, for a tab left open across the
-// event that wants to manually pull the latest published snapshot.
+// Cached data renders immediately, then one live listener receives only
+// published timetable/progress corrections. This changed from a one-shot
+// read because stage-control adjustments must reach performer and venue
+// screens without asking every viewer to press refresh. Admin typing still
+// stays private; only explicit publish/progress actions update this doc.
 export function usePamphletCache(circleId: string) {
   const initialCache = useRef(readCache(circleId));
   const [data, setData] = useState<PublicPamphletDoc | null>(initialCache.current?.doc ?? null);
@@ -73,8 +68,25 @@ export function usePamphletCache(circleId: string) {
   );
 
   useEffect(() => {
-    void fetchOnce(false);
-  }, [fetchOnce]);
+    if (!db) {
+      setState((previous) => previous === "loaded" ? previous : "error");
+      return;
+    }
+    return onSnapshot(doc(db, "publicPamphlets", circleId), (snapshot) => {
+      if (!snapshot.exists()) {
+        setState((previous) => previous === "loaded" ? previous : "not-found");
+        return;
+      }
+      const publicDoc = snapshot.data() as PublicPamphletDoc;
+      setData(publicDoc);
+      setCachedAt(Date.now());
+      writeCache(circleId, publicDoc);
+      setState("loaded");
+    }, (error) => {
+      console.error("[usePamphletCache] live listener failed:", error);
+      setState((previous) => previous === "loaded" ? previous : "error");
+    });
+  }, [circleId]);
 
   return { data, state, cachedAt, refreshing, refresh: () => fetchOnce(true) };
 }

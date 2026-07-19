@@ -1,8 +1,17 @@
 import { create } from "zustand";
 import { useAppStore } from "./useAppStore";
 import type { Band, TimetableDay } from "../types";
+import { useCollabStore } from "./useCollabStore";
 
-type Snapshot = { bands: Band[]; days: TimetableDay[]; at: number };
+export type HistoryDiff = { label: string; before: string; after: string };
+type Snapshot = {
+  bands: Band[];
+  days: TimetableDay[];
+  at: number;
+  actor?: string;
+  action?: string;
+  diffs?: HistoryDiff[];
+};
 
 type HistoryState = {
   past: Snapshot[];
@@ -26,6 +35,31 @@ const MAX_HISTORY = 50;
 // Guards the subscriber below from recording our own undo/redo writes as
 // new history entries, which would otherwise make undo un-undoable.
 let isApplyingHistory = false;
+let pendingAction: { action: string; actor?: string } | null = null;
+
+export function setNextHistoryAction(action: string, actor?: string) {
+  pendingAction = { action, actor };
+}
+
+function describeChanges(beforeDays: TimetableDay[], afterDays: TimetableDay[], bands: Band[]): HistoryDiff[] {
+  const bandMap = new Map(bands.map((band) => [band.id, band.name]));
+  const beforeSlots = new Map(beforeDays.flatMap((day) => day.slots.map((slot, index) => [slot.id, { day, slot, index }] as const)));
+  const diffs: HistoryDiff[] = [];
+  for (const day of afterDays) {
+    day.slots.forEach((slot, index) => {
+      const before = beforeSlots.get(slot.id);
+      if (!before) return;
+      const label = bandMap.get(slot.bandId ?? "") ?? slot.customLabel ?? "空き枠";
+      if (before.slot.startTime !== slot.startTime || before.slot.endTime !== slot.endTime) {
+        diffs.push({ label: `${label}の時刻`, before: `${before.slot.startTime}〜${before.slot.endTime}`, after: `${slot.startTime}〜${slot.endTime}` });
+      }
+      if (before.day.id !== day.id || before.index !== index) {
+        diffs.push({ label: `${label}の位置`, before: `${before.day.label} ${before.index + 1}番目`, after: `${day.label} ${index + 1}番目` });
+      }
+    });
+  }
+  return diffs.slice(0, 30);
+}
 
 export const useHistoryStore = create<HistoryState>((set, get) => ({
   past: [],
@@ -97,7 +131,16 @@ useAppStore.subscribe((state) => {
     return;
   }
   if (state.bands !== lastBands || state.days !== lastDays) {
-    const snapshot: Snapshot = { bands: lastBands, days: lastDays, at: Date.now() };
+    const actor = pendingAction?.actor || useCollabStore.getState().myNickname || "この端末";
+    const snapshot: Snapshot = {
+      bands: lastBands,
+      days: lastDays,
+      at: Date.now(),
+      actor,
+      action: pendingAction?.action ?? "タイムテーブルを変更",
+      diffs: describeChanges(lastDays, state.days, state.bands),
+    };
+    pendingAction = null;
     useHistoryStore.setState((s) => ({
       past: [...s.past, snapshot].slice(-MAX_HISTORY),
       future: [],
