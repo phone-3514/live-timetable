@@ -1,7 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import { AppEntry } from './components/AppEntry.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { registerServiceWorker } from './pwa/registerServiceWorker.ts'
 import { PwaStatus } from './components/PwaStatus.tsx'
@@ -39,6 +39,8 @@ const relativePath = window.location.pathname.startsWith(import.meta.env.BASE_UR
   ? window.location.pathname.slice(import.meta.env.BASE_URL.length)
   : window.location.pathname.replace(/^\//, '')
 const isPaViewer = /^pa-viewer\/?$/.test(relativePath)
+const searchParams = new URLSearchParams(window.location.search)
+const bypassLanding = searchParams.has('room') || searchParams.get('mode') === 'screen'
 if (isPaViewer) {
   document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', `${import.meta.env.BASE_URL}pa-viewer.webmanifest`)
 }
@@ -55,7 +57,7 @@ createRoot(document.getElementById('root')!).render(
           <PublicPamphletRoot circleId={publicCircleId} />
         </Suspense>
       ) : (
-        <App />
+        <AppEntry bypassLanding={bypassLanding} />
       )}
     </ErrorBoundary>
     <PwaStatus />
