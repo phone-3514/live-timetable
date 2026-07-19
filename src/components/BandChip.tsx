@@ -57,7 +57,7 @@ export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSel
       // switches to touch-pan-y once the layout itself switches to a
       // vertical sidebar list.
       className={`flex min-h-11 w-32 shrink-0 touch-pan-x select-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink lg:touch-pan-y [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
-        isDragging ? "relative z-50 scale-105 opacity-50" : ""
+        isDragging ? "relative z-50 scale-105 opacity-60" : ""
       } ${
         selected
           ? "border-indigo-400 bg-indigo-950/50"

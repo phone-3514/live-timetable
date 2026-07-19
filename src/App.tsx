@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -31,8 +31,7 @@ import { PwaStatus } from "./components/PwaStatus";
 import { AccessibilitySettings } from "./components/AccessibilitySettings";
 import { useSyncAccessibility } from "./hooks/useSyncAccessibility";
 import type { Band, TimetableSlot } from "./types";
-import { previewSlotReorder, type ScheduleChangePreview } from "./utils/scheduleChangePreview";
-import { ChangePreviewModal } from "./components/ChangePreviewModal";
+import { MoveUndoToast } from "./components/MoveUndoToast";
 
 // CollabRoot pulls in the firebase SDK (~150kB gzipped) — same reasoning
 // as the jsPDF/exceljs/html2canvas dynamic imports elsewhere in this
@@ -64,7 +63,8 @@ function App() {
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
     null,
   );
-  const [pendingReorder, setPendingReorder] = useState<{ activeId: string; overId: string; preview: ScheduleChangePreview } | null>(null);
+  const [moveNotice, setMoveNotice] = useState<{ id: number; message: string } | null>(null);
+  const closeMoveNotice = useCallback(() => setMoveNotice(null), []);
   const eventInfoDetailsRef = useDismissibleDetails();
 
   useSyncThemeAttribute();
@@ -171,11 +171,21 @@ function App() {
 
     if (activeId.startsWith("band:")) {
       const bandId = activeId.replace("band:", "");
+      const movedBand = bands.find((band) => band.id === bandId);
+      const actor = useCollabStore.getState().myNickname ?? "この端末";
+      const notifyMove = () => setMoveNotice({
+        id: Date.now(),
+        message: movedBand ? `「${movedBand.name}」を移動しました` : "バンドを移動しました",
+      });
       if (overId === "unplaced") {
         const slot = days
           .flatMap((d) => d.slots)
           .find((s) => s.bandId === bandId);
-        if (slot) unassignSlot(slot.id);
+        if (slot) {
+          setNextHistoryAction("バンドを未配置へ移動", actor);
+          unassignSlot(slot.id);
+          notifyMove();
+        }
         return;
       }
 
@@ -200,8 +210,9 @@ function App() {
       const targetDay = days.find((d) => d.slots.some((s) => s.id === overId));
       if (originSlot && targetDay && originDay?.id === targetDay.id) {
         if (originSlot.id !== overId) {
-          const preview = previewSlotReorder(originDay, bands, originSlot.id, overId);
-          if (preview) setPendingReorder({ activeId: originSlot.id, overId, preview });
+          setNextHistoryAction("出演順を変更", actor);
+          reorderSlots(originSlot.id, overId);
+          notifyMove();
         }
         return;
       }
@@ -211,19 +222,29 @@ function App() {
       // there's no single array to permute across that boundary) —
       // unchanged "magnetic" insert/assign behavior.
       const overSlot = days.flatMap((d) => d.slots).find((s) => s.id === overId);
-      if (overSlot?.bandId && overSlot.bandId !== bandId) {
+      if (!overSlot) return;
+      setNextHistoryAction(originSlot ? "バンドを別日へ移動" : "バンドを配置", actor);
+      if (overSlot.bandId && overSlot.bandId !== bandId) {
         insertBandAtSlot(bandId, overId);
       } else {
         assignBandToSlot(bandId, overId);
       }
+      notifyMove();
       return;
     }
 
     // Otherwise the drag is a slot reorder: activeId/overId are bare slot ids.
     if (activeId !== overId) {
       const day = days.find((candidate) => candidate.slots.some((slot) => slot.id === activeId));
-      const preview = day ? previewSlotReorder(day, bands, activeId, overId) : null;
-      if (preview) setPendingReorder({ activeId, overId, preview });
+      const targetIsSameDay = day?.slots.some((slot) => slot.id === overId);
+      if (day && targetIsSameDay) {
+        const draggedSlot = day.slots.find((slot) => slot.id === activeId);
+        const draggedBand = bands.find((band) => band.id === draggedSlot?.bandId);
+        const label = draggedBand?.name ?? draggedSlot?.customLabel ?? "行";
+        setNextHistoryAction("出演順を変更", useCollabStore.getState().myNickname ?? "この端末");
+        reorderSlots(activeId, overId);
+        setMoveNotice({ id: Date.now(), message: `「${label}」を移動しました` });
+      }
     }
   };
 
@@ -358,19 +379,8 @@ function App() {
         )}
         <DeleteUndoToast />
         <Toast />
+        <MoveUndoToast notice={moveNotice} onClose={closeMoveNotice} />
         <PwaStatus />
-        {pendingReorder && (
-          <ChangePreviewModal
-            preview={pendingReorder.preview}
-            title="出演順を変更"
-            onClose={() => setPendingReorder(null)}
-            onConfirm={() => {
-              setNextHistoryAction("出演順を変更", useCollabStore.getState().myNickname ?? "この端末");
-              reorderSlots(pendingReorder.activeId, pendingReorder.overId);
-              setPendingReorder(null);
-            }}
-          />
-        )}
       </div>
       <DragOverlay>
         {activeDragData?.type === "band" && (

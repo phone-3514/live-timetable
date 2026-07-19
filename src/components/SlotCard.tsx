@@ -183,7 +183,7 @@ export function SlotCard({
       // regardless of an ancestor's user-select/touch-callout, both are
       // scoped to non-editable content and links.
       className={`relative flex touch-pan-y select-none items-stretch gap-1.5 rounded-lg border p-1.5 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
-        isDragging ? "scale-[1.03] opacity-40" : ""
+        isDragging ? "scale-[1.04] opacity-60" : ""
       } ${
         showBlockedHighlight
           ? "border-rose-500 bg-rose-950/40"
