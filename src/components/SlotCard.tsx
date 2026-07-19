@@ -155,7 +155,20 @@ export function SlotCard({
       // separate "moved to empty space" handling needed.
       onMouseEnter={() => useCollabStore.getState().setMyHoveredElementId(slot.id)}
       onMouseLeave={() => useCollabStore.getState().setMyHoveredElementId(null)}
-      className={`relative flex items-stretch gap-1.5 rounded-lg border p-1.5 transition-transform ${
+      // select-none/-webkit-touch-callout/-webkit-user-drag set once here
+      // cascade to every child (all three are inherited properties, and
+      // touch-action's "effective" value is the intersection of an
+      // element's own value with its ancestors' per the CSS Touch Events
+      // spec) — no need to repeat these on the ⠿ handle or the
+      // band-content div individually. touch-pan-y (not touch-action:
+      // none) is deliberate: this row still needs to be scrollable by a
+      // vertical swipe that doesn't hold long enough to activate the
+      // TouchSensor's 500ms delay — see App.tsx's sensors comment. None
+      // of this affects the desktop custom-slot <input> nested inside:
+      // browsers keep native text-field editing/selection working
+      // regardless of an ancestor's user-select/touch-callout, both are
+      // scoped to non-editable content and links.
+      className={`relative flex touch-pan-y select-none items-stretch gap-1.5 rounded-lg border p-1.5 transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
         showBlockedHighlight

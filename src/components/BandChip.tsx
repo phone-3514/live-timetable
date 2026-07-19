@@ -49,7 +49,14 @@ export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSel
       // Fixed width + shrink-0 below lg (a horizontal-scroll strip needs
       // each chip to keep its own width instead of collapsing to fit);
       // lg+ switches to a full-width row in the narrow vertical sidebar.
-      className={`flex min-h-11 w-32 shrink-0 cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink ${
+      // select-none/-webkit-touch-callout/-webkit-user-drag suppress iOS
+      // Safari's long-press text-selection/callout on this chip's own
+      // text (band name etc.) — see SlotCard.tsx's identical comment for
+      // why one declaration here covers every child. touch-pan-x matches
+      // this strip's actual scroll axis below lg (horizontal); lg+
+      // switches to touch-pan-y once the layout itself switches to a
+      // vertical sidebar list.
+      className={`flex min-h-11 w-32 shrink-0 touch-pan-x select-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink lg:touch-pan-y [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "relative z-50 scale-105 opacity-50" : ""
       } ${
         selected

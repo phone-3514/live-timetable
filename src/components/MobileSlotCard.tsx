@@ -111,7 +111,15 @@ export function MobileSlotCard({
     <div
       ref={setNodeRef}
       style={rowStyle}
-      className={`flex w-full min-w-0 items-center gap-1 rounded-md border p-1 transition-transform ${
+      // See SlotCard.tsx's identical comment: select-none/
+      // -webkit-touch-callout/-webkit-user-drag inherit down to every
+      // child from here, and touch-action's effective value is the
+      // intersection with ancestors — no need to repeat these on the ⠿
+      // handle or the band-content/custom-content divs. touch-pan-y (not
+      // touch-action: none) keeps this row scrollable by a normal swipe
+      // that doesn't hold long enough to activate the 500ms TouchSensor
+      // delay.
+      className={`flex w-full min-w-0 touch-pan-y select-none items-center gap-1 rounded-md border p-1 transition-transform [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "scale-[1.03] opacity-40" : ""
       } ${
         showBlockedHighlight
