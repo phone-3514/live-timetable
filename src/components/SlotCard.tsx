@@ -71,6 +71,20 @@ export function SlotCard({
   const hasFullConcentration = concentrationEntries.some((c) => c.level === "full");
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // Custom-slot (休憩/リハーサル/etc.) label editing — a click-to-edit
+  // toggle, NOT an always-live <input>. A mousedown that lands directly
+  // on a native <input> is captured by the browser's own default
+  // behavior (focus + text-cursor placement) before dnd-kit's MouseSensor
+  // ever gets a chance to see it as the start of a drag — confirmed
+  // directly (a real Playwright mouse-drag from the input selected text
+  // instead of reordering the row). A band row never had this problem
+  // because a band's name is plain text, never an editable field, so
+  // clicking anywhere on it always drags. Defaulting to plain draggable
+  // text here (switching to the input only once explicitly clicked into)
+  // gives custom slots the same "click anywhere on the row to drag"
+  // parity band rows already had, matching MobileCustomSlotModal's
+  // identical reasoning for the same bug on the mobile side.
+  const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
@@ -238,13 +252,41 @@ export function SlotCard({
 
       {isCustom ? (
         <div className="flex flex-1 items-center gap-1.5 rounded-md border border-amber-600 bg-amber-900/40 px-1.5 py-1">
-          <input
-            className="flex-1 bg-transparent text-sm font-semibold text-amber-300 outline-none"
-            value={slot.customLabel ?? ""}
-            onChange={(e) =>
-              updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
-            }
-          />
+          {isEditingLabel ? (
+            <input
+              autoFocus
+              className="flex-1 bg-transparent text-sm font-semibold text-amber-300 outline-none"
+              value={slot.customLabel ?? ""}
+              onChange={(e) =>
+                updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
+              }
+              onBlur={() => setIsEditingLabel(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+              }}
+            />
+          ) : (
+            <div
+              // Same activator session as the ⠿ handle (spread from this
+              // row's own useSortable above) — this is what gives a
+              // custom slot the "click anywhere on the row to drag"
+              // parity a band row already has. Click (not drag) opens
+              // the input above instead; distinguishing the two needs no
+              // special-casing here — dnd-kit's own MouseSensor already
+              // only activates a drag past an 8px movement threshold
+              // (see App.tsx's sensors config), so a plain click-with-no-
+              // movement always reaches onClick normally.
+              {...listeners}
+              {...attributes}
+              onClick={() => setIsEditingLabel(true)}
+              title="クリックして名前を編集"
+              className={`min-h-11 flex-1 select-none truncate text-sm font-semibold text-amber-300 [-webkit-touch-callout:none] [-webkit-user-drag:none] md:min-h-0 ${
+                lockedByNickname ? "cursor-not-allowed opacity-70" : "cursor-grab active:cursor-grabbing"
+              }`}
+            >
+              {slot.customLabel || "（名称未設定）"}
+            </div>
+          )}
           {/* +/- stepper buttons instead of relying on the number input's
               tiny native spin arrows — easier to tap, and the input itself
               gets a visible border/background so it reads as editable
