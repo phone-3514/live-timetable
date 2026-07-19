@@ -43,6 +43,11 @@ jobs:
           # (see PasswordGate.tsx). Leave the secret unset to deploy with
           # no gate at all — collaboration then works exactly as before.
           VITE_ROOM_PASSWORD: ${{ secrets.VITE_ROOM_PASSWORD }}
+          # Optional admin-mode master password (see adminAuth.ts for the
+          # "this is UI-only, not real access control" caveat). Leave
+          # unset to deploy with admin mode disabled entirely — nobody
+          # ever sees a kick button.
+          VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

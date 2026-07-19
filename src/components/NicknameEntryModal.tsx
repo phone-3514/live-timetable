@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { storeNickname } from "../utils/nickname";
+import { storeAdminAuthFlag } from "../utils/adminAuth";
 
 interface Props {
-  onSubmit: (nickname: string) => void;
+  onSubmit: (nickname: string, isAdmin: boolean) => void;
 }
 
 // Shown once per browser tab (sessionStorage, not localStorage — a
@@ -13,12 +14,20 @@ interface Props {
 // this when a roomId is active and no nickname is stored yet.
 export function NicknameEntryModal({ onSubmit }: Props) {
   const [nickname, setNickname] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = nickname.trim() || "ゲスト";
+    // Same optional, no-error-on-mismatch admin check as PasswordGate.tsx
+    // — see that file's comment for why (a typo here shouldn't block
+    // joining as a normal participant), and adminAuth.ts for the
+    // same-caveat-as-the-room-password disclosure.
+    const configuredAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+    const isAdmin = Boolean(configuredAdminPassword) && adminPassword === configuredAdminPassword;
     storeNickname(trimmed);
-    onSubmit(trimmed);
+    if (isAdmin) storeAdminAuthFlag();
+    onSubmit(trimmed, isAdmin);
   }
 
   return (
@@ -43,6 +52,18 @@ export function NicknameEntryModal({ onSubmit }: Props) {
           autoFocus
           maxLength={20}
           className="mt-3 min-h-11 w-full rounded border border-indigo-500 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+        />
+        <label className="mt-3 block text-xs font-medium text-slate-400" htmlFor="nickname-entry-admin-password">
+          管理者パスワード（任意）
+        </label>
+        <input
+          id="nickname-entry-admin-password"
+          type="password"
+          value={adminPassword}
+          onChange={(e) => setAdminPassword(e.target.value)}
+          placeholder="管理者のみ入力してください"
+          aria-label="管理者パスワード"
+          className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
         />
         <div className="mt-4 flex justify-end">
           <button

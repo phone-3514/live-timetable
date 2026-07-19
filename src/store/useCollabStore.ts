@@ -57,12 +57,27 @@ type CollabState = {
    * useLivePresence hook is the only thing that reads it and pushes it
    * to RTDB. */
   myHoveredElementId: string | null;
+  /** Whether THIS tab authenticated as admin (see adminAuth.ts) — read by
+   * CollabControls to decide whether to render kick buttons at all, and
+   * by useLivePresence to decide whether it's even worth attempting the
+   * (unenforceable at the database level — see kickUser's own comment)
+   * forceKick write. */
+  isAdmin: boolean;
+  /** Set by useLivePresence the moment it sees `forceKick: true` on THIS
+   * client's own presence node. CollabRoot watches this and reacts (wipe
+   * state, leave the room, clear session flags) — kept as a plain flag
+   * here rather than useLivePresence acting directly, so the actual
+   * "what does being kicked DO" policy lives in one place (CollabRoot)
+   * instead of being embedded in the Firebase-touching hook. */
+  kicked: boolean;
 
   setRoomState: (roomId: string | null, status: CollabStatus) => void;
   setNickname: (nickname: string | null) => void;
   setOthers: (others: PresenceEntry[]) => void;
   setMyDragState: (state: DragState) => void;
   setMyHoveredElementId: (id: string | null) => void;
+  setIsAdmin: (isAdmin: boolean) => void;
+  setKicked: (kicked: boolean) => void;
 };
 
 // Shared, no-Firebase-dependency slice of collaboration state — see the
@@ -78,12 +93,16 @@ export const useCollabStore = create<CollabState>((set) => ({
   others: [],
   myDragState: { isDragging: false, draggedBandId: null },
   myHoveredElementId: null,
+  isAdmin: false,
+  kicked: false,
 
   setRoomState: (roomId, status) => set({ roomId, status }),
   setNickname: (myNickname) => set({ myNickname }),
   setOthers: (others) => set({ others }),
   setMyDragState: (myDragState) => set({ myDragState }),
   setMyHoveredElementId: (myHoveredElementId) => set({ myHoveredElementId }),
+  setIsAdmin: (isAdmin) => set({ isAdmin }),
+  setKicked: (kicked) => set({ kicked }),
 }));
 
 /** Nickname of whichever OTHER collaborator is currently dragging this

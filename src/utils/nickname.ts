@@ -27,3 +27,16 @@ export function storeNickname(nickname: string) {
     console.error("[nickname] sessionStorage write failed (nickname will not persist across reload)", err);
   }
 }
+
+// Used when a client is force-kicked from a room (see CollabRoot.tsx) —
+// clearing this alongside the room/admin auth flags is what makes
+// rejoining any room (this one or a different one) ask fresh for a
+// nickname again, rather than silently reusing the identity that was
+// just removed.
+export function clearStoredNickname() {
+  try {
+    sessionStorage.removeItem(NICKNAME_STORAGE_KEY);
+  } catch (err) {
+    console.error("[nickname] sessionStorage clear failed", err);
+  }
+}

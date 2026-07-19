@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { storeNickname } from "../utils/nickname";
 import { storeRoomAuthFlag } from "../utils/roomAuth";
+import { storeAdminAuthFlag } from "../utils/adminAuth";
 
 interface Props {
-  onSuccess: (nickname: string) => void;
+  onSuccess: (nickname: string, isAdmin: boolean) => void;
   /** "Never mind" — clears the pending room (see CollabRoot, which wires
    * this to leaveRoom()) and returns to the plain "共同編集を開始" button
    * instead of leaving the user stuck on a gate they can't/won't pass. */
@@ -22,6 +23,7 @@ interface Props {
 export function PasswordGate({ onSuccess, onCancel }: Props) {
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -31,10 +33,20 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
       setError("パスワードが正しくありません");
       return;
     }
+    // Admin password is entirely optional — an empty VITE_ADMIN_PASSWORD
+    // (the default, unset) means admin mode is simply never reachable,
+    // same "missing env var doesn't break/change existing behavior"
+    // pattern as VITE_ROOM_PASSWORD itself. A non-empty field that
+    // doesn't match is NOT treated as an error here (unlike the room
+    // password) — someone who mistypes it should just join as a normal
+    // participant, not get stuck unable to enter the room at all.
+    const configuredAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+    const isAdmin = Boolean(configuredAdminPassword) && adminPassword === configuredAdminPassword;
     const trimmedNickname = nickname.trim() || "ゲスト";
     storeRoomAuthFlag();
     storeNickname(trimmedNickname);
-    onSuccess(trimmedNickname);
+    if (isAdmin) storeAdminAuthFlag();
+    onSuccess(trimmedNickname, isAdmin);
   }
 
   return (
@@ -91,6 +103,22 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
           className="mt-1 min-h-11 w-full rounded border border-indigo-500 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-100 outline-none md:min-h-0"
         />
         {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+
+        <label className="mt-3 block text-xs font-medium text-slate-400" htmlFor="password-gate-admin-password">
+          管理者パスワード（任意）
+        </label>
+        <input
+          id="password-gate-admin-password"
+          type="password"
+          value={adminPassword}
+          onChange={(e) => setAdminPassword(e.target.value)}
+          placeholder="管理者のみ入力してください"
+          aria-label="管理者パスワード"
+          className="mt-1 min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+        />
+        <p className="mt-1.5 rounded border border-amber-700 bg-amber-950/30 px-2.5 py-1.5 text-[11px] text-amber-300">
+          ⚠️ 合言葉と同様、これも技術的なアクセス制御ではありません。管理者モードは他の参加者を退出させる操作ができるようになりますが、devtoolsを使えば誰でもこの制限を回避できます。
+        </p>
 
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
           <button

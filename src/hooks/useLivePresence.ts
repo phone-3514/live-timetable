@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { onDisconnect, onValue, ref, remove, serverTimestamp, update } from "firebase/database";
 import { rtdb } from "../firebase";
 import { useCollabStore, type PresenceEntry } from "../store/useCollabStore";
@@ -26,6 +26,7 @@ type RawPresenceValue = {
   isDragging?: boolean;
   draggedBandId?: string | null;
   hoveredElementId?: string | null;
+  forceKick?: boolean;
 };
 
 /**
@@ -103,6 +104,16 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
           hoveredElementId: v.hoveredElementId ?? null,
         }));
       useCollabStore.getState().setOthers(others);
+
+      // The snapshot for the WHOLE room already includes this client's
+      // own node (filtered out above only when building `others`) — no
+      // separate listener on `myRef` is needed just to notice an admin
+      // set `forceKick` there. CollabRoot owns what actually happens in
+      // response (see useCollabStore.ts's `kicked` flag comment); this
+      // hook's only job is detecting it.
+      if (val[clientIdRef.current]?.forceKick) {
+        useCollabStore.getState().setKicked(true);
+      }
     });
 
     function handleMouseMove(e: MouseEvent) {
@@ -178,4 +189,29 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
     // re-runs this effect, so cursor broadcasting starts/stops live
     // rather than being fixed for the tab's whole lifetime.
   }, [roomId, nickname, isMobile]);
+
+  // Sets `forceKick: true` on a specific OTHER client's own presence
+  // node — that client's own useLivePresence instance is what notices it
+  // (see the onValue callback above) and reacts. IMPORTANT: this is a
+  // UI-level admin action only, not enforced access control —
+  // database.rules.json's `presence/{roomId}/{clientId}` node allows
+  // `.write: true` from any client (there's no Firebase Auth in this app
+  // to check "is the writer actually an admin" against), so this
+  // function itself could be called by anyone who opens devtools and
+  // reads the room's RTDB path directly, admin password or not. Gating
+  // this behind CollabControls only ever rendering the kick button for
+  // an authenticated admin tab is a courtesy UI affordance, the same
+  // caveat the room password gate already discloses for itself.
+  const kickUser = useCallback(
+    (targetClientId: string) => {
+      if (!roomId || !rtdb) return;
+      void update(ref(rtdb, `presence/${roomId}/${targetClientId}`), {
+        forceKick: true,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    [roomId],
+  );
+
+  return { kickUser };
 }

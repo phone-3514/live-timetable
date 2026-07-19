@@ -3,12 +3,15 @@ import { useCollabRoom } from "../hooks/useCollabRoom";
 import { useLivePresence } from "../hooks/useLivePresence";
 import { useCollabStore } from "../store/useCollabStore";
 import { useIsMobile } from "../hooks/useViewport";
+import { useToastStore } from "../store/useToastStore";
 import { CollabControls } from "./CollabControls";
 import { LiveCursors } from "./LiveCursors";
 import { NicknameEntryModal } from "./NicknameEntryModal";
 import { PasswordGate } from "./PasswordGate";
-import { readStoredNickname } from "../utils/nickname";
-import { readRoomAuthFlag } from "../utils/roomAuth";
+import { readStoredNickname, clearStoredNickname } from "../utils/nickname";
+import { readRoomAuthFlag, clearRoomAuthFlag } from "../utils/roomAuth";
+import { readAdminAuthFlag, clearAdminAuthFlag } from "../utils/adminAuth";
+import { saveKickedBackupAndWipe } from "../utils/backup";
 
 // The single lazy-loaded entry point for every part of the real-time
 // collaboration feature (Firestore room sync + RTDB presence/cursors) —
@@ -31,6 +34,10 @@ export function CollabRoot() {
 
   const { roomId, status, startRoom, leaveRoom } = useCollabRoom(isAuthenticated);
   const [nickname, setNickname] = useState<string | null>(() => readStoredNickname());
+  // Same sessionStorage-flag pattern as passwordVerified above — see
+  // adminAuth.ts for the security caveat (this is a UI-only courtesy
+  // gate, not enforced access control).
+  const [isAdmin, setIsAdminState] = useState(() => readAdminAuthFlag());
   // Own viewport, not any other collaborator's — a floating cursor
   // reproduces a POSITION on the sender's screen, which has no meaning on
   // a layout shaped completely differently (mobile's accordion list vs.
@@ -43,13 +50,50 @@ export function CollabRoot() {
     useCollabStore.getState().setNickname(isAuthenticated ? nickname : null);
   }, [nickname, roomId, isAuthenticated]);
 
+  useEffect(() => {
+    useCollabStore.getState().setIsAdmin(isAuthenticated ? isAdmin : false);
+  }, [isAdmin, isAuthenticated]);
+
   // Withholding the nickname (rather than roomId) while ungated is what
   // keeps useLivePresence's own internal guard (`!roomId || !nickname ||
   // !rtdb`) from ever connecting to RTDB before the password succeeds —
   // roomId itself is allowed to be set the moment "共同編集を開始" is
   // clicked (see startRoom below), same reasoning as useCollabRoom's own
   // `path` gate.
-  useLivePresence(roomId, isAuthenticated ? nickname : null);
+  const { kickUser } = useLivePresence(roomId, isAuthenticated ? nickname : null);
+
+  // Subscribed reactively (not read via .getState() inside the effect
+  // below) specifically so this effect's dependency array actually fires
+  // the instant useLivePresence flips the flag, rather than only
+  // happening to run on whatever render occurs next for some unrelated
+  // reason.
+  const kicked = useCollabStore((s) => s.kicked);
+
+  // Reacts to useLivePresence noticing `forceKick: true` on this exact
+  // client's own presence node (see useCollabStore.ts's `kicked` flag
+  // comment for why the detection and the reaction live in different
+  // files). Runs once per kick: back up + wipe the local app state,
+  // leave the room, and clear every session flag (nickname, room auth,
+  // admin auth) so rejoining ANY room — this one or a different one —
+  // starts completely fresh rather than silently reusing the identity
+  // that was just removed. The `kicked` flag itself is reset at the end
+  // so this effect doesn't re-fire until the NEXT kick.
+  useEffect(() => {
+    if (!kicked) return;
+    console.log("[CollabRoot] Kicked by an admin — wiping state and returning to the entry form");
+    saveKickedBackupAndWipe();
+    leaveRoom();
+    clearStoredNickname();
+    clearRoomAuthFlag();
+    clearAdminAuthFlag();
+    setNickname(null);
+    setPasswordVerified(false);
+    setIsAdminState(false);
+    useCollabStore.getState().setKicked(false);
+    useToastStore
+      .getState()
+      .show("管理者によってルームから退出させられました。作業内容はバックアップファイルとして保存されています", "info");
+  }, [kicked, leaveRoom]);
 
   // roomId becomes non-null the instant a room is requested — either
   // ?room=<id> was already in the URL on load, or startRoom() below just
@@ -61,9 +105,10 @@ export function CollabRoot() {
   if (needsPasswordGate) {
     return (
       <PasswordGate
-        onSuccess={(enteredNickname) => {
+        onSuccess={(enteredNickname, enteredIsAdmin) => {
           setPasswordVerified(true);
           setNickname(enteredNickname);
+          setIsAdminState(enteredIsAdmin);
         }}
         onCancel={leaveRoom}
       />
@@ -77,8 +122,21 @@ export function CollabRoot() {
 
   return (
     <>
-      <CollabControls roomId={roomId} status={status} startRoom={startRoom} leaveRoom={leaveRoom} />
-      {needsNickname && <NicknameEntryModal onSubmit={setNickname} />}
+      <CollabControls
+        roomId={roomId}
+        status={status}
+        startRoom={startRoom}
+        leaveRoom={leaveRoom}
+        kickUser={kickUser}
+      />
+      {needsNickname && (
+        <NicknameEntryModal
+          onSubmit={(enteredNickname, enteredIsAdmin) => {
+            setNickname(enteredNickname);
+            setIsAdminState(enteredIsAdmin);
+          }}
+        />
+      )}
       {roomId && nickname && !isMobile && <LiveCursors />}
     </>
   );

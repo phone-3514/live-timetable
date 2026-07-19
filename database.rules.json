@@ -7,7 +7,7 @@
         ".read": true,
         "$clientId": {
           ".write": true,
-          ".validate": "newData.hasChildren(['nickname', 'isDragging']) && newData.child('nickname').isString() && newData.child('nickname').val().length < 50"
+          ".validate": "newData.hasChildren(['nickname', 'isDragging']) && newData.child('nickname').isString() && newData.child('nickname').val().length < 50 && (!newData.hasChild('forceKick') || newData.child('forceKick').isBoolean())"
         }
       }
     }
