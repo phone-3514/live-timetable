@@ -7,6 +7,7 @@ import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppSto
 import { useHoveringUsers, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
+import { MobileCustomSlotModal } from "./MobileCustomSlotModal";
 
 type Props = {
   dayId: string;
@@ -61,8 +62,8 @@ export function MobileSlotCard({
   ].join("、");
 
   const [showDetails, setShowDetails] = useState(false);
+  const [showCustomEdit, setShowCustomEdit] = useState(false);
   const removeSlot = useAppStore((s) => s.removeSlot);
-  const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
   const bands = useAppStore((s) => s.bands);
   const venueHours = useAppStore((s) => s.venueHours);
@@ -145,14 +146,27 @@ export function MobileSlotCard({
       <span className="w-9 shrink-0 font-mono text-[10px] text-slate-400">{slot.startTime}</span>
 
       {isCustom ? (
-        <>
-          <input
-            value={slot.customLabel ?? ""}
-            onChange={(e) => updateSlotContent(dayId, slot.id, { customLabel: e.target.value })}
-            className="min-w-0 flex-1 truncate bg-transparent text-xs font-semibold text-amber-300 outline-none"
-          />
+        <div
+          {...listeners}
+          {...attributes}
+          onClick={() => setShowCustomEdit(true)}
+          // select-none (+ the same drag `listeners`/`attributes` the ⠿
+          // handle uses) is what fixes the actual reported bug: this used
+          // to be a live `<input>`, and long-pressing a text input is
+          // captured by the browser's native text-selection/caret UI
+          // before dnd-kit's TouchSensor delay ever gets to decide
+          // "that's a drag." A plain non-editable, non-selectable div
+          // sharing the row's own drag session behaves exactly like a
+          // band card's content area: a quick tap opens the edit modal
+          // below (dnd-kit never activated, so the click fires normally),
+          // a held long-press drags the whole slot.
+          className="flex min-w-0 flex-1 cursor-grab select-none items-center gap-1.5 active:cursor-grabbing"
+        >
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-amber-300">
+            {slot.customLabel}
+          </span>
           <span className="shrink-0 text-[10px] text-amber-500">{slot.customDurationMinutes ?? 0}分</span>
-        </>
+        </div>
       ) : band ? (
         <div
           ref={bandDraggable.setNodeRef}
@@ -199,6 +213,14 @@ export function MobileSlotCard({
       )}
 
       {band && (
+        // The actual clickable box is a full 44x44px (accessibility
+        // minimum) via `h-11 w-11`, but `-m-1.5` (-6px each side) pulls
+        // that box back in by exactly the amount it grew, so its
+        // contribution to the row's flex layout stays the original
+        // 32x32 footprint — the invisible hit area overlaps its
+        // neighbors instead of pushing them and widening the row. Only
+        // the small inner span is actually painted, so visually nothing
+        // about the condensed layout changes.
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
@@ -206,10 +228,12 @@ export function MobileSlotCard({
             e.stopPropagation();
             setShowDetails(true);
           }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm text-slate-400 active:bg-slate-700"
+          className="relative -m-1.5 flex h-11 w-11 shrink-0 items-center justify-center"
           title="詳細を表示"
         >
-          ℹ️
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-sm font-bold leading-none text-slate-300 active:bg-slate-600">
+            ›
+          </span>
         </button>
       )}
       <button
@@ -221,6 +245,9 @@ export function MobileSlotCard({
       </button>
       {band && showDetails && (
         <PlacedBandDetailModal band={band} slot={slot} onClose={() => setShowDetails(false)} />
+      )}
+      {isCustom && showCustomEdit && (
+        <MobileCustomSlotModal dayId={dayId} slot={slot} onClose={() => setShowCustomEdit(false)} />
       )}
     </div>
   );
