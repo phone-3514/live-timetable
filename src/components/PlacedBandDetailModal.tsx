@@ -6,7 +6,8 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { splitSetlistEntry } from "../utils/parseApplications";
 import { Badge } from "./applications/Badge";
 import { ModalPortal } from "./ModalPortal";
-import type { Band, BandMemberDetail, TimetableSlot } from "../types";
+import type { Band, BandMemberDetail, BandPaSheetLink, TimetableSlot } from "../types";
+import { isGoogleWorkspaceUrl } from "../pa/types";
 
 interface Props {
   band: Band;
@@ -58,6 +59,10 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const [editMembers, setEditMembers] = useState<BandMemberDetail[]>([]);
   const [editSetlist, setEditSetlist] = useState("");
   const [editHasSync, setEditHasSync] = useState(band.hasSync);
+  const [editPaSheetLinks, setEditPaSheetLinks] = useState<BandPaSheetLink[]>([]);
+  const hasInvalidPaSheetLink = editPaSheetLinks.some(
+    (link) => Boolean(link.url.trim()) && !isGoogleWorkspaceUrl(link.url),
+  );
 
   // Escape cancels an in-progress edit first (same as clicking
   // "キャンセル"), rather than immediately closing the whole modal out from
@@ -88,7 +93,21 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     // rather than band.memberDetails.
     setEditSetlist(setlist.join("\n"));
     setEditHasSync(band.hasSync);
+    setEditPaSheetLinks((band.paSheetLinks ?? []).map((link) => ({ ...link })));
     setIsEditing(true);
+  }
+
+  function updatePaSheetLink(index: number, patch: Partial<BandPaSheetLink>) {
+    setEditPaSheetLinks((prev) =>
+      prev.map((link, i) => (i === index ? { ...link, ...patch } : link)),
+    );
+  }
+
+  function addPaSheetLink() {
+    setEditPaSheetLinks((prev) => [
+      ...prev,
+      { label: `PAシート${prev.length + 1}`, url: "" },
+    ]);
   }
 
   function updateEditMember(index: number, patch: Partial<BandMemberDetail>) {
@@ -127,6 +146,13 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
+    const cleanedPaSheetLinks = editPaSheetLinks
+      .map((link, index) => ({
+        label: link.label.trim() || `PAシート${index + 1}`,
+        url: link.url.trim(),
+      }))
+      .filter((link) => link.url.length > 0);
+    if (cleanedPaSheetLinks.some((link) => !isGoogleWorkspaceUrl(link.url))) return false;
     // Slot start/end times aren't stored on the Band itself — they're
     // recomputed from cumulative durations down the day whenever any band's
     // durationMinutes changes (see recomputeTimes in useAppStore), so
@@ -147,6 +173,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       members: cleanedMembers.map((m) => m.name),
       setlist: cleanedSetlist,
       hasSync: editHasSync,
+      paSheetLinks: cleanedPaSheetLinks,
     });
     // Propagate to the Application Manager's own copy too, so it never
     // shows stale name/setlist/sync status/members after an edit made here
@@ -418,6 +445,78 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               )}
             </dd>
           </div>
+
+          <div>
+            <dt className="font-semibold text-slate-500">PA／ステージ資料</dt>
+            <dd className="mt-1">
+              {isEditing ? (
+                <div className="space-y-2">
+                  {editPaSheetLinks.map((link, index) => {
+                    const invalid = Boolean(link.url.trim()) && !isGoogleWorkspaceUrl(link.url);
+                    return (
+                      <div key={index} className="rounded-lg border border-slate-700 bg-slate-950/45 p-2">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <input
+                              value={link.label}
+                              onChange={(e) => updatePaSheetLink(index, { label: e.target.value })}
+                              placeholder={`PAシート${index + 1}`}
+                              aria-label={`PA資料${index + 1}のラベル`}
+                              className="min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-3 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500 md:min-h-9"
+                            />
+                            <input
+                              type="url"
+                              inputMode="url"
+                              value={link.url}
+                              onChange={(e) => updatePaSheetLink(index, { url: e.target.value })}
+                              placeholder="https://drive.google.com/..."
+                              aria-label={`PA資料${index + 1}のGoogle Drive URL`}
+                              aria-invalid={invalid}
+                              className={`min-h-11 w-full rounded border bg-slate-800 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-9 ${invalid ? "border-rose-500 focus:border-rose-400" : "border-slate-600 focus:border-blue-500"}`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEditPaSheetLinks((prev) => prev.filter((_, i) => i !== index))}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 text-lg text-slate-400 hover:border-rose-700 hover:bg-rose-950/60 hover:text-rose-300 md:h-9 md:w-9"
+                            title="このリンクを削除"
+                            aria-label={`${link.label || `PA資料${index + 1}`}を削除`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {invalid && <p className="mt-1.5 text-[11px] font-semibold text-rose-300" role="alert">Google DriveまたはGoogle Docsの共有URLを入力してください</p>}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={addPaSheetLink}
+                    className="min-h-11 w-full rounded-lg border border-dashed border-blue-500/70 bg-blue-950/30 px-3 text-sm font-bold text-blue-200 hover:bg-blue-900/50 md:min-h-9 md:text-xs"
+                  >
+                    ＋ リンクを追加
+                  </button>
+                  <p className="text-[11px] leading-5 text-slate-500">Main PA、Sub PA、照明、ステージ図など、用途が分かる名前を付けられます。</p>
+                </div>
+              ) : (band.paSheetLinks ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {(band.paSheetLinks ?? []).map((link, index) => (
+                    <a
+                      key={`${link.url}-${index}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-9 items-center rounded-lg border border-blue-700/70 bg-blue-950/40 px-3 font-semibold text-blue-200 hover:bg-blue-900/60"
+                    >
+                      {link.label || `PAシート${index + 1}`} ↗
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500">個別リンク未設定</p>
+              )}
+            </dd>
+          </div>
         </dl>
 
         <div className="mt-5 flex shrink-0 justify-end gap-2">
@@ -433,7 +532,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!editName.trim()}
+                disabled={!editName.trim() || hasInvalidPaSheetLink}
                 className="min-h-11 rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1.5 sm:text-xs"
               >
                 保存

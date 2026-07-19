@@ -65,6 +65,7 @@ function applicationToBand(app: Application): Band {
     hasSync: app.hasSync,
     hasKeyboard: detectHasKeyboard(app.raw),
     gearTags: [],
+    paSheetLinks: [],
     raw: app.raw,
   };
 }

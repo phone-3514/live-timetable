@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import type { Band, TimetableDay, TimetableSlot } from "../types";
+import type { Band, BandPaSheetLink, TimetableDay, TimetableSlot } from "../types";
 import type { StagePhase, StageProgress } from "../store/useProgressStore";
 import { normalizeBandName, type PaLinkConfig, type PaSheetLink } from "./types";
 
@@ -120,14 +120,48 @@ function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
   );
 }
 
-function SheetLinkViewer({ directLink, folderUrl, bandName }: {
+function SheetLinkViewer({ bandLinks, directLink, folderUrl, bandName }: {
+  bandLinks: BandPaSheetLink[];
   directLink: PaSheetLink | null;
   folderUrl: string;
   bandName: string;
 }) {
-  const targetUrl = directLink?.url || folderUrl;
-  if (!targetUrl) return <div className="grid h-full place-items-center px-6 text-center"><div className="max-w-sm"><p className="text-5xl" aria-hidden="true">📄</p><h2 className="mt-3 text-2xl font-black">シート未登録</h2><p className="mt-2 text-sm leading-6 text-slate-400"><strong className="text-slate-200">{bandName}</strong> に一致するGoogle Driveファイルがありません。管理者にPAフォルダの設定を依頼してください。</p></div></div>;
-  return <div className="grid h-full place-items-center px-5 text-center"><section className="w-full max-w-md rounded-3xl border border-blue-800/70 bg-gradient-to-b from-blue-950/60 to-slate-900 p-6 shadow-2xl"><p className="text-5xl" aria-hidden="true">{directLink ? "📊" : "📁"}</p><p className="mt-4 text-xs font-bold tracking-[0.16em] text-blue-300">{directLink ? "MATCHED PA SHEET" : "PA SHEET FOLDER"}</p><h2 className="mt-2 text-2xl font-black text-white">{bandName}</h2><p className="mt-2 truncate text-sm text-slate-400">{directLink?.fileName ?? "直接リンクなし・共通フォルダを開きます"}</p><a href={targetUrl} target="_blank" rel="noreferrer" className="mt-6 flex min-h-16 w-full items-center justify-center rounded-2xl bg-blue-600 px-5 text-lg font-black text-white shadow-xl shadow-blue-950/70 hover:bg-blue-500 active:bg-blue-700">{directLink ? "該当シートを開く" : "PAフォルダを開く"}<span className="ml-2">↗</span></a><p className="mt-3 text-xs leading-5 text-slate-500">Google Driveアプリがある端末では、そのままDrive／スプレッドシートで開きます。</p></section></div>;
+  const links = bandLinks
+    .map((link, index) => ({ label: link.label.trim() || `PAシート${index + 1}`, url: link.url.trim() }))
+    .filter((link) => link.url.length > 0);
+  if (directLink && !links.some((link) => link.url === directLink.url)) {
+    links.push({ label: directLink.fileName || "自動割り当てシート", url: directLink.url });
+  }
+  if (links.length === 0 && folderUrl) {
+    links.push({ label: "共通PAフォルダ", url: folderUrl });
+  }
+  if (links.length === 0) return <div className="grid h-full place-items-center px-6 text-center"><div className="max-w-sm"><p className="text-5xl" aria-hidden="true">📄</p><h2 className="mt-3 text-2xl font-black">シート未登録</h2><p className="mt-2 text-sm leading-6 text-slate-400"><strong className="text-slate-200">{bandName}</strong> のPA／ステージ資料はまだ登録されていません。</p></div></div>;
+  return (
+    <div className="h-full overflow-y-auto px-4 py-5 sm:px-6">
+      <section className="mx-auto w-full max-w-2xl rounded-3xl border border-blue-800/70 bg-gradient-to-b from-blue-950/60 to-slate-900 p-5 shadow-2xl sm:p-7">
+        <p className="text-xs font-bold tracking-[0.16em] text-blue-300">PA / STAGE DOCUMENTS</p>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <h2 className="min-w-0 truncate text-2xl font-black text-white">{bandName}</h2>
+          <span className="shrink-0 rounded-full bg-blue-500/15 px-2.5 py-1 text-xs font-black text-blue-200">{links.length}件</span>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {links.map((link, index) => (
+            <a
+              key={`${link.url}-${index}`}
+              href={link.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-16 items-center justify-between gap-3 rounded-2xl border border-blue-500/40 bg-blue-600 px-5 text-left text-base font-black text-white shadow-lg shadow-blue-950/60 transition-colors hover:bg-blue-500 active:bg-blue-700"
+            >
+              <span className="min-w-0 break-words">{link.label}</span>
+              <span className="shrink-0 text-xl" aria-hidden="true">↗</span>
+            </a>
+          ))}
+        </div>
+        <p className="mt-4 text-xs leading-5 text-slate-400">リンクは別タブで開きます。Google Driveアプリがある端末では、そのまま資料を表示できます。</p>
+      </section>
+    </div>
+  );
 }
 
 export function PaViewerRoot() {
@@ -297,7 +331,7 @@ export function PaViewerRoot() {
         {syncState === "connecting" && !room ? <div className="grid h-full min-h-[55vh] place-items-center text-slate-400">リアルタイム情報に接続中…</div>
           : syncState === "error" && !room ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-xl font-black">同期に接続できません</p><p className="mt-2 text-sm text-slate-400">通信状態とFirebase設定を確認してください。</p></div></div>
           : !selected ? <div className="grid h-full min-h-[55vh] place-items-center px-6 text-center"><div><p className="text-4xl">🎚️</p><h2 className="mt-3 text-xl font-black">出演バンドが未登録です</h2><p className="mt-2 text-sm text-slate-400">タイムテーブルにバンドを配置するとシートが表示されます。</p></div></div>
-          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">Driveリンク</span></div><div className="h-[calc(100%-2.5rem)]"><SheetLinkViewer directLink={matchingLink} folderUrl={room?.paConfig?.folderUrl ?? ""} bandName={selected.band.name} /></div></div>}
+          : <div className="h-full min-h-0"><div className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-900 px-3"><p className="truncate text-sm font-bold"><span className="mr-2 text-xs text-slate-500">表示中</span>{selected.band.name}</p><span className="shrink-0 text-[10px] font-semibold text-slate-500">Driveリンク</span></div><div className="h-[calc(100%-2.5rem)]"><SheetLinkViewer bandLinks={selected.band.paSheetLinks ?? []} directLink={matchingLink} folderUrl={room?.paConfig?.folderUrl ?? ""} bandName={selected.band.name} /></div></div>}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl" aria-label="PAシート手動切り替え">
