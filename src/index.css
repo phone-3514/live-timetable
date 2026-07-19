@@ -1,5 +1,136 @@
 @import "tailwindcss";
 
+/* Non-performance timetable rows are neutral tools in light mode, not
+   warnings. Keep the existing amber treatment in dark mode, while the
+   light theme uses a white/slate surface with a restrained sky accent. */
+:root {
+  --custom-slot-border: #e5e7eb;
+  --custom-slot-border-left-width: 4px;
+  --custom-slot-accent: #0ea5e9;
+  --custom-slot-bg: #ffffff;
+  --custom-slot-label: #0f172a;
+  --custom-slot-control-border: #cbd5e1;
+  --custom-slot-control-bg: #f8fafc;
+  --custom-slot-control-accent: #0369a1;
+  --custom-slot-control-hover: #e0f2fe;
+  --custom-slot-duration: #0f172a;
+  --custom-slot-muted: #475569;
+  --custom-slot-mobile-bg: #f8fafc;
+  --custom-slot-preset-border: #7dd3fc;
+  --custom-slot-preset-bg: #f0f9ff;
+  --custom-slot-preset-text: #0369a1;
+  --custom-slot-preset-hover: #e0f2fe;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --custom-slot-border: #d97706;
+    --custom-slot-border-left-width: 1px;
+    --custom-slot-accent: #d97706;
+    --custom-slot-bg: color-mix(in oklab, #78350f 40%, transparent);
+    --custom-slot-label: #fcd34d;
+    --custom-slot-control-border: color-mix(in oklab, #d97706 60%, transparent);
+    --custom-slot-control-bg: color-mix(in oklab, #451a03 50%, transparent);
+    --custom-slot-control-accent: #fcd34d;
+    --custom-slot-control-hover: color-mix(in oklab, #92400e 60%, transparent);
+    --custom-slot-duration: #fef3c7;
+    --custom-slot-muted: #f59e0b;
+    --custom-slot-mobile-bg: color-mix(in oklab, #451a03 20%, transparent);
+    --custom-slot-preset-border: #d97706;
+    --custom-slot-preset-bg: color-mix(in oklab, #78350f 40%, transparent);
+    --custom-slot-preset-text: #fcd34d;
+    --custom-slot-preset-hover: color-mix(in oklab, #92400e 50%, transparent);
+  }
+}
+
+:root[data-theme="dark"] {
+  --custom-slot-border: #d97706;
+  --custom-slot-border-left-width: 1px;
+  --custom-slot-accent: #d97706;
+  --custom-slot-bg: color-mix(in oklab, #78350f 40%, transparent);
+  --custom-slot-label: #fcd34d;
+  --custom-slot-control-border: color-mix(in oklab, #d97706 60%, transparent);
+  --custom-slot-control-bg: color-mix(in oklab, #451a03 50%, transparent);
+  --custom-slot-control-accent: #fcd34d;
+  --custom-slot-control-hover: color-mix(in oklab, #92400e 60%, transparent);
+  --custom-slot-duration: #fef3c7;
+  --custom-slot-muted: #f59e0b;
+  --custom-slot-mobile-bg: color-mix(in oklab, #451a03 20%, transparent);
+  --custom-slot-preset-border: #d97706;
+  --custom-slot-preset-bg: color-mix(in oklab, #78350f 40%, transparent);
+  --custom-slot-preset-text: #fcd34d;
+  --custom-slot-preset-hover: color-mix(in oklab, #92400e 50%, transparent);
+}
+
+:root[data-theme="light"] {
+  --custom-slot-border: #e5e7eb;
+  --custom-slot-border-left-width: 4px;
+  --custom-slot-accent: #0ea5e9;
+  --custom-slot-bg: #ffffff;
+  --custom-slot-label: #0f172a;
+  --custom-slot-control-border: #cbd5e1;
+  --custom-slot-control-bg: #f8fafc;
+  --custom-slot-control-accent: #0369a1;
+  --custom-slot-control-hover: #e0f2fe;
+  --custom-slot-duration: #0f172a;
+  --custom-slot-muted: #475569;
+  --custom-slot-mobile-bg: #f8fafc;
+  --custom-slot-preset-border: #7dd3fc;
+  --custom-slot-preset-bg: #f0f9ff;
+  --custom-slot-preset-text: #0369a1;
+  --custom-slot-preset-hover: #e0f2fe;
+}
+
+.custom-slot-card,
+.custom-slot-mobile-row {
+  border-color: var(--custom-slot-border);
+  border-left-width: var(--custom-slot-border-left-width);
+  border-left-color: var(--custom-slot-accent);
+}
+
+.custom-slot-card {
+  background-color: var(--custom-slot-bg);
+}
+
+.custom-slot-mobile-row {
+  background-color: var(--custom-slot-mobile-bg);
+}
+
+.custom-slot-label {
+  color: var(--custom-slot-label);
+}
+
+.custom-slot-control {
+  border-color: var(--custom-slot-control-border);
+  background-color: var(--custom-slot-control-bg);
+}
+
+.custom-slot-control-button {
+  color: var(--custom-slot-control-accent);
+}
+
+.custom-slot-control-button:hover {
+  background-color: var(--custom-slot-control-hover);
+}
+
+.custom-slot-duration {
+  color: var(--custom-slot-duration);
+}
+
+.custom-slot-muted {
+  color: var(--custom-slot-muted);
+}
+
+.custom-slot-preset {
+  border-color: var(--custom-slot-preset-border);
+  background-color: var(--custom-slot-preset-bg);
+  color: var(--custom-slot-preset-text);
+}
+
+.custom-slot-preset:hover {
+  background-color: var(--custom-slot-preset-hover);
+}
+
 /* ============================================================
    Apple HIG-inspired design tokens
    ============================================================
@@ -101,6 +232,8 @@
   --color-violet-200: var(--violet-200);
   --color-violet-300: var(--violet-300);
   --color-violet-400: var(--violet-400);
+  --color-violet-500: var(--violet-500);
+  --color-violet-700: var(--violet-700);
   --color-violet-950: var(--violet-950);
 
   --color-cyan-300: var(--cyan-300);
@@ -207,10 +340,12 @@
   --sky-400: #0369a1;
   --sky-950: #e0f2fe;
 
-  --violet-200: #3f2e5c;
-  --violet-300: #6d28d9;
-  --violet-400: #6d28d9;
-  --violet-950: #ede9fe;
+  --violet-200: #075985;
+  --violet-300: #0369a1;
+  --violet-400: #0284c7;
+  --violet-500: #0ea5e9;
+  --violet-700: #0369a1;
+  --violet-950: #e0f2fe;
 
   --cyan-300: #0e7490;
   --cyan-400: #0e7490;
@@ -281,6 +416,8 @@
     --violet-200: #ddd6fe;
     --violet-300: #c4b5fd;
     --violet-400: #a78bfa;
+    --violet-500: #8b5cf6;
+    --violet-700: #6d28d9;
     --violet-950: #2e1065;
 
     --cyan-300: #67e8f9;
@@ -347,6 +484,8 @@
   --violet-200: #ddd6fe;
   --violet-300: #c4b5fd;
   --violet-400: #a78bfa;
+  --violet-500: #8b5cf6;
+  --violet-700: #6d28d9;
   --violet-950: #2e1065;
 
   --cyan-300: #67e8f9;
@@ -405,10 +544,12 @@
   --sky-400: #0369a1;
   --sky-950: #e0f2fe;
 
-  --violet-200: #3f2e5c;
-  --violet-300: #6d28d9;
-  --violet-400: #6d28d9;
-  --violet-950: #ede9fe;
+  --violet-200: #075985;
+  --violet-300: #0369a1;
+  --violet-400: #0284c7;
+  --violet-500: #0ea5e9;
+  --violet-700: #0369a1;
+  --violet-950: #e0f2fe;
 
   --cyan-300: #0e7490;
   --cyan-400: #0e7490;

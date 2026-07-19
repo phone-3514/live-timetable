@@ -130,13 +130,13 @@ export function MobileSlotCard({
             : // A desktop collaborator hovering this exact slot — band,
               // Rehearsal/Break, or empty — highlights the whole row's
               // border, on top of the small 👀 name tag near the buttons
-              // below. Takes priority over the plain amber "this is a
-              // custom slot" tint so live presence is never invisible
+              // below. Takes priority over the subtle blue "this is a
+              // custom slot" accent so live presence is never invisible
               // just because the row happens to be a Rehearsal/Break.
               hoveringUsers.length > 0
               ? "border-sky-400 bg-sky-950/20"
               : isCustom
-                ? "border-amber-700 bg-amber-950/20"
+                ? "custom-slot-mobile-row"
                 : "border-slate-700 bg-slate-800"
       }`}
     >
@@ -204,10 +204,10 @@ export function MobileSlotCard({
           // a held long-press drags the whole slot.
           className="flex min-w-0 flex-1 cursor-grab select-none items-center gap-1.5 active:cursor-grabbing"
         >
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-amber-300">
+          <span className="custom-slot-label min-w-0 flex-1 truncate text-xs font-semibold">
             {slot.customLabel}
           </span>
-          <span className="shrink-0 text-[10px] text-amber-500">{slot.customDurationMinutes ?? 0}分</span>
+          <span className="custom-slot-muted shrink-0 text-[10px]">{slot.customDurationMinutes ?? 0}分</span>
         </div>
       ) : band ? (
         <div

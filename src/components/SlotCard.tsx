@@ -293,11 +293,11 @@ export function SlotCard({
       </div>
 
       {isCustom ? (
-        <div className="flex flex-1 items-center gap-1.5 rounded-md border border-amber-600 bg-amber-900/40 px-1.5 py-1">
+        <div className="custom-slot-card flex flex-1 items-center gap-1.5 rounded-md border px-1.5 py-1">
           {isEditingLabel ? (
             <input
               autoFocus
-              className="flex-1 bg-transparent text-sm font-semibold text-amber-300 outline-none"
+              className="custom-slot-label flex-1 bg-transparent text-sm font-semibold outline-none"
               value={slot.customLabel ?? ""}
               onChange={(e) =>
                 updateSlotContent(dayId, slot.id, { customLabel: e.target.value })
@@ -322,7 +322,7 @@ export function SlotCard({
               {...attributes}
               onClick={() => setIsEditingLabel(true)}
               title="クリックして名前を編集"
-              className={`min-h-11 flex-1 select-none truncate text-sm font-semibold text-amber-300 [-webkit-touch-callout:none] [-webkit-user-drag:none] md:min-h-0 ${
+              className={`custom-slot-label min-h-11 flex-1 select-none truncate text-sm font-semibold [-webkit-touch-callout:none] [-webkit-user-drag:none] md:min-h-0 ${
                 lockedByNickname ? "cursor-not-allowed opacity-70" : "cursor-grab active:cursor-grabbing"
               }`}
             >
@@ -333,7 +333,7 @@ export function SlotCard({
               tiny native spin arrows — easier to tap, and the input itself
               gets a visible border/background so it reads as editable
               rather than floating text. */}
-          <div className="flex shrink-0 items-center overflow-hidden rounded border border-amber-600/60 bg-amber-950/50">
+          <div className="custom-slot-control flex shrink-0 items-center overflow-hidden rounded border">
             <button
               onClick={() =>
                 updateSlotContent(dayId, slot.id, {
@@ -343,7 +343,7 @@ export function SlotCard({
                   ),
                 })
               }
-              className="px-1.5 py-1 text-sm font-bold text-amber-300 hover:bg-amber-800/60"
+              className="custom-slot-control-button px-1.5 py-1 text-sm font-bold"
               title="5分減らす"
             >
               −
@@ -351,7 +351,7 @@ export function SlotCard({
             <input
               type="number"
               min={1}
-              className="w-10 bg-transparent text-center text-sm font-semibold text-amber-100 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="custom-slot-duration w-10 bg-transparent text-center text-sm font-semibold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               value={slot.customDurationMinutes ?? ""}
               onChange={(e) =>
                 updateSlotContent(dayId, slot.id, {
@@ -367,13 +367,13 @@ export function SlotCard({
                   customDurationMinutes: (slot.customDurationMinutes ?? 0) + 5,
                 })
               }
-              className="px-1.5 py-1 text-sm font-bold text-amber-300 hover:bg-amber-800/60"
+              className="custom-slot-control-button px-1.5 py-1 text-sm font-bold"
               title="5分増やす"
             >
               ＋
             </button>
           </div>
-          <span className="text-xs text-amber-500">分</span>
+          <span className="custom-slot-muted text-xs">分</span>
         </div>
       ) : (
         <div

@@ -222,7 +222,7 @@ export function DayPanel({ day, daysCount }: Props) {
           <button
             key={preset.label}
             onClick={() => addCustomSlot(day.id, preset.label, preset.minutes)}
-            className="min-h-11 rounded border border-amber-600 bg-amber-900/40 px-2 text-amber-300 hover:bg-amber-800/50 md:min-h-0 md:py-1"
+            className="custom-slot-preset min-h-11 rounded border px-2 md:min-h-0 md:py-1"
           >
             +{preset.label}
           </button>
