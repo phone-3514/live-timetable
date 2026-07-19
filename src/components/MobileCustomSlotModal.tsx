@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import type { TimetableSlot } from "../types";
 
 type Props = { dayId: string; slot: TimetableSlot; onClose: () => void };
@@ -18,6 +19,7 @@ type Props = { dayId: string; slot: TimetableSlot; onClose: () => void };
 // completely separate code path and is untouched by this.
 export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
   useEscapeKey(onClose);
+  useBodyScrollLock();
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const [label, setLabel] = useState(slot.customLabel ?? "");
   const [minutes, setMinutes] = useState(slot.customDurationMinutes ?? 10);

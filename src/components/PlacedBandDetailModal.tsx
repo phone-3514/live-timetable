@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { splitSetlistEntry } from "../utils/parseApplications";
 import { Badge } from "./applications/Badge";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
@@ -28,6 +29,7 @@ interface Props {
 // the Application Manager has no member-editing UI of its own to
 // propagate back the other way (see useApplicationStore.ts).
 export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
+  useBodyScrollLock();
   const applications = useApplicationStore((s) => s.applications);
   const updateBand = useAppStore((s) => s.updateBand);
   const syncApplicationFromBand = useApplicationStore((s) => s.syncApplicationFromBand);
@@ -203,10 +205,16 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        // max-h-[85vh] + the inner flex-1/overflow-y-auto wrapper below
+        // (same pattern ScheduleReviewModal already uses) is what stops
+        // a band with many members/a long setlist from pushing this
+        // modal's Save/Cancel buttons off the bottom of a short mobile
+        // viewport — the header and footer stay pinned, only the
+        // <dl> content in between scrolls internally.
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex shrink-0 items-start justify-between gap-2">
           {isEditing ? (
             <input
               value={editName}
@@ -238,7 +246,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
           </button>
         </div>
 
-        <dl className="mt-3 space-y-3 text-xs">
+        <dl className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto text-xs">
           <div>
             <dt className="font-semibold text-slate-500">演奏時間</dt>
             <dd className="mt-0.5 text-slate-200">
@@ -410,7 +418,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
           </div>
         </dl>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex shrink-0 justify-end gap-2">
           {isEditing ? (
             <>
               <button
