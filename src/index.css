@@ -112,24 +112,36 @@
 }
 
 /* Light mode values (the base/default — dark mode overrides below).
-   "Pure/off-white" per spec: #fbfbfd/#f5f5f7 are Apple's own two most
-   common light-surface tones (apple.com, macOS Finder sidebars), not
-   literal #ffffff everywhere — a page that's ALL pure white has no
-   visible seam between stacked cards. Text end of the scale (100/200)
-   uses Apple's near-black (#1c1c1e), not literal #000, for the same
-   reason text-on-white usually looks slightly softer than pure black. */
+   Revised 2026-07-19 (was: page #fbfbfd / cards #f5f5f7, both near-white
+   with barely any separation — confirmed via screenshot that this read
+   as flat, low-depth-hierarchy "everything blends together," not a
+   deliberate subtlety). Now a strict two-level hierarchy instead: the
+   page itself (--slate-950, used once as the app root's own background)
+   is a visibly off-white #f5f5f7; every elevated surface built on top of
+   it (--slate-800/900 — the timetable's day-column cards, band/slot
+   cards, and every modal's own chrome; these two happened to already be
+   the same value even before this revision, just both near-white) is
+   literal #ffffff, so a card now visibly "pops" off the page instead of
+   nearly matching it. `--slate-700` (borders, unchanged) still reads as
+   a clear hairline against pure white. Text end of the scale (100/200)
+   still uses Apple's near-black (#1c1c1e), not literal #000, for the
+   usual "text-on-white looks softer than pure black" reason —
+   `--slate-400`/`--slate-500` (secondary/muted text) were ALSO darkened
+   this same revision (were #6e6e73/#8e8e93, technically AA-passing at
+   ~4.66:1 against the old card color but only barely, and subjectively
+   read as too light) for real headroom, not just a bare pass. */
 :root {
   --slate-50: #000000;
   --slate-100: #1c1c1e;
   --slate-200: #3a3a3c;
   --slate-300: #48484a;
-  --slate-400: #6e6e73;
-  --slate-500: #8e8e93;
+  --slate-400: #52525b;
+  --slate-500: #71717a;
   --slate-600: #c7c7cc;
   --slate-700: #d1d1d6;
-  --slate-800: #e5e5ea;
-  --slate-900: #f5f5f7;
-  --slate-950: #fbfbfd;
+  --slate-800: #ffffff;
+  --slate-900: #ffffff;
+  --slate-950: #f5f5f7;
 
   --indigo-200: #cfe6ff;
   --indigo-300: #9dcaff;
@@ -334,13 +346,13 @@
   --slate-100: #1c1c1e;
   --slate-200: #3a3a3c;
   --slate-300: #48484a;
-  --slate-400: #6e6e73;
-  --slate-500: #8e8e93;
+  --slate-400: #52525b;
+  --slate-500: #71717a;
   --slate-600: #c7c7cc;
   --slate-700: #d1d1d6;
-  --slate-800: #e5e5ea;
-  --slate-900: #f5f5f7;
-  --slate-950: #fbfbfd;
+  --slate-800: #ffffff;
+  --slate-900: #ffffff;
+  --slate-950: #f5f5f7;
 
   --indigo-200: #cfe6ff;
   --indigo-300: #9dcaff;
