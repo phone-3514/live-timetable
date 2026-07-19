@@ -600,6 +600,15 @@ body {
   transition: background-color 200ms ease;
 }
 
+/* Keep standalone iOS/Android content clear of the status bar and display cutouts. */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-left: env(safe-area-inset-left);
+  }
+}
+
 /* Public pamphlet: a one-time attention pulse on the row the page
    auto-scrolled to on load (see PublicPamphletRoot.tsx's auto-focus
    effect) — three quick glow pulses, then it stops on its own (the

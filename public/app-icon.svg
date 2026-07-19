@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Live Timetable">
+  <rect width="512" height="512" rx="112" fill="#1d4ed8"/>
+  <rect x="96" y="104" width="320" height="304" rx="54" fill="#ffffff"/>
+  <rect x="96" y="104" width="320" height="82" rx="54" fill="#334155"/>
+  <rect x="96" y="146" width="320" height="40" fill="#334155"/>
+  <circle cx="160" cy="145" r="14" fill="#ffffff"/>
+  <circle cx="205" cy="145" r="14" fill="#ffffff" opacity=".78"/>
+  <rect x="140" y="226" width="66" height="20" rx="10" fill="#1d4ed8"/>
+  <rect x="230" y="226" width="142" height="20" rx="10" fill="#cbd5e1"/>
+  <rect x="140" y="282" width="66" height="20" rx="10" fill="#1d4ed8"/>
+  <rect x="230" y="282" width="112" height="20" rx="10" fill="#cbd5e1"/>
+  <rect x="140" y="338" width="66" height="20" rx="10" fill="#1d4ed8"/>
+  <rect x="230" y="338" width="132" height="20" rx="10" fill="#cbd5e1"/>
+</svg>

@@ -65,10 +65,8 @@ export async function hardWipeAndRedirect(): Promise<void> {
     console.error("[hardWipe] IndexedDB wipe failed", err);
   }
 
-  // This app registers no Service Worker today, but wiping unconditionally
-  // (rather than skipping this because nothing's there right now) is what
-  // keeps this function correct if one is ever added later without
-  // anyone having to remember to update this list too.
+  // The PWA shell and static assets live in Cache Storage. Clear them as
+  // part of the same one-way wipe so this device retains no app data.
   try {
     if ("caches" in window) {
       const keys = await caches.keys();

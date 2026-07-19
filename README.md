@@ -1,4 +1,15 @@
-# React + TypeScript + Vite
+# Live Timetable
+
+ライブイベントの進行表、出演情報、パンフレット表示、共同編集をまとめたPWAです。GitHub Pagesで公開したまま、スマートフォンやPCのホーム画面へアプリとして追加できます。
+
+## ホーム画面に追加
+
+- **iPhone / iPad:** Safariの共有ボタンから「ホーム画面に追加」→「Webアプリとして開く」
+- **Android / PC:** 画面内の「アプリとして追加」、またはブラウザのインストールメニューを選択
+- 一度読み込んだアプリ本体はオフラインでも起動できます。端末に保存済みのイベント編集も継続できます。共同編集の同期には通信が必要です。
+- 新しいバージョンが利用可能になると画面下部に更新案内が表示され、利用者が「更新」を押した時点で切り替わります。
+
+## 開発
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

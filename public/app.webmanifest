@@ -1,0 +1,28 @@
+{
+  "id": "./",
+  "name": "Live Timetable",
+  "short_name": "Timetable",
+  "description": "軽音ライブの出演順・進行・パンフレットをリアルタイムで管理するタイムテーブルアプリ",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F5F5F7",
+  "theme_color": "#1D4ED8",
+  "orientation": "any",
+  "categories": ["productivity", "music", "utilities"],
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

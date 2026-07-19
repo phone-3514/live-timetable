@@ -27,6 +27,7 @@ import { ApplicationManagerTab } from "./components/applications/ApplicationMana
 import { BackupControls } from "./components/BackupControls";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PwaStatus } from "./components/PwaStatus";
 import type { Band, TimetableSlot } from "./types";
 
 // CollabRoot pulls in the firebase SDK (~150kB gzipped) — same reasoning
@@ -342,6 +343,7 @@ function App() {
         )}
         <DeleteUndoToast />
         <Toast />
+        <PwaStatus />
       </div>
       <DragOverlay>
         {activeDragData?.type === "band" && (

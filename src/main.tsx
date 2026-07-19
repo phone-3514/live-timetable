@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { registerServiceWorker } from './pwa/registerServiceWorker.ts'
+
+registerServiceWorker()
 
 // The one and only route split in this app: a public, read-only pamphlet
 // at /:circleId/public (circleId is the same id as an editor's ?room=<id>
