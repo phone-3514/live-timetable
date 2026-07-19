@@ -398,13 +398,13 @@ export function SlotCard({
             lockedByNickname
               ? "border-amber-400 border-dashed bg-amber-950/20"
               : conflict
-                ? "border-rose-500 bg-rose-950/40"
+                ? "member-conflict-highlight"
                 : gearConflict
                   ? "border-amber-500 bg-amber-950/30"
                   : hasFullConcentration
-                    ? "border-sky-500 bg-sky-950/60"
+                    ? "performance-concentration-full"
                     : hasConcentrationWarning
-                      ? "border-sky-500/60 border-dashed bg-sky-950/30"
+                      ? "performance-concentration-partial border-dashed"
                       : ""
           }`}
         >
@@ -504,12 +504,12 @@ export function SlotCard({
                 {band.members.join(", ")}
               </p>
               {sameBandConflictNames.length > 0 && (
-                <p className="text-xs font-medium text-rose-400">
+                <p className="member-conflict-text text-xs font-medium">
                   ⚠️ {sameBandConflictNames.join("、")} が同じバンドで連続出演しています
                 </p>
               )}
               {gapConflictNames.length > 0 && (
-                <p className="text-xs font-medium text-rose-400">
+                <p className="member-conflict-text text-xs font-medium">
                   ⚠️ {gapConflictNames.join("、")} が連続しています
                 </p>
               )}
@@ -521,9 +521,7 @@ export function SlotCard({
               {concentrationEntries.map((c) => (
                 <p
                   key={c.memberName}
-                  className={`text-xs font-medium ${
-                    c.level === "full" ? "text-sky-400" : "text-sky-400/80"
-                  }`}
+                  className={`text-xs font-medium ${c.level === "full" ? "performance-concentration-text-full" : "performance-concentration-text-partial"}`}
                 >
                   ⚠️ {c.memberName}{" "}
                   {formatConcentrationMessage(

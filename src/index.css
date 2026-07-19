@@ -20,6 +20,15 @@
   --custom-slot-preset-bg: #f0f9ff;
   --custom-slot-preset-text: #0369a1;
   --custom-slot-preset-hover: #e0f2fe;
+  --member-conflict-border: #f43f5e;
+  --member-conflict-bg: color-mix(in srgb, #ffe4e6 40%, transparent);
+  --member-conflict-text: #be123c;
+  --concentration-full-border: #0ea5e9;
+  --concentration-full-bg: color-mix(in srgb, #e0f2fe 60%, transparent);
+  --concentration-partial-border: color-mix(in srgb, #0ea5e9 60%, transparent);
+  --concentration-partial-bg: color-mix(in srgb, #e0f2fe 30%, transparent);
+  --concentration-text-full: #0369a1;
+  --concentration-text-partial: color-mix(in srgb, #0369a1 80%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -40,6 +49,15 @@
     --custom-slot-preset-bg: color-mix(in oklab, #78350f 40%, transparent);
     --custom-slot-preset-text: #fcd34d;
     --custom-slot-preset-hover: color-mix(in oklab, #92400e 50%, transparent);
+    --member-conflict-border: #f43f5e;
+    --member-conflict-bg: color-mix(in srgb, #4c0519 40%, transparent);
+    --member-conflict-text: #fb7185;
+    --concentration-full-border: #8b5cf6;
+    --concentration-full-bg: color-mix(in srgb, #2e1065 30%, transparent);
+    --concentration-partial-border: #6d28d9;
+    --concentration-partial-bg: color-mix(in srgb, #2e1065 10%, transparent);
+    --concentration-text-full: #a78bfa;
+    --concentration-text-partial: color-mix(in srgb, #a78bfa 70%, transparent);
   }
 }
 
@@ -60,6 +78,15 @@
   --custom-slot-preset-bg: color-mix(in oklab, #78350f 40%, transparent);
   --custom-slot-preset-text: #fcd34d;
   --custom-slot-preset-hover: color-mix(in oklab, #92400e 50%, transparent);
+  --member-conflict-border: #f43f5e;
+  --member-conflict-bg: color-mix(in srgb, #4c0519 40%, transparent);
+  --member-conflict-text: #fb7185;
+  --concentration-full-border: #8b5cf6;
+  --concentration-full-bg: color-mix(in srgb, #2e1065 30%, transparent);
+  --concentration-partial-border: #6d28d9;
+  --concentration-partial-bg: color-mix(in srgb, #2e1065 10%, transparent);
+  --concentration-text-full: #a78bfa;
+  --concentration-text-partial: color-mix(in srgb, #a78bfa 70%, transparent);
 }
 
 :root[data-theme="light"] {
@@ -79,6 +106,15 @@
   --custom-slot-preset-bg: #f0f9ff;
   --custom-slot-preset-text: #0369a1;
   --custom-slot-preset-hover: #e0f2fe;
+  --member-conflict-border: #f43f5e;
+  --member-conflict-bg: color-mix(in srgb, #ffe4e6 40%, transparent);
+  --member-conflict-text: #be123c;
+  --concentration-full-border: #0ea5e9;
+  --concentration-full-bg: color-mix(in srgb, #e0f2fe 60%, transparent);
+  --concentration-partial-border: color-mix(in srgb, #0ea5e9 60%, transparent);
+  --concentration-partial-bg: color-mix(in srgb, #e0f2fe 30%, transparent);
+  --concentration-text-full: #0369a1;
+  --concentration-text-partial: color-mix(in srgb, #0369a1 80%, transparent);
 }
 
 .custom-slot-card,
@@ -129,6 +165,37 @@
 
 .custom-slot-preset:hover {
   background-color: var(--custom-slot-preset-hover);
+}
+
+/* Scheduling warnings deliberately keep different semantics per theme.
+   Light mode retains the restrained blue treatment requested for the
+   redesign; dark mode restores the original violet concentration and
+   rose/red consecutive-performance highlights. */
+.member-conflict-highlight {
+  border-color: var(--member-conflict-border);
+  background-color: var(--member-conflict-bg);
+}
+
+.member-conflict-text {
+  color: var(--member-conflict-text);
+}
+
+.performance-concentration-full {
+  border-color: var(--concentration-full-border);
+  background-color: var(--concentration-full-bg);
+}
+
+.performance-concentration-partial {
+  border-color: var(--concentration-partial-border);
+  background-color: var(--concentration-partial-bg);
+}
+
+.performance-concentration-text-full {
+  color: var(--concentration-text-full);
+}
+
+.performance-concentration-text-partial {
+  color: var(--concentration-text-partial);
 }
 
 /* ============================================================
