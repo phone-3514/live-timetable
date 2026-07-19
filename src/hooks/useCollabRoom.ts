@@ -298,9 +298,8 @@ export function useCollabRoom(isAuthenticated: boolean) {
   const startRoom = useCallback(() => {
     const id = generateRoomId();
     const firstDay = useAppStore.getState().days.find((day) => day.slots.length > 0);
-    const firstSlot = firstDay?.slots[0];
     useProgressStore.getState().setProgress(
-      { dayId: firstDay?.id ?? null, slotId: firstSlot?.id ?? null, phase: "standby" },
+      { dayId: firstDay?.id ?? null, slotId: null, phase: "standby" },
       useCollabStore.getState().myNickname ?? "この端末",
       "共同編集ルームを開始",
     );

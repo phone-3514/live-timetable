@@ -48,6 +48,7 @@ export function StageControlPanel() {
   const current = selectedDay.slots[selectedIndex];
   const next = selectedDay.slots[selectedIndex + 1];
   const afterNext = selectedDay.slots[selectedIndex + 2];
+  const isProgressActive = progress.slotId !== null;
 
   function phaseForSlot(slot: typeof current): StagePhase {
     if (!slot) return "finished";
@@ -87,15 +88,25 @@ export function StageControlPanel() {
     progress.setProgress({ dayId: selectedDay.id, slotId, phase: slot ? phaseForSlot(slot) : "standby" }, actor, "進行位置を変更");
   }
 
+  function stopProgress() {
+    setPending(null);
+    progress.setProgress(
+      { dayId: selectedDay.id, slotId: null, phase: "standby" },
+      actor,
+      "進行モードを停止",
+    );
+    setExpanded(false);
+  }
+
   return (
     <section className="shrink-0 rounded-xl border border-blue-800/70 bg-slate-900 p-3 shadow-sm" aria-label="ステージ進行リモコン">
       <div className="flex flex-wrap items-center gap-2">
         <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-400">Stage Control</p><h2 className="text-sm font-bold text-slate-100">運営リモコン</h2></div>
-        <span className="rounded-full border border-blue-700 bg-blue-950/50 px-2 py-1 text-xs font-semibold text-blue-200">{PHASE_LABEL[progress.phase]}</span>
-        {expanded && <select value={selectedDay.id} onChange={(event) => { const day = days.find((item) => item.id === event.target.value); const slot = day?.slots[0]; if (day && slot) progress.setProgress({ dayId: day.id, slotId: slot.id, phase: "standby" }, actor, "進行日を変更"); }} className="ml-auto min-h-11 rounded-lg border border-slate-600 bg-slate-800 px-2 text-sm text-slate-200 md:min-h-0 md:py-1">
+        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${isProgressActive ? "border-blue-700 bg-blue-950/50 text-blue-200" : "border-slate-600 bg-slate-800 text-slate-400"}`}>{isProgressActive ? PHASE_LABEL[progress.phase] : "停止中"}</span>
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={expanded ? "運営リモコンを閉じる" : "運営リモコンを開く"} className="ml-auto min-h-11 shrink-0 rounded-lg border border-blue-600 px-3 text-xs font-bold text-blue-200 hover:bg-blue-950/50 md:min-h-0 md:py-1.5"><span className="sm:hidden">{expanded ? "× 閉じる" : "進行モードを開く"}</span><span className="hidden sm:inline">{expanded ? "進行モードを閉じる" : "進行モードを開く"}</span></button>
+        {expanded && <select value={selectedDay.id} onChange={(event) => { const day = days.find((item) => item.id === event.target.value); const slot = day?.slots[0]; if (day && slot) progress.setProgress({ dayId: day.id, slotId: isProgressActive ? slot.id : null, phase: "standby" }, actor, "進行日を変更"); }} aria-label="進行する日程" className="w-full min-h-11 rounded-lg border border-slate-600 bg-slate-800 px-2 text-sm text-slate-200 sm:ml-auto sm:w-auto md:min-h-0 md:py-1">
           {availableDays.map((day) => <option key={day.id} value={day.id}>{day.label}</option>)}
         </select>}
-        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className={`${expanded ? "ml-0" : "ml-auto"} min-h-11 rounded-lg border border-blue-600 px-3 text-xs font-bold text-blue-200 hover:bg-blue-950/50 md:min-h-0 md:py-1.5`}>{expanded ? "進行モードを閉じる" : "進行モードを開く"}</button>
       </div>
 
       {expanded && <>
@@ -109,13 +120,14 @@ export function StageControlPanel() {
         ))}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-7">
         <button type="button" onClick={() => adjustToNow(current, "開始時刻を現在に補正", phaseForSlot(current))} className="min-h-11 rounded-lg bg-emerald-700 px-2 text-sm font-bold text-white hover:bg-emerald-600">▶ 開始</button>
         <button type="button" onClick={() => progress.setProgress({ dayId: selectedDay.id, slotId: current.id, phase: "transition" }, actor, "出演終了・転換開始")} className="min-h-11 rounded-lg border border-amber-600 bg-amber-950/40 px-2 text-sm font-bold text-amber-200 hover:bg-amber-900/50">■ 終了</button>
         <button type="button" disabled={!next} onClick={() => next && adjustToNow(next, "転換完了・次の枠を開始", phaseForSlot(next))} className="min-h-11 rounded-lg border border-blue-600 bg-blue-950/40 px-2 text-sm font-bold text-blue-200 hover:bg-blue-900/50 disabled:opacity-40">✓ 転換完了</button>
         <button type="button" onClick={() => openAdjustment(current.id, 1, "選択位置以降を1分遅らせる")} className="min-h-11 rounded-lg border border-slate-600 px-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">+1分</button>
         <button type="button" onClick={() => openAdjustment(current.id, 5, "選択位置以降を5分遅らせる")} className="min-h-11 rounded-lg border border-slate-600 px-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">+5分</button>
         <button type="button" onClick={() => openAdjustment(current.id, null, "選択位置以降を定刻へ戻す")} className="min-h-11 rounded-lg border border-slate-600 px-2 text-sm font-semibold text-slate-300 hover:bg-slate-700">定刻へ戻す</button>
+        <button type="button" onClick={stopProgress} disabled={!isProgressActive} className="col-span-3 min-h-11 rounded-lg border border-rose-700 bg-rose-950/30 px-2 text-sm font-bold text-rose-300 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1">■ 進行停止</button>
       </div>
 
       </>}
