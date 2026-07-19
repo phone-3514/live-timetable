@@ -16,6 +16,13 @@ function pwaServiceWorker(): Plugin {
         if (!output || output.type !== 'chunk') return
         initialAssets.add(fileName)
         output.imports.forEach(visitChunk)
+        // PublicPamphletRoot, collaboration, QR generation and the export
+        // tools are lazy chunks. If they are not cached during install, an
+        // already-open PWA can request yesterday's chunk after a deployment,
+        // receive GitHub Pages' 404 HTML instead of JavaScript and fall into
+        // the root ErrorBoundary. Cache the complete reachable chunk graph so
+        // every installed build remains internally consistent.
+        output.dynamicImports.forEach(visitChunk)
       }
       Object.values(bundle).forEach((output) => {
         if (output.type === 'chunk' && output.isEntry) visitChunk(output.fileName)

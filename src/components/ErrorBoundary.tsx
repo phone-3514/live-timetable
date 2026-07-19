@@ -27,6 +27,24 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
+  private reloadLatest = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration(import.meta.env.BASE_URL);
+        // Remove only the delivery layer. Timetable/localStorage data stays
+        // intact, while the reload below installs a clean current worker.
+        await registration?.unregister();
+      }
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter((key) => key.startsWith("live-timetable-")).map((key) => caches.delete(key)));
+      }
+    } catch (error) {
+      console.error("[ErrorBoundary] cache recovery failed", error);
+    }
+    window.location.reload();
+  };
+
   static getDerivedStateFromError(error: Error): State {
     return { error };
   }
@@ -55,10 +73,10 @@ export class ErrorBoundary extends Component<Props, State> {
         </p>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => void this.reloadLatest()}
           className="min-h-11 rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-500 sm:min-h-0 sm:py-1.5"
         >
-          ページを再読み込み
+          最新版を読み込んで再試行
         </button>
       </div>
     );

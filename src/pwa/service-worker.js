@@ -47,8 +47,15 @@ self.addEventListener('fetch', (event) => {
           if (!response.ok) {
             return (await caches.match(APP_ROOT)) ?? response
           }
-          const cache = await caches.open(CACHE_NAME)
-          await cache.put(APP_ROOT, response.clone())
+          // A same-origin JavaScript/image URL can also be opened as a top-
+          // level navigation. Never let that response replace the cached app
+          // shell: subsequent client-side routes would otherwise receive JS
+          // or an image as their HTML document.
+          const contentType = response.headers.get('content-type') ?? ''
+          if (contentType.includes('text/html')) {
+            const cache = await caches.open(CACHE_NAME)
+            await cache.put(APP_ROOT, response.clone())
+          }
           return response
         })
         .catch(async () =>
