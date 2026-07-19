@@ -409,7 +409,13 @@ export function PaViewerRoot() {
       : live?.band.name ?? "—";
   const nextHeaderEntry = isManualMode
     ? nextSelected
-    : liveIsActiveSlot ? nextLive : live;
+    : activeSlot
+      ? liveIsActiveSlot ? nextLive : live
+      // Before Stage Control starts there is no active slot. `live` is
+      // already used as CURRENT, so NEXT must be the following band — the
+      // previous fallback returned `live` again and duplicated both cards
+      // until the user pressed "Next sheet" once.
+      : nextLive;
   const matchingLinks = selected
     ? (room?.paConfig?.links ?? []).filter((link) => {
         // Revalidate the saved match against today's band name. A band
