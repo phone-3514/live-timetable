@@ -126,6 +126,7 @@ function SheetLinkViewer({ matchedLinks, folders, bandName }: {
   folders: PaDriveFolder[];
   bandName: string;
 }) {
+  const showingFolderFallback = matchedLinks.length === 0 && folders.length > 0;
   const links = matchedLinks.length > 0
     ? matchedLinks.map((link, index) => ({
         label: link.label || link.fileName || `PAシート${index + 1}`,
@@ -146,6 +147,7 @@ function SheetLinkViewer({ matchedLinks, folders, bandName }: {
           <h2 className="min-w-0 truncate text-2xl font-black text-white">{bandName}</h2>
           <span className="shrink-0 rounded-full bg-blue-500/15 px-2.5 py-1 text-xs font-black text-blue-200">{links.length}件</span>
         </div>
+        {showingFolderFallback && <p className="mt-3 rounded-xl border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-sm font-semibold text-amber-200">一致するファイルがないため、登録フォルダを表示しています</p>}
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           {links.map((link, index) => (
             <a
@@ -379,10 +381,15 @@ export function PaViewerRoot() {
     : live?.band.name ?? "—";
   const nextHeaderEntry = liveIsActiveSlot ? nextLive : live;
   const matchingLinks = selected
-    ? (room?.paConfig?.links ?? []).filter((link) =>
-        link.bandId === selected.band.id
-        || normalizeBandName(link.bandName) === normalizeBandName(selected.band.name),
-      )
+    ? (room?.paConfig?.links ?? []).filter((link) => {
+        // Revalidate the saved match against today's band name. A band
+        // rename can leave an old bandId-based assignment in Firestore;
+        // without this check PA would keep showing that stale sheet and
+        // never fall back to the configured folder-name buttons.
+        const bandName = normalizeBandName(selected.band.name);
+        const fileName = normalizeBandName(link.fileName ?? "");
+        return Boolean(bandName && fileName.includes(bandName));
+      })
     : [];
   const configuredFolders = room?.paConfig?.folders?.length
     ? room.paConfig.folders
