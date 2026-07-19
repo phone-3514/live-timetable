@@ -155,7 +155,7 @@ export function MobileSlotCard({
 
       {performanceOrder !== null && (
         <span
-          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-bold leading-none text-white"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 font-sans text-[11px] font-semibold leading-none tabular-nums text-white"
           title={`出演順 ${performanceOrder}番目`}
         >
           {performanceOrder}
@@ -174,14 +174,14 @@ export function MobileSlotCard({
             })
           }
           aria-label={`${slot.customLabel ?? band?.name ?? "空き枠"}の開始時刻`}
-          className={`w-full min-w-0 appearance-none rounded border bg-slate-800 px-1 py-0.5 font-mono text-[10px] tabular-nums outline-none [&::-webkit-calendar-picker-indicator]:hidden ${
+          className={`w-full min-w-0 appearance-none rounded border bg-slate-800 px-1 py-1 font-sans text-base font-semibold leading-none tracking-[-0.01em] tabular-nums outline-none [&::-webkit-calendar-picker-indicator]:hidden ${
             slot.startTimeOverride
               ? "border-indigo-500 text-indigo-200"
               : "border-slate-600 text-slate-400"
           }`}
         />
         {(slot.delayMinutes ?? 0) > 0 && (
-          <span className="self-start rounded-full bg-rose-950 px-1 text-[9px] font-bold text-rose-400">
+          <span className="self-start rounded-full bg-rose-950 px-1.5 py-0.5 font-sans text-[11px] font-semibold leading-none tabular-nums text-rose-400">
             +{slot.delayMinutes}分
           </span>
         )}
@@ -207,7 +207,7 @@ export function MobileSlotCard({
           <span className="custom-slot-label min-w-0 flex-1 truncate text-xs font-semibold">
             {slot.customLabel}
           </span>
-          <span className="custom-slot-muted shrink-0 text-[10px]">{slot.customDurationMinutes ?? 0}分</span>
+          <span className="custom-slot-muted shrink-0 font-sans text-[11px] font-medium tabular-nums">{slot.customDurationMinutes ?? 0}分</span>
         </div>
       ) : band ? (
         <div
