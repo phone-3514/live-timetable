@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { onDisconnect, onValue, ref, remove, serverTimestamp, update } from "firebase/database";
 import { rtdb } from "../firebase";
 import { useCollabStore, type PresenceEntry } from "../store/useCollabStore";
+import { useIsMobile } from "./useViewport";
 
 // 50–100ms throttle on mousemove/drag broadcasts, per spec — bounds RTDB
 // bandwidth and stops the cursor overlay from jittering with every
@@ -45,6 +46,20 @@ type RawPresenceValue = {
 export function useLivePresence(roomId: string | null, nickname: string | null) {
   const clientIdRef = useRef<string>(generateClientId());
   const lastCursorSentRef = useRef(0);
+  // A touch drag doesn't fire continuous mousemove the way a real mouse
+  // does — browsers only synthesize a single mousemove (as part of the
+  // tap->mousedown->mousemove->mouseup->click compatibility sequence)
+  // after a tap lifts, not throughout a touch-drag. Broadcasting that
+  // one stray, physically-meaningless coordinate read as an "erratic,
+  // jumping" cursor to desktop viewers (LiveCursors is desktop-only
+  // already — see CollabRoot.tsx — but nothing stopped a MOBILE sender
+  // from still publishing one). Gating the listener itself off (not
+  // just skipping the RTDB write inside the handler) also means a touch
+  // interaction never triggers the handler at all, satisfying "no
+  // touchmove/touchstart/pointermove should cause presence writes" —
+  // there was never a separate touch-specific listener to remove, only
+  // this one shared mousemove path.
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!roomId || !nickname || !rtdb) {
@@ -101,7 +116,13 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
       const yPct = clamp01(e.clientY / window.innerHeight);
       void update(myRef, { cursor: { xPct, yPct }, updatedAt: serverTimestamp() });
     }
-    window.addEventListener("mousemove", handleMouseMove);
+    // Mobile senders keep `cursor: null` (its seeded value below) for
+    // their entire session — never attaching the listener at all, rather
+    // than attaching it and filtering inside the handler, is what
+    // guarantees zero RTDB writes from any mobile pointer/touch activity.
+    if (!isMobile) {
+      window.addEventListener("mousemove", handleMouseMove);
+    }
 
     // Clears hover the instant this tab stops being the visible one —
     // switching apps/tabs or minimizing doesn't fire mouseleave (the
@@ -141,6 +162,8 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
     });
 
     return () => {
+      // Harmless no-op if isMobile meant this was never added — removing
+      // a listener that isn't registered is a normal, silent DOM no-op.
       window.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       unsubscribe();
@@ -150,5 +173,9 @@ export function useLivePresence(roomId: string | null, nickname: string | null) 
       void remove(myRef);
       useCollabStore.getState().setOthers([]);
     };
-  }, [roomId, nickname]);
+    // isMobile is intentionally included: crossing the breakpoint (a
+    // tablet rotating, a desktop browser window being resized narrow)
+    // re-runs this effect, so cursor broadcasting starts/stops live
+    // rather than being fixed for the tab's whole lifetime.
+  }, [roomId, nickname, isMobile]);
 }
