@@ -266,7 +266,8 @@ function App() {
           {activeTab === "timetable" && (
             <details className="group relative shrink-0">
               <summary className="flex min-h-11 cursor-pointer list-none items-center rounded px-2.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200 md:min-h-0 md:py-1.5">
-                イベント情報
+                <span className="md:hidden xl:inline">イベント情報</span>
+                <span className="hidden md:inline xl:hidden">情報</span>
                 <span className="ml-1 text-[9px] transition-transform group-open:rotate-180">▼</span>
               </summary>
               <div className="mt-2 flex w-full flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-xl md:absolute md:left-0 md:top-full md:mt-1 md:w-80">
@@ -302,23 +303,16 @@ function App() {
               </div>
             </details>
           )}
-          <div className="hidden min-w-0 flex-1 md:block" />
-          <BackupControls />
-          <ThemeToggle />
           {hasFirebaseConfig && (
-            // Local boundary so a collaboration-feature crash (Firebase
-            // misconfiguration, a bad room doc, etc.) only disables that
-            // one widget — the timetable editor underneath keeps working
-            // fully offline/local, exactly as if this whole feature
-            // didn't exist. See project memory for the incident (an
-            // uncaught RTDB init error with no boundary at all) this is
-            // specifically here to contain.
             <ErrorBoundary title="共同編集機能" inline>
               <Suspense fallback={null}>
                 <CollabRoot />
               </Suspense>
             </ErrorBoundary>
           )}
+          <div className="hidden min-w-0 flex-1 md:block" />
+          <BackupControls />
+          <ThemeToggle />
         </header>
         {activeTab === "timetable" ? (
           // content-start below lg: without it, CSS Grid's default

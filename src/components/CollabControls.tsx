@@ -54,22 +54,33 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
         type="button"
         onClick={startRoom}
         title="現在の内容を元に共同編集ルームを作成し、URLに反映します"
-        className="min-h-11 rounded border border-emerald-600 px-2.5 text-xs font-medium text-emerald-300 hover:bg-emerald-950/40 md:min-h-0 md:py-1"
+        className="min-h-11 shrink-0 rounded border border-emerald-600 bg-emerald-950/30 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-950/60 md:min-h-0 md:py-1"
       >
-        🔗 共同編集を開始
+        🔗 <span className="hidden lg:inline">共同編集を開始</span><span className="lg:hidden">共同編集</span>
       </button>
     );
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-      <span className="text-xs text-slate-400" title={`ルームID: ${roomId}`}>
+    <details className="group relative shrink-0">
+      <summary
+        className="flex min-h-11 cursor-pointer list-none items-center rounded border border-emerald-600 bg-emerald-950/30 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-950/60 md:min-h-0 md:py-1"
+        title={`共同編集メニュー（ルームID: ${roomId}）`}
+      >
         {STATUS_LABEL[status] ?? status}
-      </span>
+        <span className="ml-1 hidden lg:inline">共同編集</span>
+        <span className="ml-1 text-[9px] transition-transform group-open:rotate-180">▼</span>
+      </summary>
+
+      <div className="mt-2 flex max-h-[calc(100vh-4rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col gap-2 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-xl md:absolute md:left-1/2 md:top-full md:mt-1 md:-translate-x-1/2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-slate-200">共同編集ルーム</span>
+          <span className="font-mono text-[10px] text-slate-500">{roomId}</span>
+        </div>
 
       {/* Connected-collaborators list — always includes yourself first
           so the row never looks empty right after joining. */}
-      <div className="flex items-center gap-1" title="現在参加中のメンバー">
+      <div className="flex flex-wrap items-center gap-1" title="現在参加中のメンバー">
         {myNickname && (
           <span className="flex items-center gap-1 rounded-full bg-indigo-950/60 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
             {myNickname}（自分）
@@ -106,15 +117,16 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={handleCopyUrl}
-        title="このルームの共有URLをコピー"
-        className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
-      >
-        🔗 URLをコピー
-      </button>
-      <PublishPamphletButton roomId={roomId} />
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-700 pt-2">
+        <button
+          type="button"
+          onClick={handleCopyUrl}
+          title="このルームの共有URLをコピー"
+          className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
+        >
+          🔗 URLをコピー
+        </button>
+        <PublishPamphletButton roomId={roomId} />
       {confirmingLeave ? (
         <span className="flex items-center gap-1 text-xs text-slate-400">
           このブラウザだけ抜けますか？
@@ -146,6 +158,9 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
           退出
         </button>
       )}
+
+      </div>
+      </div>
 
       {confirmingKick && (
         <ModalPortal>
@@ -191,6 +206,6 @@ export function CollabControls({ roomId, status, startRoom, leaveRoom, kickUser 
         </div>
         </ModalPortal>
       )}
-    </div>
+    </details>
   );
 }

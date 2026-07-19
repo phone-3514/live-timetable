@@ -66,9 +66,11 @@ export function BackupControls() {
       <button
         type="button"
         onClick={() => setShowExportDialog(true)}
+        title="データを保存"
+        aria-label="データを保存"
         className="min-h-11 rounded border border-slate-600 px-2.5 text-xs font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
       >
-        💾 データを保存
+        💾 <span className="md:hidden xl:inline">データを保存</span>
       </button>
 
       <button
@@ -86,6 +88,7 @@ export function BackupControls() {
           if (file) void handleFile(file);
         }}
         title="ここにバックアップファイル（.json）をドラッグ＆ドロップ、またはクリックして選択"
+        aria-label="データを復元"
         disabled={isProcessing}
         className={`min-h-11 rounded border px-2.5 text-xs font-medium transition-colors md:min-h-0 md:py-1 ${
           isDragOver
@@ -93,7 +96,7 @@ export function BackupControls() {
             : "border-slate-600 text-slate-300 hover:bg-slate-700"
         } ${isProcessing ? "cursor-wait opacity-60" : ""}`}
       >
-        {isProcessing ? "読み込み中…" : "📂 データを復元"}
+        {isProcessing ? "読込中…" : <><span aria-hidden="true">📂</span> <span className="md:hidden xl:inline">データを復元</span></>}
       </button>
       <input
         ref={fileInputRef}
