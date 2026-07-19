@@ -670,13 +670,13 @@ button:active {
    font-size is under 16px. Every text/number/date input, textarea, and
    select in this app is styled with a Tailwind text-xs/text-sm utility
    (12-14px) for desktop density, which is exactly the range that triggers
-   it. #root gives this enough specificity to win over those utility
-   classes without resorting to !important; scoped to mobile only so
-   desktop keeps its smaller, denser field text. */
+   it. Include body-level fields because ModalPortal deliberately renders
+   collaboration entry forms outside #root. Scoped to mobile so desktop
+   keeps its smaller, denser field text. */
 @media (max-width: 767px) {
-  #root input,
-  #root textarea,
-  #root select {
+  body input,
+  body textarea,
+  body select {
     font-size: 16px;
   }
 }

@@ -47,6 +47,7 @@ export function PasswordGate({ onSuccess, onCancel }: Props) {
     storeRoomAuthFlag();
     storeNickname(trimmedNickname);
     if (isAdmin) storeAdminAuthFlag();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     onSuccess(trimmedNickname, isAdmin);
   }
 

@@ -11,6 +11,7 @@ import { readStoredNickname } from "../utils/nickname";
 import { readRoomAuthFlag } from "../utils/roomAuth";
 import { readAdminAuthFlag } from "../utils/adminAuth";
 import { hardWipeAndRedirect } from "../utils/hardWipe";
+import { useToastStore } from "../store/useToastStore";
 
 // The single lazy-loaded entry point for every part of the real-time
 // collaboration feature (Firestore room sync + RTDB presence/cursors) —
@@ -31,7 +32,8 @@ export function CollabRoot() {
   const [passwordVerified, setPasswordVerified] = useState(() => readRoomAuthFlag());
   const isAuthenticated = !isPasswordRequired || passwordVerified;
 
-  const { roomId, status, startRoom, leaveRoom } = useCollabRoom(isAuthenticated);
+  const { roomId, status, startRoom, joinRoom, joinError, clearJoinError, leaveRoom } = useCollabRoom(isAuthenticated);
+  const showToast = useToastStore((s) => s.show);
   const [nickname, setNickname] = useState<string | null>(() => readStoredNickname());
   // Same sessionStorage-flag pattern as passwordVerified above — see
   // adminAuth.ts for the security caveat (this is a UI-only courtesy
@@ -52,6 +54,12 @@ export function CollabRoot() {
   useEffect(() => {
     useCollabStore.getState().setIsAdmin(isAuthenticated ? isAdmin : false);
   }, [isAdmin, isAuthenticated]);
+
+  useEffect(() => {
+    if (!joinError) return;
+    showToast(joinError, "error");
+    clearJoinError();
+  }, [joinError, showToast, clearJoinError]);
 
   // Withholding the nickname (rather than roomId) while ungated is what
   // keeps useLivePresence's own internal guard (`!roomId || !nickname ||
@@ -114,6 +122,7 @@ export function CollabRoot() {
         roomId={roomId}
         status={status}
         startRoom={startRoom}
+        joinRoom={joinRoom}
         leaveRoom={leaveRoom}
         kickUser={kickUser}
       />

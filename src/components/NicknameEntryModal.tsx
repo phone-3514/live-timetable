@@ -28,6 +28,7 @@ export function NicknameEntryModal({ onSubmit }: Props) {
     const isAdmin = Boolean(configuredAdminPassword) && adminPassword === configuredAdminPassword;
     storeNickname(trimmed);
     if (isAdmin) storeAdminAuthFlag();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     onSubmit(trimmed, isAdmin);
   }
 

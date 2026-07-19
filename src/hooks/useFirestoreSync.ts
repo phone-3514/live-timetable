@@ -84,6 +84,8 @@ export function useFirestoreDocSync<T extends DocumentData>(
 ) {
   const [data, setData] = useState<T>(defaultValue);
   const [status, setStatus] = useState<SyncStatus>(path ? "connecting" : "offline");
+  const [exists, setExists] = useState<boolean | null>(null);
+  const [isFromCache, setIsFromCache] = useState<boolean | null>(null);
   const { schedule, flush } = useDebouncedWriter(debounceMs);
   const defaultValueRef = useRef(defaultValue);
   defaultValueRef.current = defaultValue;
@@ -91,9 +93,13 @@ export function useFirestoreDocSync<T extends DocumentData>(
   useEffect(() => {
     if (!path || !db) {
       setStatus("offline");
+      setExists(null);
+      setIsFromCache(null);
       return;
     }
     setStatus("connecting");
+    setExists(null);
+    setIsFromCache(null);
     const ref = doc(db, path);
     const unsubscribe = onSnapshot(
       ref,
@@ -107,7 +113,10 @@ export function useFirestoreDocSync<T extends DocumentData>(
         // branch to skip is overwriting a newer local edit with a
         // pending write that's already stale by the time it echoes.
         if (snapshot.metadata.hasPendingWrites) return;
-        setData(snapshot.exists() ? (snapshot.data() as T) : defaultValueRef.current);
+        const documentExists = snapshot.exists();
+        setExists(documentExists);
+        setIsFromCache(snapshot.metadata.fromCache);
+        setData(documentExists ? (snapshot.data() as T) : defaultValueRef.current);
         setStatus("synced");
       },
       () => setStatus("error"),
@@ -164,5 +173,5 @@ export function useFirestoreDocSync<T extends DocumentData>(
     [commit],
   );
 
-  return { data, update, updateNow, status };
+  return { data, update, updateNow, status, exists, isFromCache };
 }

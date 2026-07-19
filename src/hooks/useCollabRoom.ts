@@ -7,6 +7,7 @@ import { DEFAULT_VENUE_HOURS, type VenueHours } from "../utils/parseBands";
 import { useFirestoreDocSync } from "./useFirestoreSync";
 
 const ROOM_PARAM = "room";
+type RoomEntryMode = "create" | "join";
 
 export type RoomDoc = {
   liveName: string;
@@ -41,10 +42,18 @@ function readRoomIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(ROOM_PARAM);
 }
 
-// Short and URL-safe; collision risk is irrelevant at the scale this
-// gets used at (a handful of rooms ever created by one club).
+// Eight characters, easy to read aloud/type, and free of ambiguous
+// I/O/0/1 glyphs. Stored lowercase for compatibility with existing URLs;
+// the UI presents it uppercase as a human-facing share code.
 function generateRoomId(): string {
-  return Math.random().toString(36).slice(2, 10);
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("").toLowerCase();
+}
+
+function normalizeRoomCode(value: string): string | null {
+  const normalized = value.trim().replace(/[\s-]+/g, "").toLowerCase();
+  return /^[a-z0-9]{8}$/.test(normalized) ? normalized : null;
 }
 
 function snapshotFromStore(): Omit<RoomDoc, "updatedAt"> {
@@ -122,7 +131,10 @@ function applyRoomDocToStore(doc: RoomDoc) {
  * see their comments below.
  */
 export function useCollabRoom(isAuthenticated: boolean) {
-  const [roomId, setRoomIdState] = useState<string | null>(() => readRoomIdFromUrl());
+  const initialRoomId = readRoomIdFromUrl();
+  const [roomId, setRoomIdState] = useState<string | null>(initialRoomId);
+  const [entryMode, setEntryMode] = useState<RoomEntryMode | null>(initialRoomId ? "join" : null);
+  const [joinError, setJoinError] = useState<string | null>(null);
   // The password gate (see PasswordGate.tsx/CollabRoot.tsx) works by
   // keeping this path null — and therefore useFirestoreDocSync's
   // onSnapshot never subscribing at all — until isAuthenticated flips
@@ -132,7 +144,7 @@ export function useCollabRoom(isAuthenticated: boolean) {
   // while the real Firestore path is withheld, so no separate "don't run
   // yet" branching is needed anywhere else in this hook.
   const path = roomId && isAuthenticated ? `rooms/${roomId}` : null;
-  const { data, update, updateNow, status } = useFirestoreDocSync<RoomDoc>(path, EMPTY_ROOM);
+  const { data, update, updateNow, status, exists, isFromCache } = useFirestoreDocSync<RoomDoc>(path, EMPTY_ROOM);
 
   // Has the one-time join handshake (seed-or-replace) completed for the
   // CURRENT roomId? Reset whenever roomId itself changes.
@@ -158,9 +170,21 @@ export function useCollabRoom(isAuthenticated: boolean) {
 
   // 1. Join handshake.
   useEffect(() => {
-    if (!roomId || hydratedRef.current || status !== "synced") return;
+    if (!roomId || hydratedRef.current || status !== "synced" || exists === null) return;
+    // An empty persistent cache is not proof that a code is invalid. Wait
+    // for Firestore's server-backed snapshot before rejecting a join.
+    if (!exists && entryMode !== "create" && isFromCache !== false) return;
+    if (!exists && entryMode !== "create") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(ROOM_PARAM);
+      window.history.replaceState(null, "", url.toString());
+      setJoinError("共有コードに一致するイベントが見つかりませんでした");
+      setEntryMode(null);
+      setRoomIdState(null);
+      return;
+    }
     hydratedRef.current = true;
-    const isNewRoom = data.updatedAt === 0;
+    const isNewRoom = !exists;
     if (isNewRoom) {
       const updatedAt = Date.now();
       lastKnownUpdatedAt.current = updatedAt;
@@ -173,7 +197,7 @@ export function useCollabRoom(isAuthenticated: boolean) {
         suppressPushRef.current = false;
       });
     }
-  }, [roomId, status, data, updateNow]);
+  }, [roomId, status, exists, isFromCache, entryMode, data, updateNow]);
 
   // 2a. Local -> remote — two independent Zustand stores (useAppStore for
   // bands/days/eventInfo/venueHours, useApplicationStore for Application
@@ -244,20 +268,43 @@ export function useCollabRoom(isAuthenticated: boolean) {
     const url = new URL(window.location.href);
     url.searchParams.set(ROOM_PARAM, id);
     window.history.replaceState(null, "", url.toString());
+    setJoinError(null);
+    setEntryMode("create");
     setRoomIdState(id);
+  }, []);
+
+  const joinRoom = useCallback((code: string) => {
+    const id = normalizeRoomCode(code);
+    if (!id) {
+      return false;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set(ROOM_PARAM, id);
+    window.history.replaceState(null, "", url.toString());
+    setJoinError(null);
+    setEntryMode("join");
+    setRoomIdState(id);
+    return true;
   }, []);
 
   const leaveRoom = useCallback(() => {
     const url = new URL(window.location.href);
     url.searchParams.delete(ROOM_PARAM);
     window.history.replaceState(null, "", url.toString());
+    setJoinError(null);
+    setEntryMode(null);
     setRoomIdState(null);
   }, []);
+
+  const clearJoinError = useCallback(() => setJoinError(null), []);
 
   return {
     roomId,
     status,
     startRoom,
+    joinRoom,
+    joinError,
+    clearJoinError,
     leaveRoom,
   };
 }
