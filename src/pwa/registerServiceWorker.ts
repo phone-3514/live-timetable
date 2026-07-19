@@ -13,6 +13,9 @@ export function registerServiceWorker() {
     void navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
       .then((registration) => {
+        // Check on every foreground launch as well as the browser's normal
+        // update cadence. PA devices are often left installed for days.
+        void registration.update()
         const announceWaitingWorker = () => {
           if (!registration.waiting || !navigator.serviceWorker.controller) return
           window.dispatchEvent(

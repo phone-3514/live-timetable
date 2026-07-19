@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { registerServiceWorker } from './pwa/registerServiceWorker.ts'
+import { PwaStatus } from './components/PwaStatus.tsx'
 
 registerServiceWorker()
 
@@ -57,5 +58,6 @@ createRoot(document.getElementById('root')!).render(
         <App />
       )}
     </ErrorBoundary>
+    <PwaStatus />
   </StrictMode>,
 )

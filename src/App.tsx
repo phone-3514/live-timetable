@@ -27,7 +27,6 @@ import { ApplicationManagerTab } from "./components/applications/ApplicationMana
 import { BackupControls } from "./components/BackupControls";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { PwaStatus } from "./components/PwaStatus";
 import { AccessibilitySettings } from "./components/AccessibilitySettings";
 import { useSyncAccessibility } from "./hooks/useSyncAccessibility";
 import type { Band, TimetableSlot } from "./types";
@@ -380,7 +379,6 @@ function App() {
         <DeleteUndoToast />
         <Toast />
         <MoveUndoToast notice={moveNotice} onClose={closeMoveNotice} />
-        <PwaStatus />
       </div>
       <DragOverlay>
         {activeDragData?.type === "band" && (

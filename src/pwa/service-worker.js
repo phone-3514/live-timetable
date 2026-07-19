@@ -12,7 +12,16 @@ const CORE_ASSETS = [
 ]
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)))
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      // PA is commonly launched as a standalone PWA and previously had no
+      // update UI, so a new worker could remain waiting indefinitely while
+      // an old PA bundle kept running. Activate every complete build as soon
+      // as its full asset graph has been cached.
+      .then(() => self.skipWaiting()),
+  )
 })
 
 self.addEventListener('activate', (event) => {
@@ -26,7 +35,12 @@ self.addEventListener('activate', (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      // Reload existing windows once under the newly activated worker.
+      // This is what upgrades already-open/standalone PA screens whose old
+      // JavaScript cannot know that the new worker is ready.
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url)))),
   )
 })
 
