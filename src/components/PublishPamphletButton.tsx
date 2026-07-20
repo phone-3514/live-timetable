@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAppStore } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
 import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
 import { ensureViewerCode } from "../utils/viewerCodes";
+import {
+  cancelScheduledPublicPamphletPublish,
+  publishPublicPamphletNow,
+} from "../pamphlet/publicPamphletPublisher";
 
 interface Props {
   roomId: string;
@@ -61,11 +64,13 @@ export function PublishPamphletButton({ roomId }: Props) {
       return;
     }
     setPublishing(true);
+    cancelScheduledPublicPamphletPublish(roomId);
     try {
-      const { eventInfo, bands, days } = useAppStore.getState();
-      const publicDoc = buildPublicPamphletDoc(eventInfo, bands, days);
       const viewerCode = await ensureViewerCode(roomId);
-      await setDoc(doc(db, "publicPamphlets", roomId), publicDoc);
+      await publishPublicPamphletNow(roomId, () => {
+        const { eventInfo, bands, days } = useAppStore.getState();
+        return buildPublicPamphletDoc(eventInfo, bands, days);
+      });
       const url = `${window.location.origin}${import.meta.env.BASE_URL}${viewerCode}/public`;
       storePublishedUrl(roomId, url);
       setPublishedUrl(url);

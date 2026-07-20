@@ -9,6 +9,10 @@ import { getStageProgress, useProgressStore, type StageProgress } from "../store
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
+import {
+  cancelScheduledPublicPamphletPublish,
+  schedulePublicPamphletPublish,
+} from "../pamphlet/publicPamphletPublisher";
 
 const ROOM_PARAM = "room";
 type RoomEntryMode = "create" | "join";
@@ -229,6 +233,23 @@ export function useCollabRoom(isAuthenticated: boolean) {
     update(() => ({ ...snapshot, updatedAt }));
   }, [update]);
 
+  const schedulePublishedPamphletUpdate = useCallback(() => {
+    if (!db || !roomId) return;
+    try {
+      if (!localStorage.getItem(`live-timetable-pamphlet-published-${roomId}`)) return;
+    } catch {
+      return;
+    }
+    schedulePublicPamphletPublish(roomId, () => {
+      const app = useAppStore.getState();
+      return buildPublicPamphletDoc(app.eventInfo, app.bands, app.days);
+    });
+  }, [roomId]);
+
+  useEffect(() => () => {
+    if (roomId) cancelScheduledPublicPamphletPublish(roomId);
+  }, [roomId]);
+
   useEffect(() => {
     if (!roomId) return;
     return useAppStore.subscribe((state, prev) => {
@@ -240,8 +261,9 @@ export function useCollabRoom(isAuthenticated: boolean) {
         state.venueHours !== prev.venueHours;
       if (!changed) return;
       pushSnapshot();
+      schedulePublishedPamphletUpdate();
     });
-  }, [roomId, pushSnapshot]);
+  }, [roomId, pushSnapshot, schedulePublishedPamphletUpdate]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -253,17 +275,6 @@ export function useCollabRoom(isAuthenticated: boolean) {
       void setDoc(doc(db, "publicProgress", roomId), progress).catch((error) =>
         console.error("[useCollabRoom] public progress write failed", error),
       );
-      try {
-        if (localStorage.getItem(`live-timetable-pamphlet-published-${roomId}`)) {
-          const app = useAppStore.getState();
-          void setDoc(
-            doc(db, "publicPamphlets", roomId),
-            buildPublicPamphletDoc(app.eventInfo, app.bands, app.days),
-          ).catch((error) => console.error("[useCollabRoom] live pamphlet update failed", error));
-        }
-      } catch {
-        // Storage can be unavailable; live progress still updates independently.
-      }
     });
   }, [roomId, pushSnapshot]);
 
