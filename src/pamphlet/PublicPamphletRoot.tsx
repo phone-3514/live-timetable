@@ -10,11 +10,21 @@ import { VenueScreen } from "./VenueScreen";
 import { PerformerDashboard } from "./PerformerDashboard";
 import { AccessibilitySettings } from "../components/AccessibilitySettings";
 import { useSyncAccessibility } from "../hooks/useSyncAccessibility";
-import { resolveViewerCode } from "../utils/viewerCodes";
+import {
+  forgetRememberedViewerCodeResolution,
+  readRememberedViewerCodeResolution,
+  resolveViewerCode,
+} from "../utils/viewerCodes";
 
 interface Props {
   circleId: string;
 }
+
+type ViewerCodeResolution = {
+  viewerCode: string;
+  status: "resolving" | "resolved" | "not-found";
+  roomId: string | null;
+};
 
 // Faint line-art instrument silhouettes, tiled — same technique as
 // shareThemes.ts's INSTRUMENTS_WATERMARK (a low-opacity tiled data-URI
@@ -48,17 +58,76 @@ function normalizePerformerSearch(value: string): string {
 export function PublicPamphletRoot({ circleId }: Props) {
   useSyncThemeAttribute();
   useSyncAccessibility();
-  const [resolvedRoomId, setResolvedRoomId] = useState(circleId);
+  const [resolution, setResolution] = useState<ViewerCodeResolution>(() => {
+    const rememberedRoomId = readRememberedViewerCodeResolution(circleId);
+    return {
+      viewerCode: circleId,
+      status: rememberedRoomId ? "resolved" : "resolving",
+      roomId: rememberedRoomId,
+    };
+  });
+
   useEffect(() => {
+    if (
+      resolution.viewerCode === circleId
+      && resolution.status === "resolved"
+      && resolution.roomId
+    ) {
+      forgetRememberedViewerCodeResolution(circleId);
+      return;
+    }
+
     let active = true;
+    const rememberedRoomId = readRememberedViewerCodeResolution(circleId);
+    if (rememberedRoomId) {
+      forgetRememberedViewerCodeResolution(circleId);
+      setResolution({ viewerCode: circleId, status: "resolved", roomId: rememberedRoomId });
+      return () => { active = false; };
+    }
+
+    setResolution({ viewerCode: circleId, status: "resolving", roomId: null });
     void resolveViewerCode(circleId).then((roomId) => {
-      if (active && roomId) setResolvedRoomId(roomId);
-    }).catch(() => { /* legacy room-id URLs continue with circleId */ });
+      if (!active) return;
+      setResolution({
+        viewerCode: circleId,
+        status: roomId ? "resolved" : "not-found",
+        roomId,
+      });
+    }).catch(() => {
+      if (active) setResolution({ viewerCode: circleId, status: "not-found", roomId: null });
+    });
     return () => { active = false; };
   }, [circleId]);
-  const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(resolvedRoomId);
+
+  const currentResolution = resolution.viewerCode === circleId ? resolution : null;
+  if (currentResolution?.status !== "resolved" || !currentResolution.roomId) {
+    return (
+      <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
+        <PamphletBackground />
+        <main className="relative mx-auto max-w-2xl px-4 pt-3">
+          <p className="mt-16 text-center text-base text-slate-400">
+            {currentResolution?.status === "not-found"
+              ? "このパンフレットはまだ公開されていません。"
+              : "読み込み中…"}
+          </p>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <ResolvedPublicPamphletRoot
+      key={currentResolution.roomId}
+      circleId={circleId}
+      roomId={currentResolution.roomId}
+    />
+  );
+}
+
+function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: string }) {
+  const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(roomId);
   const activeRow = useActiveSlotId(data);
-  const liveProgress = usePublicProgress(resolvedRoomId);
+  const liveProgress = usePublicProgress(roomId);
   const [screenMode, setScreenMode] = useState(() => new URLSearchParams(window.location.search).get("mode") === "screen");
   useEffect(() => {
     const syncModeFromUrl = () => setScreenMode(new URLSearchParams(window.location.search).get("mode") === "screen");

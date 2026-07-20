@@ -163,15 +163,19 @@ function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
             }
             setSubmitting(true);
             try {
-              const { organizerRoomExists, resolveViewerCode } = await import("../utils/viewerCodes");
+              const { organizerRoomExists, rememberViewerCodeResolution, resolveViewerCode } = await import("../utils/viewerCodes");
               if (isOrganizer) {
                 if (!(await organizerRoomExists(normalized))) {
                   setError("運営スタッフ用コードが正しくありません。閲覧コードでは参加できません。");
                   return;
                 }
-              } else if (!(await resolveViewerCode(normalized))) {
-                setError("閲覧コードが正しくありません。運営スタッフ用コードとは異なります。");
-                return;
+              } else {
+                const organizerRoomId = await resolveViewerCode(normalized);
+                if (!organizerRoomId) {
+                  setError("閲覧コードが正しくありません。運営スタッフ用コードとは異なります。");
+                  return;
+                }
+                rememberViewerCodeResolution(normalized, organizerRoomId);
               }
               dismissInputFocus();
               window.location.assign(destinationForCode(kind, normalized));

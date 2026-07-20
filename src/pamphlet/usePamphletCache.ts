@@ -33,10 +33,11 @@ export type PamphletLoadState = "loading" | "loaded" | "not-found" | "error";
 // screens without asking every viewer to press refresh. Admin typing still
 // stays private; only explicit publish/progress actions update this doc.
 export function usePamphletCache(circleId: string) {
-  const initialCache = useRef(readCache(circleId));
-  const [data, setData] = useState<PublicPamphletDoc | null>(initialCache.current?.doc ?? null);
-  const [cachedAt, setCachedAt] = useState<number | null>(initialCache.current?.cachedAt ?? null);
-  const [state, setState] = useState<PamphletLoadState>(initialCache.current ? "loaded" : "loading");
+  const [initialCache] = useState(() => readCache(circleId));
+  const activeCircleId = useRef(circleId);
+  const [data, setData] = useState<PublicPamphletDoc | null>(initialCache?.doc ?? null);
+  const [cachedAt, setCachedAt] = useState<number | null>(initialCache?.cachedAt ?? null);
+  const [state, setState] = useState<PamphletLoadState>(initialCache ? "loaded" : "loading");
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchOnce = useCallback(
@@ -68,6 +69,12 @@ export function usePamphletCache(circleId: string) {
   );
 
   useEffect(() => {
+    const cached = readCache(circleId);
+    activeCircleId.current = circleId;
+    setData(cached?.doc ?? null);
+    setCachedAt(cached?.cachedAt ?? null);
+    setState(cached ? "loaded" : "loading");
+    setRefreshing(false);
     if (!db) {
       setState((previous) => previous === "loaded" ? previous : "error");
       return;
@@ -88,5 +95,12 @@ export function usePamphletCache(circleId: string) {
     });
   }, [circleId]);
 
-  return { data, state, cachedAt, refreshing, refresh: () => fetchOnce(true) };
+  const belongsToCurrentRoom = activeCircleId.current === circleId;
+  return {
+    data: belongsToCurrentRoom ? data : null,
+    state: belongsToCurrentRoom ? state : "loading",
+    cachedAt: belongsToCurrentRoom ? cachedAt : null,
+    refreshing: belongsToCurrentRoom ? refreshing : false,
+    refresh: () => fetchOnce(true),
+  };
 }
