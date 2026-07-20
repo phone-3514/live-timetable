@@ -392,21 +392,26 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
         <Toast />
         <MoveUndoToast notice={moveNotice} onClose={closeMoveNotice} />
         {showCommandCenter && (
-          <div className="fixed inset-0 z-[70] flex min-h-0 flex-col overflow-hidden bg-slate-950 text-slate-100" aria-label="イベント指揮卓">
-            <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700 bg-slate-900 px-3 py-2 shadow-lg md:flex-nowrap md:px-5 md:py-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400">Event Command</p>
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <h1 className="shrink-0 text-lg font-black tracking-tight text-white md:text-xl">イベント指揮卓</h1>
-                  <span className="truncate text-xs font-semibold text-slate-400">{eventInfo.liveName || "名称未設定のイベント"}</span>
+          <div className="fixed inset-0 z-[70] flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-slate-950 text-slate-100" aria-label="イベント指揮卓">
+            <header style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }} className="flex shrink-0 flex-col gap-2 border-b border-slate-700 bg-slate-900 px-3 pb-2 shadow-lg md:flex-row md:items-center md:px-5 md:py-3">
+              <div className="flex min-w-0 items-center gap-2 md:flex-1">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400">Event Command</p>
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <h1 className="shrink-0 text-lg font-black tracking-tight text-white md:text-xl">イベント指揮卓</h1>
+                    <span className="truncate text-xs font-semibold text-slate-400">{eventInfo.liveName || "名称未設定のイベント"}</span>
+                  </div>
                 </div>
+                <time className="shrink-0 rounded-lg border border-slate-700 bg-slate-950/60 px-2.5 py-2 text-center font-mono text-lg font-black tabular-nums text-blue-300 md:hidden" dateTime={new Date(commandCenterNow).toISOString()}>
+                  {new Date(commandCenterNow).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                </time>
               </div>
-              <time className="order-3 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-center font-mono text-xl font-black tabular-nums text-blue-300 md:order-none md:w-auto" dateTime={new Date(commandCenterNow).toISOString()}>
+              <time className="hidden rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-center font-mono text-xl font-black tabular-nums text-blue-300 md:block" dateTime={new Date(commandCenterNow).toISOString()}>
                 {new Date(commandCenterNow).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </time>
-              <div className="order-2 flex shrink-0 gap-2 md:order-none">
-                <button type="button" onClick={() => setShowCommandCenter(false)} className="min-h-11 rounded-lg border border-blue-700 bg-blue-950/40 px-3 text-xs font-bold text-blue-200 hover:bg-blue-900/50">← 編集画面へ戻る</button>
-                <button type="button" onClick={onReturnToEntry} className="min-h-11 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">↩ エントリー画面へ戻る</button>
+              <div className="grid w-full shrink-0 grid-cols-2 gap-2 md:flex md:w-auto">
+                <button type="button" onClick={() => setShowCommandCenter(false)} className="min-h-11 min-w-0 rounded-lg border border-blue-700 bg-blue-950/40 px-2 text-xs font-bold text-blue-200 hover:bg-blue-900/50 md:px-3">← 編集画面へ戻る</button>
+                <button type="button" onClick={onReturnToEntry} className="min-h-11 min-w-0 rounded-lg border border-slate-600 px-2 text-xs font-bold text-slate-300 hover:bg-slate-800 md:px-3">↩ エントリー画面へ戻る</button>
               </div>
             </header>
             <main className="min-h-0 flex-1 overflow-hidden p-2.5 md:p-4">

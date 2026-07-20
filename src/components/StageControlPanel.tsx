@@ -3,7 +3,7 @@ import { useAppStore } from "../store/useAppStore";
 import { useProgressStore, type StagePhase } from "../store/useProgressStore";
 import { useCollabStore } from "../store/useCollabStore";
 import { setNextHistoryAction } from "../store/useHistoryStore";
-import { alignTimeToReference } from "../utils/scheduleTimes";
+import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { timeToMinutes } from "../utils/time";
 import { previewScheduleAdjustment, type ScheduleChangePreview } from "../utils/scheduleChangePreview";
 import { ChangePreviewModal } from "./ChangePreviewModal";
@@ -46,6 +46,7 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
   const actor = useCollabStore((state) => state.myNickname) || "この端末";
   const [pending, setPending] = useState<PendingAdjustment | null>(null);
   const [expanded, setExpanded] = useState(commandCenter);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const bandNames = useMemo(() => new Map(bands.map((band) => [band.id, band.name])), [bands]);
   const availableDays = days.filter((day) => day.slots.length > 0);
   const selectedDay = availableDays.find((day) => day.id === progress.dayId) ?? availableDays[0];
@@ -101,6 +102,59 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
     progress.setProgress({ dayId: selectedDay.id, slotId, phase: slot ? phaseForSlot(slot) : "standby" }, actor, "進行位置を変更");
   }
 
+  function syncToCurrentTime() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const datedDays = availableDays.filter((day) => day.date);
+    const targetDay = datedDays.length > 0
+      ? availableDays.find((day) => day.date === today)
+      : selectedDay;
+    if (!targetDay) {
+      setSyncMessage("今日のタイムテーブルが見つかりません。");
+      return;
+    }
+
+    const originalSlots = recomputeTimes(
+      targetDay.slots.map((slot) => ({ ...slot, startTimeOverride: null })),
+      targetDay.settings,
+      bands,
+    );
+    const first = originalSlots[0];
+    if (!first) {
+      setSyncMessage("同期できる出演枠がありません。");
+      return;
+    }
+    const firstStart = timeToMinutes(first.startTime);
+    const clockTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const currentMinutes = targetDay.date
+      ? timeToMinutes(clockTime)
+      : alignTimeToReference(clockTime, firstStart);
+    let previousStart = firstStart;
+    const ranges = originalSlots.map((slot) => {
+      const start = alignTimeToReference(slot.startTime, previousStart);
+      const end = alignTimeToReference(slot.endTime, start);
+      previousStart = start;
+      return { slot, start, end };
+    });
+    const performing = ranges.find(({ start, end }) => currentMinutes >= start && currentMinutes < end);
+    if (performing) {
+      progress.setProgress({ dayId: targetDay.id, slotId: performing.slot.id, phase: phaseForSlot(performing.slot) }, actor, "現在時刻へ同期");
+      setSyncMessage(`${slotLabel(performing.slot, bandNames)}を現在の枠に設定しました。`);
+      return;
+    }
+    const transitionIndex = ranges.findIndex(({ end }, index) => {
+      const nextRange = ranges[index + 1];
+      return Boolean(nextRange && currentMinutes >= end && currentMinutes < nextRange.start);
+    });
+    if (transitionIndex >= 0) {
+      const transitionSlot = ranges[transitionIndex].slot;
+      progress.setProgress({ dayId: targetDay.id, slotId: transitionSlot.id, phase: "transition" }, actor, "現在時刻へ同期");
+      setSyncMessage(`${slotLabel(transitionSlot, bandNames)}終了後の転換に設定しました。`);
+      return;
+    }
+    setSyncMessage("現在時刻に該当する出演枠がありません。");
+  }
+
   function stopProgress() {
     setPending(null);
     progress.setProgress(
@@ -154,7 +208,7 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
         };
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-2xl border border-blue-800/70 bg-slate-900 shadow-lg shadow-slate-950/20" aria-label="ステージ進行リモコン">
+    <section className={`shrink-0 overflow-hidden rounded-2xl border border-blue-800/70 bg-slate-900 shadow-lg shadow-slate-950/20 ${commandCenter ? "flex h-full min-h-0 flex-col" : ""}`} aria-label="ステージ進行リモコン">
       <div className="border-b border-slate-700/80 bg-slate-950/35 p-3 md:p-4">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -184,7 +238,7 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
       </div>
 
       {expanded && (
-        <div className={`grid gap-3 overflow-y-auto overscroll-contain p-3 md:grid-cols-12 md:p-4 ${commandCenter ? "max-h-[calc(100dvh-19rem)] md:max-h-[calc(100dvh-16rem)]" : "max-h-[52dvh] md:max-h-[58dvh]"}`}>
+        <div style={commandCenter ? { paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" } : undefined} className={`grid gap-3 overflow-y-auto overscroll-contain p-3 md:grid-cols-12 md:p-4 ${commandCenter ? "min-h-0 flex-1" : "max-h-[52dvh] md:max-h-[58dvh]"}`}>
           <div className="grid gap-3 md:col-span-8">
             <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/35 p-2 text-xs font-bold text-slate-400 md:hidden">
               進行する日程
@@ -205,6 +259,8 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
                 <button type="button" disabled={!previous} onClick={() => previous && selectSlot(previous.id)} className="min-h-12 rounded-xl border border-slate-600 px-3 text-sm font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-40">← 前の枠へ<span className="mt-0.5 block text-[10px] font-normal text-slate-500">進行位置を一つ戻します</span></button>
                 <button type="button" disabled={!next} onClick={() => next && selectSlot(next.id)} className="min-h-12 rounded-xl border border-blue-700 bg-blue-950/30 px-3 text-sm font-bold text-blue-200 hover:bg-blue-900/40 disabled:opacity-40">次の枠へ →<span className="mt-0.5 block text-[10px] font-normal text-blue-300/70">現在位置をスキップして進めます</span></button>
               </div>
+              <button type="button" onClick={syncToCurrentTime} className="mt-2 min-h-12 w-full rounded-xl border border-cyan-700 bg-cyan-950/30 px-3 text-sm font-black text-cyan-200 hover:bg-cyan-900/40">◷ 現在時刻へ同期<span className="mt-0.5 block text-[10px] font-normal text-cyan-300/70">元の予定から現在の出演・転換位置を選択</span></button>
+              {syncMessage && <p role="status" className="mt-2 rounded-lg bg-slate-950/60 px-3 py-2 text-xs text-slate-300">{syncMessage}</p>}
             </section>
 
             <section className="rounded-xl border border-slate-700 p-3" aria-labelledby="live-actions-title">

@@ -1,7 +1,6 @@
 import { useIsMobile } from "../hooks/useViewport";
 import { DesktopTimetable } from "./DesktopTimetable";
 import { MobileTimetable } from "./MobileTimetable";
-import { StageControlPanel } from "./StageControlPanel";
 
 // Pure presentation switch — no state, no Firebase, no store reads of its
 // own. All of that (bands/days/eventInfo via useAppStore, applications via
@@ -15,8 +14,7 @@ import { StageControlPanel } from "./StageControlPanel";
 export function Timetable() {
   const isMobile = useIsMobile();
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <StageControlPanel />
+    <div className="flex min-h-0 flex-1 flex-col">
       {isMobile ? <MobileTimetable /> : <DesktopTimetable />}
     </div>
   );
