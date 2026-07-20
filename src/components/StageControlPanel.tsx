@@ -37,7 +37,7 @@ function delayLabel(minutes: number) {
   return "定刻";
 }
 
-export function StageControlPanel() {
+export function StageControlPanel({ commandCenter = false }: { commandCenter?: boolean }) {
   const days = useAppStore((state) => state.days);
   const bands = useAppStore((state) => state.bands);
   const adjustScheduleFrom = useAppStore((state) => state.adjustScheduleFrom);
@@ -45,7 +45,7 @@ export function StageControlPanel() {
   const progress = useProgressStore();
   const actor = useCollabStore((state) => state.myNickname) || "この端末";
   const [pending, setPending] = useState<PendingAdjustment | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(commandCenter);
   const bandNames = useMemo(() => new Map(bands.map((band) => [band.id, band.name])), [bands]);
   const availableDays = days.filter((day) => day.slots.length > 0);
   const selectedDay = availableDays.find((day) => day.id === progress.dayId) ?? availableDays[0];
@@ -108,7 +108,7 @@ export function StageControlPanel() {
       actor,
       "進行モードを停止",
     );
-    setExpanded(false);
+    if (!commandCenter) setExpanded(false);
   }
 
   function endCurrentPerformance() {
@@ -158,13 +158,13 @@ export function StageControlPanel() {
       <div className="border-b border-slate-700/80 bg-slate-950/35 p-3 md:p-4">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-400">Live Show Control</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-400">{commandCenter ? "Event Command" : "Live Show Control"}</p>
             <div className="mt-1 flex min-w-0 items-center gap-2">
-              <h2 className="shrink-0 text-sm font-black text-slate-100">運営リモコン</h2>
+              <h2 className="shrink-0 text-sm font-black text-slate-100">{commandCenter ? "現在の進行" : "運営リモコン"}</h2>
               <span className={`truncate rounded-full border px-2 py-0.5 text-[11px] font-bold ${isProgressActive ? "border-blue-700 bg-blue-950/60 text-blue-200" : "border-slate-600 bg-slate-800 text-slate-400"}`}>{isProgressActive ? PHASE_LABEL[progress.phase] : "進行停止中"}</span>
             </div>
           </div>
-          <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={expanded ? "運営コンソールを閉じる" : "運営コンソールを開く"} className="min-h-11 shrink-0 rounded-xl border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">{expanded ? "コンソールを閉じる ▲" : "詳細を開く ▼"}</button>
+          {!commandCenter && <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={expanded ? "運営コンソールを閉じる" : "運営コンソールを開く"} className="min-h-11 shrink-0 rounded-xl border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">{expanded ? "コンソールを閉じる ▲" : "詳細を開く ▼"}</button>}
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,0.72fr)] md:items-center">
@@ -184,7 +184,7 @@ export function StageControlPanel() {
       </div>
 
       {expanded && (
-        <div className="grid max-h-[52dvh] gap-3 overflow-y-auto overscroll-contain p-3 md:max-h-[58dvh] md:grid-cols-12 md:p-4">
+        <div className={`grid gap-3 overflow-y-auto overscroll-contain p-3 md:grid-cols-12 md:p-4 ${commandCenter ? "max-h-[calc(100dvh-19rem)] md:max-h-[calc(100dvh-16rem)]" : "max-h-[52dvh] md:max-h-[58dvh]"}`}>
           <div className="grid gap-3 md:col-span-8">
             <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/35 p-2 text-xs font-bold text-slate-400 md:hidden">
               進行する日程
@@ -208,7 +208,7 @@ export function StageControlPanel() {
             </section>
 
             <section className="rounded-xl border border-slate-700 p-3" aria-labelledby="live-actions-title">
-              <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Live Actions</p><h3 id="live-actions-title" className="mt-0.5 text-sm font-black text-slate-100">進行操作</h3></div><span className="text-[10px] text-slate-500">操作内容は公開・会場・PAへ同期</span></div>
+              <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Live Actions</p><h3 id="live-actions-title" className="mt-0.5 text-sm font-black text-slate-100">進行操作</h3></div><span className="text-[10px] text-slate-500">更新対象: 公開・会場・PA</span></div>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <button type="button" onClick={() => adjustToNow(current, "開始時刻を現在に補正", phaseForSlot(current))} className="min-h-14 rounded-xl border border-emerald-700 bg-emerald-950/35 px-3 text-sm font-black text-emerald-200 hover:bg-emerald-900/50">▶ 出演開始<span className="mt-1 block text-[10px] font-normal text-emerald-300/70">現在時刻に合わせて開始</span></button>
                 <button type="button" onClick={endCurrentPerformance} className="min-h-14 rounded-xl border border-amber-700 bg-amber-950/35 px-3 text-sm font-black text-amber-200 hover:bg-amber-900/50">■ 出演終了<span className="mt-1 block text-[10px] font-normal text-amber-300/70">転換中へ切り替え</span></button>
@@ -243,11 +243,11 @@ export function StageControlPanel() {
 
             <section className="rounded-xl border border-blue-900/80 bg-blue-950/20 p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-400">Affected Screens</p>
-              <h3 className="mt-0.5 text-sm font-black text-slate-100">この操作の反映先</h3>
+              <h3 className="mt-0.5 text-sm font-black text-slate-100">更新対象</h3>
               <ul className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-300">
-                {["公開パンフレット", "会場スクリーン", "PA／ローディー", "出演者通知"].map((label) => <li key={label} className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-2"><span className="text-emerald-400" aria-hidden="true">✓</span>{label}</li>)}
+                {["公開パンフレット", "会場スクリーン", "PA／ローディー", "出演者通知（条件一致時）"].map((label) => <li key={label} className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-2"><span className="text-blue-400" aria-hidden="true">→</span>{label}</li>)}
               </ul>
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">進行状況はリアルタイムで共有され、通知は出演者の設定と現在位置に応じて自動判定されます。</p>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">進行操作は公開画面へ反映されます。通知は出演者の設定と現在位置に応じて自動判定されます。</p>
             </section>
 
             <button type="button" onClick={stopProgress} disabled={!isProgressActive} className="min-h-12 rounded-xl border border-rose-800 bg-rose-950/30 px-3 text-sm font-black text-rose-300 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-40">■ 進行モードを停止<span className="mt-1 block text-[10px] font-normal text-rose-300/70">公開データを消さず、現在位置の送信を止めます</span></button>
