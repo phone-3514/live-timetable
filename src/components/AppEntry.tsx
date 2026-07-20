@@ -13,7 +13,7 @@ import { setAppRole } from "../utils/appRoleStorage";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 import { ThemeToggle } from "./ThemeToggle";
 
-type EntryView = "landing" | "create" | "organizer" | "public" | "editor";
+type EntryView = "landing" | "create" | "organizer" | "public" | "pa" | "editor";
 
 type CreationDraft = {
   eventName: string;
@@ -45,9 +45,9 @@ function destinationForCode(kind: "organizer" | "public", code: string): string 
     : `${base}${encodeURIComponent(code)}/public`;
 }
 
-function openPaViewer() {
+function openPaViewer(code: string) {
   setAppRole("viewer");
-  window.history.pushState({ fromEntry: true }, "", `${import.meta.env.BASE_URL}pa-viewer`);
+  window.history.pushState({ fromEntry: true }, "", `${import.meta.env.BASE_URL}pa-viewer?room=${encodeURIComponent(code)}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -94,7 +94,7 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={() => onSelect("organizer")} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
-          <button type="button" onClick={openPaViewer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
+          <button type="button" onClick={() => onSelect("pa")} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
         </div>
         <button type="button" onClick={() => onSelect("create")} className="mt-3 min-h-11 w-full rounded-lg px-4 text-sm font-semibold text-slate-400 hover:bg-slate-900 hover:text-slate-200">イベントを作成・管理</button>
       </main>
@@ -102,10 +102,11 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
   );
 }
 
-function CodeEntry({ kind, onBack, onOrganizer, onResume, onCreate }: {
+function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
   kind: "organizer" | "public";
   onBack?: () => void;
   onOrganizer?: () => void;
+  onPa?: () => void;
   onResume?: () => void;
   onCreate?: () => void;
 }) {
@@ -192,9 +193,51 @@ function CodeEntry({ kind, onBack, onOrganizer, onResume, onCreate }: {
         ) : (
           <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button type="button" onClick={onOrganizer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
-            <button type="button" onClick={openPaViewer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
+            <button type="button" onClick={onPa} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
           </div>
         )}
+      </main>
+    </Shell>
+  );
+}
+
+function PaCodeEntry({ onBack }: { onBack: () => void }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  return (
+    <Shell>
+      <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-12">
+        <button type="button" onClick={onBack} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-100">← 戻る</button>
+        <h1 className="mt-6 text-2xl font-bold">PA／ローディーとして参加</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">主催者から共有されたPAコードを入力してください。</p>
+        <form className="mt-8" onSubmit={async (event) => {
+          event.preventDefault();
+          const normalized = normalizeCode(code);
+          if (!normalized) {
+            setError("PAコードが正しくありません。");
+            return;
+          }
+          setSubmitting(true);
+          try {
+            const { organizerRoomExists } = await import("../utils/viewerCodes");
+            if (!(await organizerRoomExists(normalized))) {
+              setError("PAコードが正しくありません。");
+              return;
+            }
+            openPaViewer(normalized);
+          } catch {
+            setError("PAコードを確認できませんでした。通信状態を確認してください。");
+          } finally {
+            setSubmitting(false);
+          }
+        }}>
+          <label htmlFor="pa-entry-code" className="text-sm font-semibold text-slate-200">PAコード</label>
+          <input id="pa-entry-code" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9\s-]/g, "")); setError(""); }} autoFocus autoCapitalize="characters" autoCorrect="off" spellCheck={false} enterKeyHint="go" maxLength={11} placeholder="例：ABCD2345" aria-describedby={error ? "pa-entry-code-error" : undefined} className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 font-mono text-lg font-bold uppercase tracking-[0.16em] text-slate-100 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-600 focus:border-indigo-500" />
+          {error && <p id="pa-entry-code-error" className="mt-2 text-sm text-rose-400">{error}</p>}
+          <button type="submit" disabled={submitting} className="mt-6 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60">{submitting ? "確認中…" : "PA画面を開く"}</button>
+        </form>
       </main>
     </Shell>
   );
@@ -405,6 +448,7 @@ export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
   if (view === "editor") return <App />;
   if (view === "create") return <EventCreation onCancel={() => setView("organizer")} onCreated={() => setView("editor")} />;
   if (view === "organizer") return <CodeEntry kind="organizer" onBack={returnToViewer} onResume={() => setView("editor")} onCreate={() => setView("create")} />;
-  if (view === "public") return <CodeEntry kind="public" onOrganizer={() => void openOrganizer()} />;
+  if (view === "pa") return <PaCodeEntry onBack={() => setView("public")} />;
+  if (view === "public") return <CodeEntry kind="public" onOrganizer={() => void openOrganizer()} onPa={() => setView("pa")} />;
   return <Landing onSelect={setView} />;
 }
