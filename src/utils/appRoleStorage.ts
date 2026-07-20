@@ -2,9 +2,32 @@ import type { StateStorage } from "zustand/middleware";
 
 export type AppRole = "organizer" | "viewer";
 let currentRole: AppRole = new URLSearchParams(window.location.search).has("room") ? "organizer" : "viewer";
+const OWNER_KEY = "live-timetable-local-event-owner";
+const ORGANIZER_DATA_KEYS = [
+  "live-timetable-app",
+  "live-timetable-applications",
+  "live-timetable-progress",
+  "live-timetable-furigana",
+  "live-timetable-ui",
+];
 
 export function setAppRole(role: AppRole) {
   currentRole = role;
+}
+
+export function markLocalEventOwner() {
+  try { localStorage.setItem(OWNER_KEY, "true"); } catch { /* local storage unavailable */ }
+}
+
+export function isLocalEventOwner(): boolean {
+  try { return localStorage.getItem(OWNER_KEY) === "true"; } catch { return false; }
+}
+
+export function clearOrganizerLocalData() {
+  try {
+    ORGANIZER_DATA_KEYS.forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem(OWNER_KEY);
+  } catch { /* local storage unavailable */ }
 }
 
 function organizerStorageAllowed(): boolean {

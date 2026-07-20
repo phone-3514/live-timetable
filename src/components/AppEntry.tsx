@@ -10,8 +10,8 @@ import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useProgressStore } from "../store/useProgressStore";
 import { useCollabStore } from "../store/useCollabStore";
 import type { Band, TimetableDay } from "../types";
-import { setAppRole } from "../utils/appRoleStorage";
-import { clearAdminAuthFlag } from "../utils/adminAuth";
+import { clearOrganizerLocalData, isLocalEventOwner, markLocalEventOwner, setAppRole } from "../utils/appRoleStorage";
+import { clearAdminAuthFlag, readAdminAuthFlag } from "../utils/adminAuth";
 import { clearRoomAuthFlag } from "../utils/roomAuth";
 import { clearStoredNickname } from "../utils/nickname";
 import { AccessibilitySettings } from "./AccessibilitySettings";
@@ -21,6 +21,7 @@ type EntryView = "landing" | "create" | "organizer" | "public" | "pa" | "editor"
 
 type CreationDraft = {
   eventName: string;
+  organizationName: string;
   date: string;
   venue: string;
   startTime: string;
@@ -30,6 +31,7 @@ type CreationDraft = {
 
 const INITIAL_DRAFT: CreationDraft = {
   eventName: "",
+  organizationName: "",
   date: "",
   venue: "",
   startTime: "10:00",
@@ -131,6 +133,7 @@ function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
   const bands = useAppStore((state) => state.bands);
   const days = useAppStore((state) => state.days);
   const hasLocalEvent = Boolean(eventInfo.liveName.trim() || eventInfo.venue.trim() || bands.length || days.some((day) => day.slots.length));
+  const canResume = isOrganizer && hasLocalEvent && (isLocalEventOwner() || readAdminAuthFlag());
 
   return (
     <Shell>
@@ -141,7 +144,7 @@ function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
           主催者から共有された8文字のコードを入力してください。
         </p>
         {isOrganizer && <p className="mt-4 rounded-lg border border-amber-700/70 bg-amber-950/30 p-3 text-sm font-semibold leading-relaxed text-amber-200">運営スタッフ専用です。一般部員には共有しないでください。</p>}
-        {isOrganizer && hasLocalEvent && (
+        {canResume && (
           <section className="mt-5 rounded-xl border border-indigo-500/60 bg-indigo-950/35 p-4">
             <p className="text-xs font-semibold text-indigo-300">この端末に保存済み</p>
             <p className="mt-1 truncate text-base font-bold">{eventInfo.liveName || "名称未設定のイベント"}</p>
@@ -298,6 +301,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
 
   function createEvent() {
     dismissInputFocus();
+    markLocalEventOwner();
     const dayId = crypto.randomUUID();
     const day: TimetableDay = {
       id: dayId,
@@ -311,7 +315,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
       bands: [],
       days: [day],
       venueHours: { openTime: draft.startTime, closeTime: draft.plannedEndTime },
-      eventInfo: { liveName: draft.eventName.trim(), venue: draft.venue.trim(), organizationName: "" },
+      eventInfo: { liveName: draft.eventName.trim(), venue: draft.venue.trim(), organizationName: draft.organizationName.trim() },
       lastDeleted: null,
     });
 
@@ -353,6 +357,9 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
               <div className="mt-7 grid gap-5">
                 <label className="text-sm font-semibold text-slate-200">イベント名 <span className="text-rose-400">必須</span>
                   <input autoFocus={shouldAutoFocusEntryInput()} value={draft.eventName} onChange={(event) => update("eventName", event.target.value)} placeholder="例：軽音祭 vol.5" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
+                </label>
+                <label className="text-sm font-semibold text-slate-200">団体名
+                  <input value={draft.organizationName} onChange={(event) => update("organizationName", event.target.value)} placeholder="例：○○大学軽音楽部" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
                 </label>
                 <label className="text-sm font-semibold text-slate-200">開催日
                   <input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none focus:border-indigo-500" />
@@ -401,6 +408,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
               <dl className="mt-7 divide-y divide-slate-800 rounded-xl border border-slate-700 bg-slate-900 px-4">
                 {[
                   ["イベント名", draft.eventName],
+                  ["団体名", draft.organizationName || "未設定"],
                   ["開催日", draft.date || "未設定"],
                   ["会場", draft.venue || "未設定"],
                   ["予定時間", `${draft.startTime} 〜 ${draft.plannedEndTime}`],
@@ -461,6 +469,8 @@ export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
     setView("public");
   };
   const leaveOrganizer = () => {
+    const keepLocalEvent = isLocalEventOwner() || readAdminAuthFlag() || useCollabStore.getState().isAdmin;
+    if (keepLocalEvent) markLocalEventOwner();
     setAppRole("viewer");
     clearStoredNickname();
     clearRoomAuthFlag();
@@ -470,6 +480,11 @@ export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
     collab.setNickname(null);
     collab.setOthers([]);
     collab.setIsAdmin(false);
+    if (!keepLocalEvent) {
+      clearOrganizerLocalData();
+      window.location.replace(import.meta.env.BASE_URL);
+      return;
+    }
     window.history.pushState(null, "", import.meta.env.BASE_URL);
     setView("public");
   };
