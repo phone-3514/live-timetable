@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { arrayMove } from "@dnd-kit/sortable";
 import type {
   Band,
@@ -17,6 +17,7 @@ import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import { solveDayAssignment } from "../utils/autoScheduleSolver";
+import { organizerStateStorage } from "../utils/appRoleStorage";
 
 // Re-exported so existing importers (e.g. SlotCard's drag-eligibility
 // check) don't need to know this moved to a standalone utils module —
@@ -850,6 +851,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "live-timetable-app",
+      storage: createJSONStorage(() => organizerStateStorage),
       // Pre-existing localStorage data predates the gearTags field (added
       // for the gear-conflict checker) — every band saved before that
       // shipped is missing it entirely. Without this backfill,

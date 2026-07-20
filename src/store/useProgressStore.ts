@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { organizerStateStorage } from "../utils/appRoleStorage";
 
 export type StagePhase = "standby" | "performing" | "transition" | "break" | "finished";
 
@@ -67,7 +68,7 @@ export const useProgressStore = create<ProgressState>()(
         }),
       hydrateProgress: (progress) => set(progress ?? EMPTY_PROGRESS),
     }),
-    { name: "live-timetable-progress" },
+    { name: "live-timetable-progress", storage: createJSONStorage(() => organizerStateStorage) },
   ),
 );
 

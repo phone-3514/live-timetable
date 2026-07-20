@@ -81,7 +81,7 @@ function useOnlineStatus() {
   return online;
 }
 
-function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
+function RoomEntry({ onJoin, onReturnToEntry }: { onJoin: (roomId: string) => void; onReturnToEntry: () => void }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const submit = (event: FormEvent) => {
@@ -96,6 +96,7 @@ function RoomEntry({ onJoin }: { onJoin: (roomId: string) => void }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-[#020617] p-5 text-slate-100">
       <section className="w-full max-w-sm rounded-3xl border border-slate-700 bg-slate-900/90 p-6 shadow-2xl shadow-black/40">
+        <button type="button" onClick={onReturnToEntry} className="mb-4 min-h-11 rounded-lg px-3 text-sm font-bold text-slate-400 hover:bg-slate-800 hover:text-white">← 通常入口へ戻る</button>
         <p className="text-xs font-bold tracking-[0.18em] text-blue-300">PA / ROADIE SYNC</p>
         <h1 className="mt-2 text-2xl font-black tracking-tight">PAシートを開く</h1>
         <p className="mt-2 text-sm leading-6 text-slate-400">イベントの8文字の共有コードを入力してください。</p>
@@ -199,7 +200,7 @@ function EventChangeDialog({ eventName, onCancel, onConfirm }: {
   );
 }
 
-export function PaViewerRoot() {
+export function PaViewerRoot({ onReturnToEntry }: { onReturnToEntry: () => void }) {
   const [roomId, setRoomId] = useState<string | null>(initialRoomId);
   const [room, setRoom] = useState<PaRoomDoc | null>(null);
   const [publicProgress, setPublicProgress] = useState<StageProgress | null>(null);
@@ -474,7 +475,7 @@ export function PaViewerRoot() {
     setConfirmingEventChange(false);
   };
 
-  if (!roomId) return <RoomEntry onJoin={join} />;
+  if (!roomId) return <RoomEntry onJoin={join} onReturnToEntry={onReturnToEntry} />;
   if (syncState === "not-found") return <main className="grid min-h-dvh place-items-center bg-[#020617] p-6 text-center text-white"><div><p className="text-5xl">🔎</p><h1 className="mt-4 text-2xl font-black">イベントが見つかりません</h1><p className="mt-2 text-sm text-slate-400">共有コードを確認してください。</p><button type="button" onClick={leave} className="mt-5 min-h-12 rounded-xl bg-blue-600 px-5 font-bold hover:bg-blue-500">コードを入力し直す</button></div></main>;
 
   const syncLabel = !online || syncState === "offline" ? "オフライン" : syncState === "synced" ? "リアルタイム" : syncState === "error" ? "同期エラー" : "同期中…";
@@ -485,7 +486,7 @@ export function PaViewerRoot() {
       <header className="sticky top-0 z-30 border-b border-slate-700 bg-slate-900/95 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-xl backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="min-w-0"><p className="truncate text-xs font-bold tracking-[0.12em] text-blue-300">{room?.liveName || "PA / ROADIE SYNC"}</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><span className={`h-2 w-2 rounded-full ${syncColor}`} />{syncLabel}</p></div>
-          <button type="button" onClick={() => setConfirmingEventChange(true)} className="min-h-10 shrink-0 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">イベント変更</button>
+          <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={onReturnToEntry} className="min-h-10 rounded-lg px-2 text-xs font-bold text-slate-400 hover:bg-slate-800 hover:text-white">通常入口へ</button><button type="button" onClick={() => setConfirmingEventChange(true)} className="min-h-10 rounded-lg border border-slate-600 px-3 text-xs font-bold text-slate-300 hover:bg-slate-800">イベント変更</button></div>
         </div>
         {availablePaDays.length > 1 && <div className="mx-auto mt-2 flex max-w-5xl items-center gap-2"><label htmlFor="pa-live-day" className="shrink-0 text-xs font-bold text-slate-400">ライブ日</label><select id="pa-live-day" value={selectedDayId ?? ""} onChange={(event) => selectPaDay(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950 px-3 text-sm font-black text-white outline-none focus:border-blue-500 sm:max-w-xs"><option value="" disabled>日程を選択</option>{availablePaDays.map((day) => <option key={day.id} value={day.id}>{day.label}{day.date ? ` · ${day.date}` : ""}</option>)}</select></div>}
         <div className="mx-auto mt-3 grid max-w-5xl grid-cols-[1fr_1fr_auto] gap-2">

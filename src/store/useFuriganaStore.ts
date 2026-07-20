@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
+import { organizerStateStorage } from "../utils/appRoleStorage";
 
 export type FuriganaImportEntry = { name: string; furigana: string };
 
@@ -34,6 +35,6 @@ export const useFuriganaStore = create<FuriganaState>()(
       },
       clearFurigana: () => set({ furiganaByKey: {} }),
     }),
-    { name: "live-timetable-furigana" },
+    { name: "live-timetable-furigana", storage: createJSONStorage(() => organizerStateStorage) },
   ),
 );

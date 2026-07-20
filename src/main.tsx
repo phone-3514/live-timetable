@@ -1,4 +1,4 @@
-import { StrictMode, lazy, Suspense } from 'react'
+import { StrictMode, lazy, Suspense, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { AppEntry } from './components/AppEntry.tsx'
@@ -34,31 +34,51 @@ function readPublicCircleId(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-const publicCircleId = readPublicCircleId()
-const relativePath = window.location.pathname.startsWith(import.meta.env.BASE_URL)
-  ? window.location.pathname.slice(import.meta.env.BASE_URL.length)
-  : window.location.pathname.replace(/^\//, '')
-const isPaViewer = /^pa-viewer\/?$/.test(relativePath)
-const searchParams = new URLSearchParams(window.location.search)
-const bypassLanding = searchParams.has('room') || searchParams.get('mode') === 'screen'
-if (isPaViewer) {
-  document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', `${import.meta.env.BASE_URL}pa-viewer.webmanifest`)
+function RootRoute() {
+  const [, setLocationVersion] = useState(0)
+  useEffect(() => {
+    const update = () => setLocationVersion((version) => version + 1)
+    window.addEventListener('popstate', update)
+    return () => window.removeEventListener('popstate', update)
+  }, [])
+
+  const publicCircleId = readPublicCircleId()
+  const relativePath = window.location.pathname.startsWith(import.meta.env.BASE_URL)
+    ? window.location.pathname.slice(import.meta.env.BASE_URL.length)
+    : window.location.pathname.replace(/^\//, '')
+  const isPaViewer = /^pa-viewer\/?$/.test(relativePath)
+  const searchParams = new URLSearchParams(window.location.search)
+  const bypassLanding = searchParams.has('room') || searchParams.get('mode') === 'screen'
+
+  useEffect(() => {
+    document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute(
+      'href',
+      isPaViewer ? `${import.meta.env.BASE_URL}pa-viewer.webmanifest` : `${import.meta.env.BASE_URL}app.webmanifest`,
+    )
+  }, [isPaViewer])
+
+  const returnToEntry = () => {
+    window.history.pushState(null, '', import.meta.env.BASE_URL)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
+  return isPaViewer ? (
+    <Suspense fallback={null}>
+      <PaViewerRoot onReturnToEntry={returnToEntry} />
+    </Suspense>
+  ) : publicCircleId ? (
+    <Suspense fallback={null}>
+      <PublicPamphletRoot circleId={publicCircleId} />
+    </Suspense>
+  ) : (
+    <AppEntry bypassLanding={bypassLanding} />
+  )
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary title="アプリケーションエラー">
-      {isPaViewer ? (
-        <Suspense fallback={null}>
-          <PaViewerRoot />
-        </Suspense>
-      ) : publicCircleId ? (
-        <Suspense fallback={null}>
-          <PublicPamphletRoot circleId={publicCircleId} />
-        </Suspense>
-      ) : (
-        <AppEntry bypassLanding={bypassLanding} />
-      )}
+      <RootRoute />
     </ErrorBoundary>
     <PwaStatus />
   </StrictMode>,

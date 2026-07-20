@@ -5,7 +5,11 @@ import { useSyncAccessibility } from "../hooks/useSyncAccessibility";
 import { useSyncThemeAttribute } from "../hooks/useSyncThemeAttribute";
 import { useAppStore } from "../store/useAppStore";
 import { useUiStore } from "../store/useUiStore";
+import { useApplicationStore } from "../store/useApplicationStore";
+import { useFuriganaStore } from "../store/useFuriganaStore";
+import { useProgressStore } from "../store/useProgressStore";
 import type { Band, TimetableDay } from "../types";
+import { setAppRole } from "../utils/appRoleStorage";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -39,6 +43,12 @@ function destinationForCode(kind: "organizer" | "public", code: string): string 
   return kind === "organizer"
     ? `${base}?room=${encodeURIComponent(code)}`
     : `${base}${encodeURIComponent(code)}/public`;
+}
+
+function openPaViewer() {
+  setAppRole("viewer");
+  window.history.pushState({ fromEntry: true }, "", `${import.meta.env.BASE_URL}pa-viewer`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 function Shell({ children }: { children: ReactNode }) {
@@ -84,7 +94,7 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={() => onSelect("organizer")} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
-          <button type="button" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}pa-viewer`)} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
+          <button type="button" onClick={openPaViewer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
         </div>
         <button type="button" onClick={() => onSelect("create")} className="mt-3 min-h-11 w-full rounded-lg px-4 text-sm font-semibold text-slate-400 hover:bg-slate-900 hover:text-slate-200">イベントを作成・管理</button>
       </main>
@@ -182,7 +192,7 @@ function CodeEntry({ kind, onBack, onOrganizer, onResume, onCreate }: {
         ) : (
           <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button type="button" onClick={onOrganizer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
-            <button type="button" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}pa-viewer`)} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
+            <button type="button" onClick={openPaViewer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
           </div>
         )}
       </main>
@@ -370,13 +380,31 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
 }
 
 export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
-  const [view, setView] = useState<EntryView>(bypassLanding ? "editor" : "public");
+  const [view, setView] = useState<EntryView>(() => {
+    setAppRole(new URLSearchParams(window.location.search).has("room") ? "organizer" : "viewer");
+    return bypassLanding ? "editor" : "public";
+  });
   useSyncThemeAttribute();
   useSyncAccessibility();
 
+  const openOrganizer = async () => {
+    setAppRole("organizer");
+    await Promise.all([
+      useAppStore.persist.rehydrate(),
+      useApplicationStore.persist.rehydrate(),
+      useProgressStore.persist.rehydrate(),
+      useFuriganaStore.persist.rehydrate(),
+    ]);
+    setView("organizer");
+  };
+  const returnToViewer = () => {
+    setAppRole("viewer");
+    setView("public");
+  };
+
   if (view === "editor") return <App />;
   if (view === "create") return <EventCreation onCancel={() => setView("organizer")} onCreated={() => setView("editor")} />;
-  if (view === "organizer") return <CodeEntry kind="organizer" onBack={() => setView("public")} onResume={() => setView("editor")} onCreate={() => setView("create")} />;
-  if (view === "public") return <CodeEntry kind="public" onOrganizer={() => setView("organizer")} />;
+  if (view === "organizer") return <CodeEntry kind="organizer" onBack={returnToViewer} onResume={() => setView("editor")} onCreate={() => setView("create")} />;
+  if (view === "public") return <CodeEntry kind="public" onOrganizer={() => void openOrganizer()} />;
   return <Landing onSelect={setView} />;
 }

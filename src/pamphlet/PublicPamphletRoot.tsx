@@ -59,7 +59,12 @@ export function PublicPamphletRoot({ circleId }: Props) {
   const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(resolvedRoomId);
   const activeRow = useActiveSlotId(data);
   const liveProgress = usePublicProgress(resolvedRoomId);
-  const screenMode = new URLSearchParams(window.location.search).get("mode") === "screen";
+  const [screenMode, setScreenMode] = useState(() => new URLSearchParams(window.location.search).get("mode") === "screen");
+  useEffect(() => {
+    const syncModeFromUrl = () => setScreenMode(new URLSearchParams(window.location.search).get("mode") === "screen");
+    window.addEventListener("popstate", syncModeFromUrl);
+    return () => window.removeEventListener("popstate", syncModeFromUrl);
+  }, []);
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myPerformerName, setMyPerformerName] = useState<string>(() => new URLSearchParams(window.location.search).get("performer") ?? "");
   const [performerQuery, setPerformerQuery] = useState(() => new URLSearchParams(window.location.search).get("performer") ?? "");
@@ -147,7 +152,12 @@ export function PublicPamphletRoot({ circleId }: Props) {
     return () => clearTimeout(timer);
   }, [data, effectiveActiveRow]);
 
-  if (screenMode && data) return <VenueScreen data={data} progress={liveProgress} circleId={circleId} />;
+  if (screenMode && data) return <VenueScreen data={data} progress={liveProgress} circleId={circleId} onExit={() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("mode");
+    window.history.replaceState(null, "", url.toString());
+    setScreenMode(false);
+  }} />;
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
@@ -165,7 +175,12 @@ export function PublicPamphletRoot({ circleId }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {data && <a href={`?mode=screen`} className="flex min-h-11 items-center rounded-full border border-[var(--glass-border)] px-3 text-sm font-medium text-slate-300 hover:bg-[var(--glass-card-bg-hover)]">会場表示</a>}
+          {data && <button type="button" onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("mode", "screen");
+            window.history.pushState(null, "", url.toString());
+            setScreenMode(true);
+          }} className="flex min-h-11 items-center rounded-full border border-[var(--glass-border)] px-3 text-sm font-medium text-slate-300 hover:bg-[var(--glass-card-bg-hover)]">会場表示</button>}
           <AccessibilitySettings />
           <button
             type="button"

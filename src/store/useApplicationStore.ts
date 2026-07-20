@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { Application, ApplicationMember, ApplicationSetlistItem, Band } from "../types";
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
+import { organizerStateStorage } from "../utils/appRoleStorage";
 import { useAppStore } from "./useAppStore";
 
 type ApplicationState = {
@@ -165,7 +166,7 @@ export const useApplicationStore = create<ApplicationState>()(
           ),
         })),
     }),
-    { name: "live-timetable-applications" },
+    { name: "live-timetable-applications", storage: createJSONStorage(() => organizerStateStorage) },
   ),
 );
 
