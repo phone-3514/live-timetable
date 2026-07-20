@@ -48,7 +48,7 @@ type ActiveDragData =
   | { type: "band"; band: Band }
   | { type: "slot"; slot: TimetableSlot; band: Band | undefined };
 
-function App() {
+function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
   const activeTab = useUiStore((s) => s.activeTab);
   const setActiveTab = useUiStore((s) => s.setActiveTab);
   const days = useAppStore((s) => s.days) ?? [];
@@ -348,6 +348,7 @@ function App() {
             </ErrorBoundary>
           )}
           <div className="hidden min-w-0 flex-1 md:block" />
+          <button type="button" onClick={onReturnToEntry} className="min-h-11 shrink-0 rounded border border-slate-600 px-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">↩ エントリー画面へ戻る</button>
           <BackupControls />
           <AccessibilitySettings />
           <ThemeToggle />

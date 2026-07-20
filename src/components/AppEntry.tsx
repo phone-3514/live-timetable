@@ -8,8 +8,12 @@ import { useUiStore } from "../store/useUiStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useProgressStore } from "../store/useProgressStore";
+import { useCollabStore } from "../store/useCollabStore";
 import type { Band, TimetableDay } from "../types";
 import { setAppRole } from "../utils/appRoleStorage";
+import { clearAdminAuthFlag } from "../utils/adminAuth";
+import { clearRoomAuthFlag } from "../utils/roomAuth";
+import { clearStoredNickname } from "../utils/nickname";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -456,8 +460,21 @@ export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
     setAppRole("viewer");
     setView("public");
   };
+  const leaveOrganizer = () => {
+    setAppRole("viewer");
+    clearStoredNickname();
+    clearRoomAuthFlag();
+    clearAdminAuthFlag();
+    const collab = useCollabStore.getState();
+    collab.setRoomState(null, "offline");
+    collab.setNickname(null);
+    collab.setOthers([]);
+    collab.setIsAdmin(false);
+    window.history.pushState(null, "", import.meta.env.BASE_URL);
+    setView("public");
+  };
 
-  if (view === "editor") return <App />;
+  if (view === "editor") return <App onReturnToEntry={leaveOrganizer} />;
   if (view === "create") return <EventCreation onCancel={() => setView("organizer")} onCreated={() => setView("editor")} />;
   if (view === "organizer") return <CodeEntry kind="organizer" onBack={returnToViewer} onResume={() => setView("editor")} onCreate={() => setView("create")} />;
   if (view === "pa") return <PaCodeEntry onBack={() => setView("public")} />;

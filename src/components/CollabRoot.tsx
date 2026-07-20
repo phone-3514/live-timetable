@@ -6,9 +6,7 @@ import { useIsMobile } from "../hooks/useViewport";
 import { CollabControls } from "./CollabControls";
 import { LiveCursors } from "./LiveCursors";
 import { NicknameEntryModal } from "./NicknameEntryModal";
-import { PasswordGate } from "./PasswordGate";
 import { readStoredNickname } from "../utils/nickname";
-import { readRoomAuthFlag } from "../utils/roomAuth";
 import { readAdminAuthFlag } from "../utils/adminAuth";
 import { hardWipeAndRedirect } from "../utils/hardWipe";
 import { useToastStore } from "../store/useToastStore";
@@ -23,21 +21,14 @@ import { useToastStore } from "../store/useToastStore";
 export function CollabRoot() {
   console.log("[CollabRoot] 4. Mounting collaboration UI");
 
-  // No VITE_ROOM_PASSWORD configured at all means the gate is disabled
-  // outright — collaboration behaves exactly as it did before this
-  // feature existed, so deploying without setting this new env var
-  // doesn't lock anyone out (see the last two rounds' "a new required env
-  // var silently broke production" incidents — same trap, avoided here).
-  const isPasswordRequired = Boolean(import.meta.env.VITE_ROOM_PASSWORD);
-  const [passwordVerified, setPasswordVerified] = useState(() => readRoomAuthFlag());
-  const isAuthenticated = !isPasswordRequired || passwordVerified;
-
-  const { roomId, status, startRoom, joinRoom, joinError, clearJoinError, leaveRoom } = useCollabRoom(isAuthenticated);
+  // The organizer room code is the normal entry credential. There is no
+  // additional shared room password; only the optional administrator
+  // password in NicknameEntryModal remains for owner-only controls.
+  const { roomId, status, startRoom, joinRoom, joinError, clearJoinError, leaveRoom } = useCollabRoom(true);
   const showToast = useToastStore((s) => s.show);
   const [nickname, setNickname] = useState<string | null>(() => readStoredNickname());
-  // Same sessionStorage-flag pattern as passwordVerified above — see
-  // adminAuth.ts for the security caveat (this is a UI-only courtesy
-  // gate, not enforced access control).
+  // Tab-scoped administrator flag; see adminAuth.ts for the security
+  // caveat (this is a UI-only courtesy gate, not enforced access control).
   const [isAdmin, setIsAdminState] = useState(() => readAdminAuthFlag());
   // Own viewport, not any other collaborator's — a floating cursor
   // reproduces a POSITION on the sender's screen, which has no meaning on
@@ -47,13 +38,13 @@ export function CollabRoot() {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    console.log("[CollabRoot] 5. Nickname check — roomId:", roomId, "authenticated:", isAuthenticated, "nickname:", nickname);
-    useCollabStore.getState().setNickname(isAuthenticated ? nickname : null);
-  }, [nickname, roomId, isAuthenticated]);
+    console.log("[CollabRoot] 5. Nickname check — roomId:", roomId, "nickname:", nickname);
+    useCollabStore.getState().setNickname(nickname);
+  }, [nickname, roomId]);
 
   useEffect(() => {
-    useCollabStore.getState().setIsAdmin(isAuthenticated ? isAdmin : false);
-  }, [isAdmin, isAuthenticated]);
+    useCollabStore.getState().setIsAdmin(isAdmin);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!joinError) return;
@@ -67,7 +58,7 @@ export function CollabRoot() {
   // roomId itself is allowed to be set the moment "共同編集を開始" is
   // clicked (see startRoom below), same reasoning as useCollabRoom's own
   // `path` gate.
-  const { kickUser } = useLivePresence(roomId, isAuthenticated ? nickname : null);
+  const { kickUser } = useLivePresence(roomId, nickname);
 
   // Subscribed reactively (not read via .getState() inside the effect
   // below) specifically so this effect's dependency array actually fires
@@ -91,29 +82,6 @@ export function CollabRoot() {
     void hardWipeAndRedirect();
   }, [kicked]);
 
-  // roomId becomes non-null the instant a room is requested — either
-  // ?room=<id> was already in the URL on load, or startRoom() below just
-  // set it — and neither of those paths touches Firebase by itself (see
-  // useCollabRoom's `path` gate). So "a room is requested but not
-  // authenticated yet" is exactly the signal to show the gate instead of
-  // any collaboration UI, covering both starting and joining uniformly.
-  const needsPasswordGate = roomId !== null && !isAuthenticated;
-  if (needsPasswordGate) {
-    return (
-      <PasswordGate
-        onSuccess={(enteredNickname, enteredIsAdmin) => {
-          setPasswordVerified(true);
-          setNickname(enteredNickname);
-          setIsAdminState(enteredIsAdmin);
-        }}
-        onCancel={leaveRoom}
-      />
-    );
-  }
-
-  // Reachable only once authenticated (or no password was ever required)
-  // — this is genuinely the first point where Firestore/RTDB traffic can
-  // occur, satisfying "no data fetching before authentication."
   const needsNickname = roomId !== null && nickname === null;
 
   return (
