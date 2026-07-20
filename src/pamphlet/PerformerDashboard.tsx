@@ -17,6 +17,7 @@ export function PerformerDashboard({ data, performerName, bands, progress }: {
   const [permission, setPermission] = useState<NotificationPermission>(() =>
     typeof Notification === "undefined" ? "denied" : Notification.permission,
   );
+  const [notificationUnavailable, setNotificationUnavailable] = useState(false);
   const bandIds = useMemo(() => new Set(bands.map((band) => band.id)), [bands]);
   const bandNames = useMemo(() => bands.map((band) => band.name), [bands]);
   const bandMap = useMemo(() => new Map(data.bands.map((band) => [band.id, band.name])), [data.bands]);
@@ -93,6 +94,14 @@ export function PerformerDashboard({ data, performerName, bands, progress }: {
   const slotName = (slot: PublicSlot | undefined) =>
     slot ? (slot.bandId ? bandMap.get(slot.bandId) : slot.customLabel) || "未定" : "なし";
 
+  async function enableNotifications() {
+    if (typeof Notification === "undefined") {
+      setNotificationUnavailable(true);
+      return;
+    }
+    setPermission(await Notification.requestPermission());
+  }
+
   return (
     <section className="mt-4 rounded-2xl border border-blue-500/50 bg-blue-950/25 p-4" aria-labelledby="performer-dashboard-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -100,12 +109,13 @@ export function PerformerDashboard({ data, performerName, bands, progress }: {
           <p className="text-xs font-bold text-blue-300">出演者マイページ</p>
           <h2 id="performer-dashboard-title" className="text-xl font-bold text-slate-100">{performerName}</h2>
         </div>
-        {typeof Notification !== "undefined" && permission !== "granted" && (
-          <button type="button" onClick={() => void Notification.requestPermission().then(setPermission)} className="min-h-11 rounded-lg border border-blue-500 px-3 text-sm font-semibold text-blue-200 hover:bg-blue-900/50">
+        {permission !== "granted" ? (
+          <button type="button" onClick={() => void enableNotifications()} className="min-h-11 rounded-lg border border-blue-500 px-3 text-sm font-semibold text-blue-200 hover:bg-blue-900/50">
             🔔 通知を有効にする
           </button>
-        )}
+        ) : <span className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-300">🔔 通知有効</span>}
       </div>
+      {notificationUnavailable && <p className="mt-2 text-xs text-amber-300">このブラウザでは通知を利用できません。対応ブラウザまたはホーム画面に追加したアプリからお試しください。</p>}
       {liveMessage && <p className="mt-3 rounded-lg border border-amber-500 bg-amber-950/40 p-3 text-sm font-bold text-amber-200" role="status">⚠ {liveMessage}</p>}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
