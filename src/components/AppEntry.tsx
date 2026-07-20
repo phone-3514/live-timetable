@@ -51,9 +51,18 @@ function openPaViewer(code: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function shouldAutoFocusEntryInput(): boolean {
+  return !window.matchMedia("(max-width: 767px)").matches
+    && !window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function dismissInputFocus() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-dvh bg-slate-950 text-slate-100">
       <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3">
         <div>
           <p className="text-sm font-bold tracking-tight">Live Timetable</p>
@@ -157,6 +166,7 @@ function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
                 setError("閲覧コードが正しくありません。運営スタッフ用コードとは異なります。");
                 return;
               }
+              dismissInputFocus();
               window.location.assign(destinationForCode(kind, normalized));
             } catch {
               setError("コードを確認できませんでした。通信状態を確認してください。");
@@ -173,7 +183,7 @@ function CodeEntry({ kind, onBack, onOrganizer, onPa, onResume, onCreate }: {
               setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9\s-]/g, ""));
               setError("");
             }}
-            autoFocus
+            autoFocus={shouldAutoFocusEntryInput()}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
@@ -226,6 +236,7 @@ function PaCodeEntry({ onBack }: { onBack: () => void }) {
               setError("PAコードが正しくありません。");
               return;
             }
+            dismissInputFocus();
             openPaViewer(normalized);
           } catch {
             setError("PAコードを確認できませんでした。通信状態を確認してください。");
@@ -234,7 +245,7 @@ function PaCodeEntry({ onBack }: { onBack: () => void }) {
           }
         }}>
           <label htmlFor="pa-entry-code" className="text-sm font-semibold text-slate-200">PAコード</label>
-          <input id="pa-entry-code" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9\s-]/g, "")); setError(""); }} autoFocus autoCapitalize="characters" autoCorrect="off" spellCheck={false} enterKeyHint="go" maxLength={11} placeholder="例：ABCD2345" aria-describedby={error ? "pa-entry-code-error" : undefined} className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 font-mono text-lg font-bold uppercase tracking-[0.16em] text-slate-100 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-600 focus:border-indigo-500" />
+          <input id="pa-entry-code" value={code} onChange={(event) => { setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9\s-]/g, "")); setError(""); }} autoFocus={shouldAutoFocusEntryInput()} autoCapitalize="characters" autoCorrect="off" spellCheck={false} enterKeyHint="go" maxLength={11} placeholder="例：ABCD2345" aria-describedby={error ? "pa-entry-code-error" : undefined} className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 font-mono text-lg font-bold uppercase tracking-[0.16em] text-slate-100 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-600 focus:border-indigo-500" />
           {error && <p id="pa-entry-code-error" className="mt-2 text-sm text-rose-400">{error}</p>}
           <button type="submit" disabled={submitting} className="mt-6 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60">{submitting ? "確認中…" : "PA画面を開く"}</button>
         </form>
@@ -282,6 +293,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
   }
 
   function createEvent() {
+    dismissInputFocus();
     const dayId = crypto.randomUUID();
     const day: TimetableDay = {
       id: dayId,
@@ -326,7 +338,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
 
   return (
     <Shell>
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-lg flex-col px-4 py-7 sm:py-10">
+      <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-lg flex-col px-4 py-7 sm:py-10">
         <StepProgress step={step} />
 
         <div className="flex-1">
@@ -336,7 +348,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
               <p className="mt-2 text-sm text-slate-400">まずイベントの名前と開催情報を入力します。</p>
               <div className="mt-7 grid gap-5">
                 <label className="text-sm font-semibold text-slate-200">イベント名 <span className="text-rose-400">必須</span>
-                  <input autoFocus value={draft.eventName} onChange={(event) => update("eventName", event.target.value)} placeholder="例：軽音祭 vol.5" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
+                  <input autoFocus={shouldAutoFocusEntryInput()} value={draft.eventName} onChange={(event) => update("eventName", event.target.value)} placeholder="例：軽音祭 vol.5" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
                 </label>
                 <label className="text-sm font-semibold text-slate-200">開催日
                   <input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none focus:border-indigo-500" />
@@ -373,7 +385,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
               <h1 className="text-2xl font-bold">最初のバンド</h1>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">最初の出演バンドを登録できます。未定なら空欄のまま進めます。</p>
               <label className="mt-7 block text-sm font-semibold text-slate-200">バンド名
-                <input autoFocus value={draft.firstBandName} onChange={(event) => update("firstBandName", event.target.value)} placeholder="バンド名を入力" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
+                <input autoFocus={shouldAutoFocusEntryInput()} value={draft.firstBandName} onChange={(event) => update("firstBandName", event.target.value)} placeholder="バンド名を入力" className="mt-2 min-h-12 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 text-slate-100 outline-none placeholder:text-slate-600 focus:border-indigo-500" />
               </label>
             </section>
           )}
