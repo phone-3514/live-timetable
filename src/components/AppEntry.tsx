@@ -70,33 +70,6 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
       days.some((day) => day.slots.length),
   );
 
-  const roles = [
-    {
-      view: "create" as const,
-      icon: "＋",
-      title: "イベントを作成・管理",
-      description: "新しいタイムテーブルを準備します",
-    },
-    {
-      view: "organizer" as const,
-      icon: "👥",
-      title: "運営としてイベントに参加",
-      description: "共有コードから共同編集へ参加します",
-    },
-    {
-      view: "public" as const,
-      icon: "▤",
-      title: "公開タイムテーブルを見る",
-      description: "共有コードから観客向け画面を開きます",
-    },
-    {
-      view: "pa" as const,
-      icon: "🎚",
-      title: "PA・ローディーとして参加",
-      description: "PA / ROADIE SYNC を開きます",
-    },
-  ];
-
   return (
     <Shell>
       <main className="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
@@ -120,31 +93,24 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
           </section>
         )}
 
-        <div className="grid gap-3">
-          {roles.map((role) => (
-            <button
-              key={role.view}
-              type="button"
-              onClick={() => {
-                if (role.view === "pa") {
-                  window.location.assign(`${import.meta.env.BASE_URL}pa-viewer`);
-                } else {
-                  onSelect(role.view);
-                }
-              }}
-              className="flex min-h-20 w-full items-center gap-4 rounded-xl border border-slate-700 bg-slate-900 p-4 text-left shadow-sm hover:border-slate-600 hover:bg-slate-800"
-            >
-              <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-xl text-indigo-300">
-                {role.icon}
-              </span>
-              <span className="min-w-0 flex-1">
-                <strong className="block text-sm text-slate-100">{role.title}</strong>
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">{role.description}</span>
-              </span>
-              <span aria-hidden="true" className="text-lg text-slate-500">›</span>
-            </button>
-          ))}
+        <button
+          type="button"
+          onClick={() => onSelect("public")}
+          className="flex min-h-24 w-full items-center gap-4 rounded-xl border border-indigo-500/70 bg-indigo-950/40 p-4 text-left shadow-sm hover:bg-indigo-950/65"
+        >
+          <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20 text-2xl text-indigo-200">▤</span>
+          <span className="min-w-0 flex-1">
+            <strong className="block text-base text-slate-100">タイムテーブルを見る</strong>
+            <span className="mt-1 block text-xs leading-relaxed text-slate-300">閲覧コードから読み取り専用画面を開きます</span>
+          </span>
+          <span aria-hidden="true" className="text-xl text-indigo-300">›</span>
+        </button>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => onSelect("organizer")} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
+          <button type="button" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}pa-viewer`)} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
         </div>
+        <button type="button" onClick={() => onSelect("create")} className="mt-3 min-h-11 w-full rounded-lg px-4 text-sm font-semibold text-slate-400 hover:bg-slate-900 hover:text-slate-200">イベントを作成・管理</button>
       </main>
     </Shell>
   );
@@ -161,10 +127,11 @@ function CodeEntry({ kind, onBack }: { kind: "organizer" | "public"; onBack: () 
         <button type="button" onClick={onBack} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-100">
           ← 戻る
         </button>
-        <h1 className="mt-6 text-2xl font-bold">{isOrganizer ? "運営として参加" : "公開タイムテーブルを見る"}</h1>
+        <h1 className="mt-6 text-2xl font-bold">{isOrganizer ? "運営スタッフとして参加" : "タイムテーブルを見る"}</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-400">
           主催者から共有された8文字のコードを入力してください。
         </p>
+        {isOrganizer && <p className="mt-4 rounded-lg border border-amber-700/70 bg-amber-950/30 p-3 text-sm font-semibold leading-relaxed text-amber-200">運営スタッフ専用です。一般部員には共有しないでください。</p>}
         <form
           className="mt-8"
           onSubmit={(event) => {
@@ -177,7 +144,7 @@ function CodeEntry({ kind, onBack }: { kind: "organizer" | "public"; onBack: () 
             window.location.assign(destinationForCode(kind, normalized));
           }}
         >
-          <label htmlFor={`${kind}-code`} className="text-sm font-semibold text-slate-200">共有コード</label>
+          <label htmlFor={`${kind}-code`} className="text-sm font-semibold text-slate-200">{isOrganizer ? "運営スタッフ専用コード" : "閲覧コード"}</label>
           <input
             id={`${kind}-code`}
             value={code}
@@ -197,7 +164,7 @@ function CodeEntry({ kind, onBack }: { kind: "organizer" | "public"; onBack: () 
           />
           {error && <p id={`${kind}-code-error`} className="mt-2 text-sm text-rose-400">{error}</p>}
           <button type="submit" className="mt-6 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500">
-            {isOrganizer ? "共同編集へ進む" : "タイムテーブルを開く"}
+            {isOrganizer ? "運営画面へ進む" : "タイムテーブルを見る"}
           </button>
         </form>
       </main>
