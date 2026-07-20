@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { useAppStore } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
 import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
+import { ensureViewerCode } from "../utils/viewerCodes";
 
 interface Props {
   roomId: string;
@@ -63,8 +64,9 @@ export function PublishPamphletButton({ roomId }: Props) {
     try {
       const { eventInfo, bands, days } = useAppStore.getState();
       const publicDoc = buildPublicPamphletDoc(eventInfo, bands, days);
+      const viewerCode = await ensureViewerCode(roomId);
       await setDoc(doc(db, "publicPamphlets", roomId), publicDoc);
-      const url = `${window.location.origin}${import.meta.env.BASE_URL}${roomId}/public`;
+      const url = `${window.location.origin}${import.meta.env.BASE_URL}${viewerCode}/public`;
       storePublishedUrl(roomId, url);
       setPublishedUrl(url);
       showToast("パンフレットを公開しました", "success");

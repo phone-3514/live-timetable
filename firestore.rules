@@ -25,6 +25,24 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // Small lookup tables keep the public code distinct from the organizer
+    // room id without duplicating the room document. This is code-based
+    // separation only: without Firebase Auth it is not an authorization
+    // boundary, and anyone who learns an organizer code retains edit access.
+    match /viewerCodes/{viewerCode} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['organizerRoomId'])
+        && request.resource.data.organizerRoomId is string
+        && request.resource.data.organizerRoomId.size() == 8;
+    }
+
+    match /roomViewerCodes/{organizerRoomId} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['viewerCode'])
+        && request.resource.data.viewerCode is string
+        && request.resource.data.viewerCode.size() == 8;
+    }
+
     // The public pamphlet's whole reason to exist: a curated, read-only
     // document (see src/pamphlet/buildPublicPamphletDoc.ts, the ONLY
     // place that writes here) holding just what an audience should see —

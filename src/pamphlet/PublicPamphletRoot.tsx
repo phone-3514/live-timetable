@@ -10,6 +10,7 @@ import { VenueScreen } from "./VenueScreen";
 import { PerformerDashboard } from "./PerformerDashboard";
 import { AccessibilitySettings } from "../components/AccessibilitySettings";
 import { useSyncAccessibility } from "../hooks/useSyncAccessibility";
+import { resolveViewerCode } from "../utils/viewerCodes";
 
 interface Props {
   circleId: string;
@@ -47,9 +48,17 @@ function normalizePerformerSearch(value: string): string {
 export function PublicPamphletRoot({ circleId }: Props) {
   useSyncThemeAttribute();
   useSyncAccessibility();
-  const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(circleId);
+  const [resolvedRoomId, setResolvedRoomId] = useState(circleId);
+  useEffect(() => {
+    let active = true;
+    void resolveViewerCode(circleId).then((roomId) => {
+      if (active && roomId) setResolvedRoomId(roomId);
+    }).catch(() => { /* legacy room-id URLs continue with circleId */ });
+    return () => { active = false; };
+  }, [circleId]);
+  const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(resolvedRoomId);
   const activeRow = useActiveSlotId(data);
-  const liveProgress = usePublicProgress(circleId);
+  const liveProgress = usePublicProgress(resolvedRoomId);
   const screenMode = new URLSearchParams(window.location.search).get("mode") === "screen";
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myPerformerName, setMyPerformerName] = useState<string>(() => new URLSearchParams(window.location.search).get("performer") ?? "");

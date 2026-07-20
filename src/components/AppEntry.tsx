@@ -60,16 +60,6 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
-  const eventInfo = useAppStore((state) => state.eventInfo);
-  const bands = useAppStore((state) => state.bands);
-  const days = useAppStore((state) => state.days);
-  const hasLocalEvent = Boolean(
-    eventInfo.liveName.trim() ||
-      eventInfo.venue.trim() ||
-      bands.length ||
-      days.some((day) => day.slots.length),
-  );
-
   return (
     <Shell>
       <main className="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
@@ -78,20 +68,6 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
           <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">どの方法で始めますか？</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-400">目的に合った入口を選んでください。</p>
         </div>
-
-        {hasLocalEvent && (
-          <section className="mb-5 rounded-xl border border-indigo-500/60 bg-indigo-950/35 p-4 shadow-sm">
-            <p className="text-xs font-semibold text-indigo-300">この端末に保存済み</p>
-            <p className="mt-1 truncate text-base font-bold">{eventInfo.liveName || "名称未設定のイベント"}</p>
-            <button
-              type="button"
-              onClick={() => onSelect("editor")}
-              className="mt-4 min-h-12 w-full rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500"
-            >
-              保存中のイベントを再開
-            </button>
-          </section>
-        )}
 
         <button
           type="button"
@@ -116,32 +92,66 @@ function Landing({ onSelect }: { onSelect: (view: EntryView) => void }) {
   );
 }
 
-function CodeEntry({ kind, onBack }: { kind: "organizer" | "public"; onBack: () => void }) {
+function CodeEntry({ kind, onBack, onOrganizer, onResume, onCreate }: {
+  kind: "organizer" | "public";
+  onBack?: () => void;
+  onOrganizer?: () => void;
+  onResume?: () => void;
+  onCreate?: () => void;
+}) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const isOrganizer = kind === "organizer";
+  const eventInfo = useAppStore((state) => state.eventInfo);
+  const bands = useAppStore((state) => state.bands);
+  const days = useAppStore((state) => state.days);
+  const hasLocalEvent = Boolean(eventInfo.liveName.trim() || eventInfo.venue.trim() || bands.length || days.some((day) => day.slots.length));
 
   return (
     <Shell>
       <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-12">
-        <button type="button" onClick={onBack} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-100">
-          ← 戻る
-        </button>
+        {onBack && <button type="button" onClick={onBack} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-100">← 戻る</button>}
         <h1 className="mt-6 text-2xl font-bold">{isOrganizer ? "運営スタッフとして参加" : "タイムテーブルを見る"}</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-400">
           主催者から共有された8文字のコードを入力してください。
         </p>
         {isOrganizer && <p className="mt-4 rounded-lg border border-amber-700/70 bg-amber-950/30 p-3 text-sm font-semibold leading-relaxed text-amber-200">運営スタッフ専用です。一般部員には共有しないでください。</p>}
+        {isOrganizer && hasLocalEvent && (
+          <section className="mt-5 rounded-xl border border-indigo-500/60 bg-indigo-950/35 p-4">
+            <p className="text-xs font-semibold text-indigo-300">この端末に保存済み</p>
+            <p className="mt-1 truncate text-base font-bold">{eventInfo.liveName || "名称未設定のイベント"}</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">この端末に保存されている運営用イベントを開きます。</p>
+            <button type="button" onClick={onResume} className="mt-3 min-h-12 w-full rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500">前回のイベントを再開</button>
+          </section>
+        )}
         <form
           className="mt-8"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
             const normalized = normalizeCode(code);
             if (!normalized) {
               setError("8文字の共有コードを確認してください");
               return;
             }
-            window.location.assign(destinationForCode(kind, normalized));
+            setSubmitting(true);
+            try {
+              const { organizerRoomExists, resolveViewerCode } = await import("../utils/viewerCodes");
+              if (isOrganizer) {
+                if (!(await organizerRoomExists(normalized))) {
+                  setError("運営スタッフ用コードが正しくありません。閲覧コードでは参加できません。");
+                  return;
+                }
+              } else if (!(await resolveViewerCode(normalized))) {
+                setError("閲覧コードが正しくありません。運営スタッフ用コードとは異なります。");
+                return;
+              }
+              window.location.assign(destinationForCode(kind, normalized));
+            } catch {
+              setError("コードを確認できませんでした。通信状態を確認してください。");
+            } finally {
+              setSubmitting(false);
+            }
           }}
         >
           <label htmlFor={`${kind}-code`} className="text-sm font-semibold text-slate-200">{isOrganizer ? "運営スタッフ専用コード" : "閲覧コード"}</label>
@@ -163,10 +173,18 @@ function CodeEntry({ kind, onBack }: { kind: "organizer" | "public"; onBack: () 
             className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-900 px-4 font-mono text-lg font-bold uppercase tracking-[0.16em] text-slate-100 outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-slate-600 focus:border-indigo-500"
           />
           {error && <p id={`${kind}-code-error`} className="mt-2 text-sm text-rose-400">{error}</p>}
-          <button type="submit" className="mt-6 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500">
-            {isOrganizer ? "運営画面へ進む" : "タイムテーブルを見る"}
+          <button type="submit" disabled={submitting} className="mt-6 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60">
+            {submitting ? "確認中…" : isOrganizer ? "運営画面へ進む" : "タイムテーブルを見る"}
           </button>
         </form>
+        {isOrganizer ? (
+          <button type="button" onClick={onCreate} className="mt-4 min-h-11 w-full rounded-lg border border-slate-700 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">新しいイベントを作成</button>
+        ) : (
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={onOrganizer} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">運営スタッフはこちら</button>
+            <button type="button" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}pa-viewer`)} className="min-h-12 rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-800">PA／ローディーはこちら</button>
+          </div>
+        )}
       </main>
     </Shell>
   );
@@ -352,12 +370,13 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
 }
 
 export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
-  const [view, setView] = useState<EntryView>(bypassLanding ? "editor" : "landing");
+  const [view, setView] = useState<EntryView>(bypassLanding ? "editor" : "public");
   useSyncThemeAttribute();
   useSyncAccessibility();
 
   if (view === "editor") return <App />;
-  if (view === "create") return <EventCreation onCancel={() => setView("landing")} onCreated={() => setView("editor")} />;
-  if (view === "organizer" || view === "public") return <CodeEntry kind={view} onBack={() => setView("landing")} />;
+  if (view === "create") return <EventCreation onCancel={() => setView("organizer")} onCreated={() => setView("editor")} />;
+  if (view === "organizer") return <CodeEntry kind="organizer" onBack={() => setView("public")} onResume={() => setView("editor")} onCreate={() => setView("create")} />;
+  if (view === "public") return <CodeEntry kind="public" onOrganizer={() => setView("organizer")} />;
   return <Landing onSelect={setView} />;
 }
