@@ -1,3 +1,4 @@
+import { arrayMove } from "@dnd-kit/sortable";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { VenueHours } from "./parseBands";
 import { canPlaceBandInSlot } from "./scheduleEligibility";
@@ -75,34 +76,41 @@ export function computeScheduleBlocks(slots: TimetableSlot[]): ScheduleBlock[] {
   return blocks;
 }
 
-// The read-only context every hard/soft check needs. `blocks` and
-// `eventStartMinutes` are computed once from the day's slot *structure*
-// (divider positions and the day's own start time never move during a
-// search — only which band occupies which already-existing performance
-// slot changes), so both are safe to reuse across an entire search rather
-// than recomputing them every candidate. `eventStartMinutes` is NOT the
-// day's *end* — the end shifts with band durations as swaps happen, so
-// it's recomputed per-candidate from the actual `slots` being scored (see
-// computeEventTimeRange) rather than cached here.
+// The read-only context every hard/soft check needs. `blocks`,
+// `eventStartMinutes`, and `finalPhaseStart` are all computed once from
+// the day's slot *structure at context-build time* (divider positions,
+// the day's own start time, and — critically — which slot is the final
+// performance slot in `day` as passed in), so all three are safe to reuse
+// across an entire search rather than recomputing them every candidate.
+// `finalPhaseStart` in particular MUST stay fixed for the life of a
+// search: see computeFinalPhaseStart's own doc for why deriving it from
+// each candidate's own (possibly shifted) event end would let the
+// evaluation goalpost move mid-search. `eventEndMinutes` itself is NOT
+// cached here — it genuinely does shift with band durations as swaps
+// happen, so globalTimelineComponent recomputes it per-candidate (see
+// computeEventTimeRange).
 export type ScheduleContext = {
   day: TimetableDay;
   allBands: Band[];
   venueHours: VenueHours;
   blocks: ScheduleBlock[];
   eventStartMinutes: number;
+  finalPhaseStart: number;
 };
 
 // Builds the context once per day/search — the one place that assembles
-// `blocks` and `eventStartMinutes` together, so solveDayAssignment,
-// improveDayByLiveComposition, and the debug builder never construct this
-// object by hand differently from one another.
+// `blocks`, `eventStartMinutes`, and `finalPhaseStart` together, so
+// solveDayAssignment, improveDayByLiveComposition, and the debug builder
+// never construct this object by hand differently from one another.
 export function buildScheduleContext(day: TimetableDay, allBands: Band[], venueHours: VenueHours): ScheduleContext {
+  const eventStartMinutes = timeToMinutes(day.settings.startTime);
   return {
     day,
     allBands,
     venueHours,
     blocks: computeScheduleBlocks(day.slots),
-    eventStartMinutes: timeToMinutes(day.settings.startTime),
+    eventStartMinutes,
+    finalPhaseStart: computeFinalPhaseStart(day.slots, eventStartMinutes),
   };
 }
 
@@ -407,10 +415,39 @@ export function calculateGlobalPositionPenalty(globalPosition: number, rating: n
 
 // The final-phase window's lower bound never goes earlier than the event
 // itself starts — a live event shorter than FINAL_PHASE_DURATION_MINUTES
-// (2h) simply spends its entire run "in the final phase" rather than
-// producing a nonsensical negative-length or pre-start window.
-export function getFinalPhaseStart(eventStartMinutes: number, eventEndMinutes: number): number {
-  return Math.max(eventStartMinutes, eventEndMinutes - FINAL_PHASE_DURATION_MINUTES);
+// (3h) simply spends its entire run "in the final phase" rather than
+// producing a nonsensical negative-length or pre-start window. Despite
+// the parameter name, this is a generic "clamp(endpoint - duration,
+// floor)" helper — computeFinalPhaseStart below reuses it verbatim,
+// feeding it the final performance slot's START time instead of an event
+// end, rather than duplicating the same one-line formula.
+export function getFinalPhaseStart(eventStartMinutes: number, endpointMinutes: number): number {
+  return Math.max(eventStartMinutes, endpointMinutes - FINAL_PHASE_DURATION_MINUTES);
+}
+
+// The final performance slot in timeline order — NOT necessarily the last
+// element of `slots` (that could be a divider), and not picked by a plain
+// `HH:mm` string-max (see computeAbsoluteMinutes's own doc for why that
+// breaks across a midnight crossing). Filled or not: this is a timeline
+// reference point, not "the last band placed."
+function getFinalPerformanceSlotAbsoluteStart(slots: TimetableSlot[], eventStartMinutes: number): number | null {
+  const performanceSlots = slots.filter((s) => s.customLabel === null);
+  const finalSlot = performanceSlots.at(-1);
+  if (!finalSlot) return null;
+  return computeAbsoluteMinutes(slots, eventStartMinutes).get(finalSlot.id)?.start ?? null;
+}
+
+// 終盤開始時刻の基準 — Step 1 が生成した初期有効解(呼び出し時点の `slots`)
+// における最終出演枠の"開始"時刻から3時間前。終了時刻や現在の候補配置から
+// 再計算しない — buildScheduleContext がこの関数を一度だけ呼び、結果を
+// ScheduleContext.finalPhaseStart として固定するので、Step 3 の探索中は
+// バンドの入れ替え・挿入で最終枠の演奏時間が変わっても評価基準そのものは
+// 動かない。演奏枠が1つも無い日は eventStartMinutes を返す(終盤の概念が
+// 意味を持たないため)。
+export function computeFinalPhaseStart(slots: TimetableSlot[], eventStartMinutes: number): number {
+  const finalSlotStart = getFinalPerformanceSlotAbsoluteStart(slots, eventStartMinutes);
+  if (finalSlotStart === null) return eventStartMinutes;
+  return getFinalPhaseStart(eventStartMinutes, finalSlotStart);
 }
 
 // 0 before the final phase starts, 1 at (or past) the event's end,
@@ -614,7 +651,9 @@ const finalPhaseComponent: ScoreComponent = {
   calculate: (slots, context) => {
     const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
     const { eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
-    const finalPhaseStart = getFinalPhaseStart(context.eventStartMinutes, eventEndMinutes);
+    // 終盤開始時刻はcontextで固定済み(Step1の初期有効解基準) — 候補ごとに
+    // 再計算しない。
+    const finalPhaseStart = context.finalPhaseStart;
     let total = 0;
     let count = 0;
     for (const slot of slots) {
@@ -640,7 +679,7 @@ const ratingFiveFinalPhaseComponent: ScoreComponent = {
   calculate: (slots, context) => {
     const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
     const { eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
-    const finalPhaseStart = getFinalPhaseStart(context.eventStartMinutes, eventEndMinutes);
+    const finalPhaseStart = context.finalPhaseStart;
     let total = 0;
     let count = 0;
     for (const slot of slots) {
@@ -851,6 +890,7 @@ export type SchedulingDebugSlot = {
   startTime: string;
   blockId: string;
   blockIndex: number;
+  totalBlockCount: number;
   globalPosition: number;
   blockPosition: number;
   isFinalPhase: boolean;
@@ -888,6 +928,10 @@ export type SchedulingDebugResult = {
   violations: string[];
   warnings: string[];
   failures: SchedulingFailure[];
+  /** Only present when this debug result was built right after a Step 3
+   * search (see improveDayByLiveComposition) — absent for a standalone
+   * buildSchedulingDebugResult call with no search to summarize. */
+  optimizationSummary?: OptimizationSummary;
 };
 
 // Admin/developer-only — never rendered in any general-user-facing view,
@@ -904,6 +948,7 @@ export function buildSchedulingDebugResult(
   slots: TimetableSlot[],
   context: ScheduleContext,
   failures: SchedulingFailure[] = [],
+  optimizationSummary?: OptimizationSummary,
 ): SchedulingDebugResult {
   const validation = validateHardConstraints(slots, context);
   const { totalScore, ...scoreBreakdown } = evaluateSchedule(slots, context);
@@ -912,7 +957,7 @@ export function buildSchedulingDebugResult(
     slots,
     context.eventStartMinutes,
   );
-  const finalPhaseStart = getFinalPhaseStart(eventStartMinutes, eventEndMinutes);
+  const finalPhaseStart = context.finalPhaseStart;
   const totalBlockCount = context.blocks.length;
 
   const lowRatingProfiles = computePerformerLowRatingProfiles(slots, context.allBands);
@@ -962,6 +1007,7 @@ export function buildSchedulingDebugResult(
         startTime: slot.startTime,
         blockId: block.id,
         blockIndex,
+        totalBlockCount,
         globalPosition,
         blockPosition,
         isFinalPhase: abs ? abs.start >= finalPhaseStart : false,
@@ -1029,6 +1075,7 @@ export function buildSchedulingDebugResult(
     violations: validation.violations.map((v) => v.message),
     warnings,
     failures,
+    ...(optimizationSummary ? { optimizationSummary } : {}),
   };
 }
 
@@ -1242,69 +1289,473 @@ export function solveDayAssignment(
 
 // ---------- Step 3: ライブ構成評価による局所探索 ---------------------------
 //
-// Takes Step 1's (already hard-constraint-valid) output and looks for
-// slot-to-slot swaps, within blocks or across them, that improve
-// evaluateSchedule — but only ever moves between fully valid states.
-// Deterministic (no Math.random anywhere here) so the same input always
-// produces the same output, unlike Step 1's simulated annealing.
-const MAX_COMPOSITION_PASSES = 20;
+// Takes Step 1's (already hard-constraint-valid) output and searches for
+// swap/insert moves that improve evaluateSchedule's totalScore — but only
+// ever moves between fully valid states (every candidate is re-validated
+// against all three hard constraints before it's ever compared on score).
+// Deterministic when maxRuntimeMs is disabled (no Math.random anywhere in
+// this section) so the same input always produces the same output, unlike
+// Step 1's simulated annealing.
+//
+// 調査結果 (このfeature実装前の探索方式): 交換(SWAP)のみ、対象は
+// bandId!==nullの全ペア(既にブロックをまたぐ全組み合わせが対象だった —
+// 隣接や同一ブロック限定ではない)。各パスを2重ループで走査し、改善する
+// 交換が見つかり次第その場で採用する"最初に見つかった改善"方式(best-of-
+// iterationではない)。改善が0件のパスで終了、最大20パス。候補数・実行
+// 時間の上限、状態重複防止、優先度付け、事前推定、最適化サマリーは
+// 無かった。挿入(INSERT)移動も無かった。
 
-export function improveDayByLiveComposition(day: TimetableDay, bands: Band[], venueHours: VenueHours): TimetableSlot[] {
+// ---- 候補移動の型 (Phase 1: SWAP と INSERT のみ) --------------------------
+export type SwapMove = { type: "SWAP"; firstSlotId: string; secondSlotId: string };
+export type InsertMove = { type: "INSERT"; sourceSlotId: string; targetSlotId: string };
+export type OptimizationMove = SwapMove | InsertMove;
+
+export type EvaluatedMove = {
+  move: OptimizationMove;
+  schedule: TimetableSlot[];
+  evaluation: ScheduleScoreBreakdown;
+  scoreDelta: number;
+};
+
+// 全出演枠ペアの交換候補 — 隣接や同一ブロックに限らず、離れたブロック間
+// (例: 第1ブロックと第3ブロック)も対象にする。両方とも空き枠の組み合わせ
+// は常に無意味(no-op)なので生成しない。
+export function generateSwapMoves(performanceSlots: TimetableSlot[]): SwapMove[] {
+  const moves: SwapMove[] = [];
+  for (let i = 0; i < performanceSlots.length - 1; i++) {
+    for (let j = i + 1; j < performanceSlots.length; j++) {
+      if (performanceSlots[i].bandId === null && performanceSlots[j].bandId === null) continue;
+      moves.push({ type: "SWAP", firstSlotId: performanceSlots[i].id, secondSlotId: performanceSlots[j].id });
+    }
+  }
+  return moves;
+}
+
+// 1つのバンドの割り当てを別の出演枠の位置へ移し、間にある割り当てを1枠ずつ
+// ずらす挿入候補。休憩・ブロック境界・出演枠数は変わらない — タイムライン
+// 順に並べた出演枠のBand割り当てだけを動かす。moveSourceが空き枠の場合は
+// 「何も無いものを移動する」ことになるため生成しない。
+export function generateInsertMoves(performanceSlots: TimetableSlot[]): InsertMove[] {
+  const moves: InsertMove[] = [];
+  for (let i = 0; i < performanceSlots.length; i++) {
+    if (performanceSlots[i].bandId === null) continue;
+    for (let j = 0; j < performanceSlots.length; j++) {
+      if (i === j) continue;
+      moves.push({ type: "INSERT", sourceSlotId: performanceSlots[i].id, targetSlotId: performanceSlots[j].id });
+    }
+  }
+  return moves;
+}
+
+// 候補生成 (このfeatureのStep3全体で唯一の生成箇所) — 候補の適用・検証・
+// 評価とは混在させない。
+export function generateCandidateMoves(slots: TimetableSlot[]): OptimizationMove[] {
+  const performanceSlots = slots.filter((s) => s.customLabel === null);
+  return [...generateSwapMoves(performanceSlots), ...generateInsertMoves(performanceSlots)];
+}
+
+function applySwapMove(slots: TimetableSlot[], move: SwapMove): TimetableSlot[] {
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+  const first = slotById.get(move.firstSlotId);
+  const second = slotById.get(move.secondSlotId);
+  if (!first || !second) return slots;
+  return slots.map((s) => {
+    if (s.id === first.id) return { ...s, bandId: second.bandId };
+    if (s.id === second.id) return { ...s, bandId: first.bandId };
+    return s;
+  });
+}
+
+// arrayMove (既存依存の@dnd-kit/sortable、新規依存の追加なし) を使い、
+// タイムライン順の出演枠配列の中でsourceの割り当てをtargetの位置へ移し、
+// 間の割り当てだけを1枠ずつずらす。非バンド枠(休憩など)はそもそも
+// performanceSlotsの対象外なので動かない。
+function applyInsertMove(slots: TimetableSlot[], move: InsertMove): TimetableSlot[] {
+  const performanceSlots = slots.filter((s) => s.customLabel === null);
+  const ids = performanceSlots.map((s) => s.id);
+  const sourceIndex = ids.indexOf(move.sourceSlotId);
+  const targetIndex = ids.indexOf(move.targetSlotId);
+  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return slots;
+  const bandIds = performanceSlots.map((s) => s.bandId);
+  const reordered = arrayMove(bandIds, sourceIndex, targetIndex);
+  const bandIdByPosition = new Map(ids.map((id, i) => [id, reordered[i]]));
+  return slots.map((s) => (bandIdByPosition.has(s.id) ? { ...s, bandId: bandIdByPosition.get(s.id) ?? null } : s));
+}
+
+// 候補適用 (このfeatureのStep3全体で唯一の適用箇所) — ハード制約検証や
+// スコア評価とは混在させない。recomputeTimesは常に適用後に一度だけ呼ぶ。
+export function applyOptimizationMove(
+  slots: TimetableSlot[],
+  move: OptimizationMove,
+  day: TimetableDay,
+  bands: Band[],
+): TimetableSlot[] {
+  const next = move.type === "SWAP" ? applySwapMove(slots, move) : applyInsertMove(slots, move);
+  return recomputeTimes(next, day.settings, bands);
+}
+
+// 固定された出演枠とBand割り当てから状態キーを生成する — 同じ割り当てなら
+// recomputeTimesも常に同じ時刻を返す(day.settings/bandsに対する純関数)ため、
+// 時刻情報を追加する必要はない。休憩など非バンド枠はキーに含めない(常に
+// 不変のため)。
+export function createScheduleStateKey(slots: TimetableSlot[], dayId: string): string {
+  return slots
+    .filter((s) => s.customLabel === null)
+    .map((s) => `${dayId}:${s.id}:${s.bandId ?? "EMPTY"}`)
+    .join("|");
+}
+
+// 候補評価 (このfeatureのStep3全体で唯一の評価箇所) — ハード制約に違反する
+// 場合はnullを返す。既存のisValidSchedule/evaluateScheduleを再利用するのみで、
+// 制約ロジックやスコアロジックを複製しない。
+export function evaluateOptimizationMove(
+  slots: TimetableSlot[],
+  move: OptimizationMove,
+  day: TimetableDay,
+  bands: Band[],
+  context: ScheduleContext,
+  currentTotalScore: number,
+): EvaluatedMove | null {
+  const candidate = applyOptimizationMove(slots, move, day, bands);
+  if (!isValidSchedule(candidate, context)) return null;
+  const evaluation = evaluateSchedule(candidate, context);
+  return { move, schedule: candidate, evaluation, scoreDelta: evaluation.totalScore - currentTotalScore };
+}
+
+// ---- 問題枠の優先探索と事前推定 -------------------------------------------
+
+export const PRIORITY_NEGATIVE_SCORE_THRESHOLD = -5;
+
+// 改善可能性が高い枠を含む候補を優先するための判定 — 優先対象外の候補を
+// 完全に禁止するわけではない(rankAndLimitCandidateMovesが並び替えに使う
+// だけで、除外はしない)。
+export function isPriorityOptimizationTarget(slot: SchedulingDebugSlot): boolean {
+  return (
+    (slot.rating === 5 && !slot.isFinalPhase) ||
+    (slot.blockIndex === slot.totalBlockCount - 1 && slot.rating <= 2) ||
+    slot.scoreContributions.total <= PRIORITY_NEGATIVE_SCORE_THRESHOLD
+  );
+}
+
+// 簡易的な改善見込み — globalTimeline/finalPhase/blockTimelineという、
+// 直前に計算済みのdebugResult上の位置情報(globalPosition/blockPosition/
+// finalPhaseProgress)だけから安価に再計算できる項目に限定する。
+// smoothness/blockClosing/lowRatedPerformerDistributionは隣接枠や
+// グループ情報が必要で安価に見積もれないため、推定では0として扱う —
+// 並び替え・絞り込みにしか使わないため、最終判定(evaluateOptimizationMove)
+// の正確さには影響しない。
+function estimateSlotContributionForRating(slot: SchedulingDebugSlot, rating: number): number {
+  const globalTimeline = -calculateGlobalPositionPenalty(slot.globalPosition, rating) * SCORE_WEIGHTS.globalTimeline;
+  const finalPhase = calculateProgressiveFinalPhaseScore(rating, slot.finalPhaseProgress) * SCORE_WEIGHTS.finalPhase;
+  const blockTimeline = -calculatePositionRatingPenalty(slot.blockPosition, rating) * SCORE_WEIGHTS.blockTimeline;
+  return globalTimeline + finalPhase + blockTimeline;
+}
+
+export function estimateMoveScoreDelta(move: OptimizationMove, debugResult: SchedulingDebugResult): number {
+  const slotDebugById = new Map(debugResult.slots.map((s) => [s.slotId, s]));
+  const [idA, idB] =
+    move.type === "SWAP" ? [move.firstSlotId, move.secondSlotId] : [move.sourceSlotId, move.targetSlotId];
+  const a = slotDebugById.get(idA);
+  const b = slotDebugById.get(idB);
+  if (!a && !b) return 0;
+  const ratingA = a?.rating ?? 3;
+  const ratingB = b?.rating ?? 3;
+  const before = (a ? estimateSlotContributionForRating(a, ratingA) : 0) + (b ? estimateSlotContributionForRating(b, ratingB) : 0);
+  const after = (a ? estimateSlotContributionForRating(a, ratingB) : 0) + (b ? estimateSlotContributionForRating(b, ratingA) : 0);
+  return after - before;
+}
+
+function moveTieBreakKey(move: OptimizationMove): string {
+  return move.type === "SWAP"
+    ? `SWAP:${move.firstSlotId}:${move.secondSlotId}`
+    : `INSERT:${move.sourceSlotId}:${move.targetSlotId}`;
+}
+
+// 候補が上限以下ならそのまま全件、超える場合は (1) 問題枠を含む候補 →
+// (2) 推定改善量の降順 → (3) 安定したtieBreakKey の順で並べ、上位だけを
+// 返す。省略した件数は必ずskippedCountとして呼び出し元(最適化サマリー)へ
+// 伝える — 「探索を尽くした」とは扱わない。
+function rankAndLimitCandidateMoves(
+  moves: OptimizationMove[],
+  debugResult: SchedulingDebugResult,
+  maxCandidates: number,
+): { candidates: OptimizationMove[]; skippedCount: number } {
+  if (moves.length <= maxCandidates) return { candidates: moves, skippedCount: 0 };
+
+  const slotDebugById = new Map(debugResult.slots.map((s) => [s.slotId, s]));
+  const ranked = moves.map((move) => {
+    const ids = move.type === "SWAP" ? [move.firstSlotId, move.secondSlotId] : [move.sourceSlotId, move.targetSlotId];
+    const isPriority = ids.some((id) => {
+      const sd = slotDebugById.get(id);
+      return sd ? isPriorityOptimizationTarget(sd) : false;
+    });
+    return {
+      move,
+      isPriority,
+      estimatedScoreDelta: estimateMoveScoreDelta(move, debugResult),
+      tieBreakKey: moveTieBreakKey(move),
+    };
+  });
+  ranked.sort((x, y) => {
+    if (x.isPriority !== y.isPriority) return x.isPriority ? -1 : 1;
+    if (x.estimatedScoreDelta !== y.estimatedScoreDelta) return y.estimatedScoreDelta - x.estimatedScoreDelta;
+    return x.tieBreakKey < y.tieBreakKey ? -1 : x.tieBreakKey > y.tieBreakKey ? 1 : 0;
+  });
+  return { candidates: ranked.slice(0, maxCandidates).map((r) => r.move), skippedCount: ranked.length - maxCandidates };
+}
+
+// ---- 上限・停止条件・最適化サマリー ----------------------------------------
+
+export const OPTIMIZATION_LIMITS = {
+  maxIterations: 100,
+  maxCandidatesPerIteration: 300,
+  maxRuntimeMs: 5000,
+};
+
+const MIN_IMPROVEMENT = 0.0001;
+
+export type OptimizationOptions = {
+  maxIterations?: number;
+  maxCandidatesPerIteration?: number;
+  /** nullで本番用の安全装置(実行時間上限)を無効化する — 決定性を検証する
+   * テストは必ずnullを渡し、候補数・反復回数だけで停止させること。省略時
+   * は本番既定値(OPTIMIZATION_LIMITS.maxRuntimeMs)を使う。 */
+  maxRuntimeMs?: number | null;
+  /** 実行時間上限のテストを実時間に依存させないための注入可能な時計。
+   * 省略時はDate.now。 */
+  now?: () => number;
+};
+
+export type OptimizationMoveType = "swap" | "insert";
+export type OptimizationStopReason = "NO_IMPROVING_MOVE" | "ITERATION_LIMIT" | "CANDIDATE_LIMIT" | "RUNTIME_LIMIT";
+export type UnresolvedIssueType =
+  | "RATING_FIVE_OUTSIDE_FINAL_PHASE"
+  | "LOW_RATING_IN_FINAL_BLOCK"
+  | "LOW_RATED_PERFORMER_IN_FINAL_BLOCK";
+export type UnresolvedIssueReason =
+  | "ALL_EVALUATED_MOVES_INVALID"
+  | "NO_IMPROVING_MOVE_FOUND"
+  | "CANDIDATE_LIMIT_REACHED"
+  | "ITERATION_LIMIT_REACHED"
+  | "RUNTIME_LIMIT_REACHED"
+  | "SEARCH_NOT_EXHAUSTIVE";
+export type UnresolvedIssue = {
+  type: UnresolvedIssueType;
+  bandIds?: string[];
+  personIds?: string[];
+  reason: UnresolvedIssueReason;
+  message: string;
+};
+
+export type OptimizationSummary = {
+  initialScore: number;
+  finalScore: number;
+  totalImprovement: number;
+  iterationCount: number;
+  candidateCount: number;
+  validCandidateCount: number;
+  hardConstraintViolationCount: number;
+  noImprovementCount: number;
+  acceptedMoveCount: number;
+  skippedCandidateCount: number;
+  acceptedMovesByType: Record<OptimizationMoveType, number>;
+  stoppedBy: OptimizationStopReason;
+  unresolvedIssues: UnresolvedIssue[];
+};
+
+// 候補上限・反復上限・実行時間上限へ到達した場合、「ハード制約上不可能」
+// と断定しない — 探索を尽くしていない場合はSEARCH_NOT_EXHAUSTIVE、または
+// 対応する上限到達理由を使う。全run共通の1つの理由を、残っている問題すべて
+// へ適用する(問題ごとに個別の探索履歴は追跡していないため)。
+function pickUnresolvedReason(stats: {
+  candidateCount: number;
+  validCandidateCount: number;
+  skippedCandidateCount: number;
+  stoppedBy: OptimizationStopReason;
+}): UnresolvedIssueReason {
+  if (stats.candidateCount > 0 && stats.validCandidateCount === 0) return "ALL_EVALUATED_MOVES_INVALID";
+  if (stats.skippedCandidateCount > 0) return "SEARCH_NOT_EXHAUSTIVE";
+  if (stats.stoppedBy === "ITERATION_LIMIT") return "ITERATION_LIMIT_REACHED";
+  if (stats.stoppedBy === "RUNTIME_LIMIT") return "RUNTIME_LIMIT_REACHED";
+  if (stats.stoppedBy === "CANDIDATE_LIMIT") return "CANDIDATE_LIMIT_REACHED";
+  return "NO_IMPROVING_MOVE_FOUND";
+}
+
+function collectUnresolvedIssues(
+  debugResult: SchedulingDebugResult,
+  stats: {
+    candidateCount: number;
+    validCandidateCount: number;
+    skippedCandidateCount: number;
+    stoppedBy: OptimizationStopReason;
+  },
+): UnresolvedIssue[] {
+  const reason = pickUnresolvedReason(stats);
+  const issues: UnresolvedIssue[] = [];
+  for (const slot of debugResult.slots) {
+    if (slot.rating === 5 && !slot.isFinalPhase) {
+      issues.push({
+        type: "RATING_FIVE_OUTSIDE_FINAL_PHASE",
+        bandIds: [slot.bandId],
+        reason,
+        message: `評価5の${slot.bandName}が終盤の外に配置されています`,
+      });
+    }
+    if (slot.blockIndex === slot.totalBlockCount - 1 && slot.rating <= 2) {
+      issues.push({
+        type: "LOW_RATING_IN_FINAL_BLOCK",
+        bandIds: [slot.bandId],
+        reason,
+        message: `評価${slot.rating}の${slot.bandName}が最終ブロックに配置されています`,
+      });
+    }
+  }
+  for (const performer of debugResult.performers) {
+    if (performer.isLowRatedBandGroup && performer.appearsInFinalBlock) {
+      issues.push({
+        type: "LOW_RATED_PERFORMER_IN_FINAL_BLOCK",
+        personIds: [performer.personId],
+        reason,
+        message: `${performer.displayName}は出演バンドすべての評価が2以下ですが、最終ブロックに出演があります`,
+      });
+    }
+  }
+  return issues;
+}
+
+// Step 1の初期有効解を受け取り、SWAP/INSERT候補による丘登り法
+// (hill-climbing)で改善する。各反復で、ハード制約を満たす候補のうち総合
+// スコアが最も改善する候補を1件だけ採用する(最初に見つかった改善ではない)
+// — 改善候補が無い・反復上限・実行時間上限のいずれかに達するまで繰り返す。
+// 同点(改善量が等しい)候補同士は、より順序の早いtieBreakKeyを持つ方が
+// ソート結果の先頭に来るため自然に優先される。ties自体は採用しない
+// (MIN_IMPROVEMENTを超える改善だけを採用するため)ので、Step1からの変更が
+// 最小限になる。
+export function improveDayByLiveComposition(
+  day: TimetableDay,
+  bands: Band[],
+  venueHours: VenueHours,
+  options: OptimizationOptions = {},
+): { slots: TimetableSlot[]; summary: OptimizationSummary } {
   const context = buildScheduleContext(day, bands, venueHours);
+  const limits = {
+    maxIterations: options.maxIterations ?? OPTIMIZATION_LIMITS.maxIterations,
+    maxCandidatesPerIteration: options.maxCandidatesPerIteration ?? OPTIMIZATION_LIMITS.maxCandidatesPerIteration,
+    maxRuntimeMs: options.maxRuntimeMs === undefined ? OPTIMIZATION_LIMITS.maxRuntimeMs : options.maxRuntimeMs,
+  };
+  const now = options.now ?? Date.now;
+  const startTime = now();
 
-  const performanceIndices = day.slots
-    .map((slot, index) => ({ slot, index }))
-    .filter(({ slot }) => slot.customLabel === null)
-    .map(({ index }) => index);
-  const filledPositions = performanceIndices.filter((i) => day.slots[i].bandId !== null);
-  if (filledPositions.length < 2) return day.slots;
+  const emptySummary = (score: number): OptimizationSummary => ({
+    initialScore: score,
+    finalScore: score,
+    totalImprovement: 0,
+    iterationCount: 0,
+    candidateCount: 0,
+    validCandidateCount: 0,
+    hardConstraintViolationCount: 0,
+    noImprovementCount: 0,
+    acceptedMoveCount: 0,
+    skippedCandidateCount: 0,
+    acceptedMovesByType: { swap: 0, insert: 0 },
+    stoppedBy: "NO_IMPROVING_MOVE",
+    unresolvedIssues: [],
+  });
 
+  const performanceSlotCount = day.slots.filter((s) => s.customLabel === null && s.bandId !== null).length;
   // Step 1 is responsible for handing this a hard-constraint-valid
   // schedule (via its own pruneToValidSchedule safety net) — if it
   // somehow didn't, this step must not pretend to fix that by searching
   // from an invalid starting point.
-  if (!isValidSchedule(day.slots, context)) return day.slots;
-
-  let slots = day.slots;
-  let currentScore = evaluateSchedule(slots, context).totalScore;
-
-  // Ties are never taken (candidateScore must be strictly greater) — this
-  // is also what satisfies "on a tie, prefer whatever's closest to Step
-  // 1's original arrangement": a non-improving swap is simply never
-  // applied, so the result never drifts further from Step 1's output than
-  // an actual score improvement justifies.
-  let improved = true;
-  let passes = 0;
-  while (improved && passes < MAX_COMPOSITION_PASSES) {
-    improved = false;
-    passes++;
-    for (let a = 0; a < filledPositions.length - 1; a++) {
-      for (let b = a + 1; b < filledPositions.length; b++) {
-        const posA = filledPositions[a];
-        const posB = filledPositions[b];
-        const bandIdA = slots[posA].bandId;
-        const bandIdB = slots[posB].bandId;
-        if (bandIdA === bandIdB) continue;
-
-        const candidate = [...slots];
-        candidate[posA] = { ...candidate[posA], bandId: bandIdB };
-        candidate[posB] = { ...candidate[posB], bandId: bandIdA };
-        const recomputed = recomputeTimes(candidate, day.settings, bands);
-
-        // Every candidate is fully re-validated against all three hard
-        // constraints — an improving score never overrides an invalid
-        // result.
-        if (!isValidSchedule(recomputed, context)) continue;
-
-        const candidateScore = evaluateSchedule(recomputed, context).totalScore;
-        if (candidateScore <= currentScore) continue;
-
-        slots = recomputed;
-        currentScore = candidateScore;
-        improved = true;
-      }
-    }
+  if (performanceSlotCount < 2 || !isValidSchedule(day.slots, context)) {
+    const score = isValidSchedule(day.slots, context) ? evaluateSchedule(day.slots, context).totalScore : 0;
+    return { slots: day.slots, summary: emptySummary(score) };
   }
 
-  return slots;
+  let slots = day.slots;
+  let currentEvaluation = evaluateSchedule(slots, context);
+  const initialScore = currentEvaluation.totalScore;
+
+  // 1回のsolve実行中だけメモリ上に保持する評価キャッシュ・訪問済み状態
+  // (Firestore等へは一切保存しない)。キーは同じBand割り当てなら常に同じ
+  // 結果になるためcreateScheduleStateKeyのみで十分。
+  const evaluationCache = new Map<string, EvaluatedMove | "INVALID">();
+  let candidateCount = 0;
+  let validCandidateCount = 0;
+  let acceptedMoveCount = 0;
+  let skippedCandidateCount = 0;
+  const acceptedMovesByType: Record<OptimizationMoveType, number> = { swap: 0, insert: 0 };
+  let stoppedBy: OptimizationStopReason = "NO_IMPROVING_MOVE";
+  let iteration = 0;
+
+  for (; iteration < limits.maxIterations; iteration++) {
+    if (limits.maxRuntimeMs !== null && now() - startTime >= limits.maxRuntimeMs) {
+      stoppedBy = "RUNTIME_LIMIT";
+      break;
+    }
+
+    const debugResult = buildSchedulingDebugResult(slots, context);
+    const rawMoves = generateCandidateMoves(slots);
+    const { candidates, skippedCount } = rankAndLimitCandidateMoves(
+      rawMoves,
+      debugResult,
+      limits.maxCandidatesPerIteration,
+    );
+    skippedCandidateCount += skippedCount;
+
+    let bestMove: EvaluatedMove | null = null;
+    for (const move of candidates) {
+      candidateCount++;
+      // 状態キー用にcandidateSlotsを先に作る(重複評価を避けるため) —
+      // キャッシュ未命中の場合、evaluateOptimizationMoveが同じ移動を
+      // もう一度適用するが、この規模の日程ではコストは無視できる。
+      const stateKey = createScheduleStateKey(applyOptimizationMove(slots, move, day, bands), context.day.id);
+      const cached = evaluationCache.get(stateKey);
+      let evaluated: EvaluatedMove | null;
+      if (cached === "INVALID") {
+        evaluated = null;
+      } else if (cached) {
+        evaluated = { ...cached, scoreDelta: cached.evaluation.totalScore - currentEvaluation.totalScore };
+      } else {
+        evaluated = evaluateOptimizationMove(slots, move, day, bands, context, currentEvaluation.totalScore);
+        evaluationCache.set(stateKey, evaluated ?? "INVALID");
+      }
+      if (!evaluated) continue;
+      validCandidateCount++;
+      if (evaluated.scoreDelta > MIN_IMPROVEMENT && (!bestMove || evaluated.scoreDelta > bestMove.scoreDelta)) {
+        bestMove = evaluated;
+      }
+    }
+
+    if (!bestMove) {
+      stoppedBy = "NO_IMPROVING_MOVE";
+      break;
+    }
+
+    slots = bestMove.schedule;
+    currentEvaluation = bestMove.evaluation;
+    acceptedMoveCount++;
+    acceptedMovesByType[bestMove.move.type === "SWAP" ? "swap" : "insert"]++;
+  }
+  if (iteration >= limits.maxIterations) stoppedBy = "ITERATION_LIMIT";
+
+  const finalDebug = buildSchedulingDebugResult(slots, context);
+  const searchStats = { candidateCount, validCandidateCount, skippedCandidateCount, stoppedBy };
+  const summary: OptimizationSummary = {
+    initialScore,
+    finalScore: currentEvaluation.totalScore,
+    totalImprovement: currentEvaluation.totalScore - initialScore,
+    iterationCount: iteration,
+    candidateCount,
+    validCandidateCount,
+    hardConstraintViolationCount: candidateCount - validCandidateCount,
+    noImprovementCount: validCandidateCount - acceptedMoveCount,
+    acceptedMoveCount,
+    skippedCandidateCount,
+    acceptedMovesByType,
+    stoppedBy,
+    unresolvedIssues: collectUnresolvedIssues(finalDebug, searchStats),
+  };
+
+  return { slots, summary };
 }

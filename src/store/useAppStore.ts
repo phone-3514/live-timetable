@@ -852,12 +852,18 @@ export const useAppStore = create<AppState>()(
         if (failures.length > 0) {
           failureMessages.push(...failures.map((f) => `${currentDay.label}: ${f.message}`));
         }
-        // Step 3: takes Step 1's (already valid) placement and nudges it
-        // toward higher-rated bands performing later within each block,
-        // using only swaps that stay hard-constraint-valid — see
-        // autoScheduleSolver.ts for why this can't just be a sort.
-        const improvedSlots = improveDayByLiveComposition(
-          { ...currentDay, slots: solvedSlots },
+        // Step 1's own output (not the pre-fill `currentDay`) is what the
+        // "終盤開始時刻" freezes against — see buildScheduleContext's own
+        // doc. Building the debug context from anything else would show a
+        // different final-phase boundary than the one Step 3 actually
+        // searched against.
+        const step1Day = { ...currentDay, slots: solvedSlots };
+        // Step 3: takes Step 1's (already valid) placement and searches
+        // swap/insert moves for higher-scoring, still hard-constraint-
+        // valid arrangements — see autoScheduleSolver.ts for why this
+        // can't just be a sort.
+        const { slots: improvedSlots, summary } = improveDayByLiveComposition(
+          step1Day,
           state.bands,
           state.venueHours,
         );
@@ -872,8 +878,9 @@ export const useAppStore = create<AppState>()(
           dayLabel: currentDay.label,
           result: buildSchedulingDebugResult(
             improvedSlots,
-            buildScheduleContext(currentDay, state.bands, state.venueHours),
+            buildScheduleContext(step1Day, state.bands, state.venueHours),
             failures,
+            summary,
           ),
         });
       }

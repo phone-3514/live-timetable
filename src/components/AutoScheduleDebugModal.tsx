@@ -130,6 +130,43 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                     )}
                   </section>
 
+                  {active.result.optimizationSummary && (
+                    <section>
+                      <h3 className="text-xs font-semibold text-slate-300">🧭 最適化サマリー</h3>
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border border-slate-700 bg-slate-800/40 p-2.5 text-[11px] sm:grid-cols-3">
+                        <span className="text-slate-400">
+                          初期スコア: <span className="font-mono text-slate-200">{fmt(active.result.optimizationSummary.initialScore)}</span>
+                        </span>
+                        <span className="text-slate-400">
+                          最終スコア: <span className="font-mono text-slate-200">{fmt(active.result.optimizationSummary.finalScore)}</span>
+                        </span>
+                        <span className="text-slate-400">
+                          改善量: <span className="font-mono text-emerald-400">{fmt(active.result.optimizationSummary.totalImprovement)}</span>
+                        </span>
+                        <span className="text-slate-400">反復回数: {active.result.optimizationSummary.iterationCount}</span>
+                        <span className="text-slate-400">
+                          採用: {active.result.optimizationSummary.acceptedMoveCount}件（交換
+                          {active.result.optimizationSummary.acceptedMovesByType.swap}・挿入
+                          {active.result.optimizationSummary.acceptedMovesByType.insert}）
+                        </span>
+                        <span className="text-slate-400">評価候補数: {active.result.optimizationSummary.candidateCount}</span>
+                        <span className="text-slate-400">ハード制約違反: {active.result.optimizationSummary.hardConstraintViolationCount}</span>
+                        <span className="text-slate-400">改善なし: {active.result.optimizationSummary.noImprovementCount}</span>
+                        <span className="text-slate-400">候補上限で省略: {active.result.optimizationSummary.skippedCandidateCount}</span>
+                        <span className="text-slate-400 sm:col-span-3">停止理由: {active.result.optimizationSummary.stoppedBy}</span>
+                      </div>
+                      {active.result.optimizationSummary.unresolvedIssues.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {active.result.optimizationSummary.unresolvedIssues.map((issue, i) => (
+                            <li key={i} className="rounded border border-amber-700 bg-amber-950/20 px-2 py-1 text-[11px] text-amber-300">
+                              💡 {issue.message}（理由: {issue.reason}）
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  )}
+
                   <section>
                     <h3 className="text-xs font-semibold text-slate-300">👥 出演者ごとのブロック分散</h3>
                     {active.result.performers.length === 0 ? (
