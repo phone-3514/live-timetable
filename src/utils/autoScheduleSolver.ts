@@ -4,42 +4,557 @@ import { canPlaceBandInSlot } from "./scheduleEligibility";
 import { recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
 import { timeToMinutes } from "./time";
-import { DEFAULT_LIVE_COMPOSITION_RATING, getLiveCompositionRating } from "./liveCompositionRating";
+import { getLiveCompositionRating } from "./liveCompositionRating";
 
 // 自動編成アシスト (Auto-Draft Assist) — a small CSP solver run per day.
 // A day's target band list is already fixed in size (one-to-one with that
 // day's empty performance slots) by the caller's balancing pass; this
-// module's only job is to choose which band goes in which of those slots
-// so the resulting schedule scores as few penalty points as possible.
-// There's no known-fast exact algorithm for this (it's a permutation
-// search over n! orderings), so it uses simulated annealing: random
-// pairwise swaps, always keeping improvements, sometimes accepting a worse
-// swap (with a probability that shrinks over time) to escape local minima,
-// and remembering the best arrangement seen across the whole run.
+// module's only job is to choose which band goes in which of those slots.
+//
+// The search is split into two clearly separated concerns, per this
+// feature's own design requirement (never blend them into one weighted
+// score):
+//
+// - HARD constraints (isValidSchedule / validateHardConstraints below) —
+//   time designation, no back-to-back same-member appearances, and no
+//   more than ceil(N/2) same-block appearances for anyone performing in N
+//   bands that day. A candidate that violates any of these is excluded
+//   outright, never merely penalized.
+// - SOFT constraints (evaluateSchedule / scoreComponents below) — among
+//   every hard-constraint-satisfying candidate, prefer one where each
+//   break-to-break block's ライブ構成評価 rises gently toward its close.
+//
+// Step 1 (solveDayAssignment) finds an initial hard-constraint-satisfying
+// placement via simulated annealing over the *violation count* (not a
+// blended score). Step 2/3 (improveDayByLiveComposition) then performs a
+// deterministic swap-based local search that only ever moves between
+// valid states, picking the one with the best soft score.
 
-// Constraint A (heavy): the same member in two array-adjacent slots with a
-// real time gap of zero or less — they'd have to be in two places at once.
-const CONSECUTIVE_MEMBER_PENALTY = 1000;
-// Constraint B (medium): a member with 2+ performances that day, 100% of
-// which land in the same block (the stretch between break/custom slots) —
-// they never get a real rest, though it's not a physical impossibility.
-const BLOCK_CONCENTRATION_PENALTY = 100;
-// Constraint C (medium): the exact same artist/band name in two
-// array-adjacent slots — dull for the audience, not infeasible.
-const SAME_ARTIST_ADJACENCY_PENALTY = 100;
-// Hard-constraint proxy: a band placed outside its own declared
-// availability (allowedDayIds / desiredTime / ngTime). Deliberately far
-// larger than any combination of the soft penalties above so the search
-// always prefers a feasible swap over an infeasible one when any exists —
-// annealing never "needs" to cross this to reach a better score.
-const INELIGIBLE_SLOT_PENALTY = 100_000;
+// ---------- Blocks ------------------------------------------------------
+//
+// A day's timetable is split into "blocks" by its non-band rows (休憩・
+// 集合・リハーサルなど — anything with a customLabel). Block 0 is
+// everything before the first such row, block 1 is everything between the
+// first and second, and so on. A block's `slotIds` lists every
+// performance row in it (filled or still empty) in chronological order;
+// the divider rows themselves belong to no block.
+export type ScheduleBlock = {
+  id: string;
+  startTime: string;
+  endTime: string;
+  slotIds: string[];
+};
 
-// Bounded so a single solve() call can't noticeably stall the UI even for
-// an unusually large day — within the 1000–5000 range this feature was
-// scoped to. Each iteration is O(slot count), so even the top of that
-// range stays well under real-time budgets for any timetable someone
-// would actually build by hand.
-const MAX_ITERATIONS = 1500;
+export function computeScheduleBlocks(slots: TimetableSlot[]): ScheduleBlock[] {
+  const blocks: ScheduleBlock[] = [];
+  let blockIndex = 0;
+  let slotIds: string[] = [];
+  let startTime: string | null = null;
+  let endTime: string | null = null;
+
+  function flush() {
+    if (slotIds.length > 0) {
+      blocks.push({ id: `block-${blockIndex}`, startTime: startTime ?? "", endTime: endTime ?? "", slotIds });
+    }
+  }
+
+  for (const slot of slots) {
+    if (slot.customLabel !== null) {
+      flush();
+      blockIndex++;
+      slotIds = [];
+      startTime = null;
+      endTime = null;
+      continue;
+    }
+    slotIds.push(slot.id);
+    if (startTime === null && slot.startTime) startTime = slot.startTime;
+    if (slot.endTime) endTime = slot.endTime;
+  }
+  flush();
+  return blocks;
+}
+
+// The read-only context every hard/soft check needs. `blocks` is computed
+// once from the day's slot *structure* (divider positions never move
+// during a search — only which band occupies which already-existing
+// performance slot changes), so it's safe to reuse across an entire
+// search rather than recomputing it every candidate.
+export type ScheduleContext = {
+  day: TimetableDay;
+  allBands: Band[];
+  venueHours: VenueHours;
+  blocks: ScheduleBlock[];
+};
+
+// ---------- Hard constraint 1: consecutive appearance --------------------
+//
+// Kept as its own exported function (rather than inlined into
+// validateHardConstraints) specifically so the "how long a break has to
+// be before it stops counting as consecutive" decision lives in exactly
+// one place and can be revisited independently later. Today it matches
+// this app's existing behavior: any customLabel row between two
+// performances already breaks adjacency entirely (see the raw
+// array-adjacent iteration in validateHardConstraints — a divider row
+// sits between them, so they're never compared here at all), and among
+// directly-adjacent performance rows, a real time gap of zero or less is
+// what "consecutive" means. This is intentionally the app's own rule, not
+// getMemberConflictDetails' separate (stricter, transitionMinutes-based)
+// manual-editing warning threshold in useAppStore.ts — that's a different
+// advisory feature with its own definition, left untouched.
+export function violatesConsecutiveAppearance(
+  previous: { band: Band; slot: TimetableSlot },
+  next: { band: Band; slot: TimetableSlot },
+): boolean {
+  if (!previous.slot.startTime || !previous.slot.endTime || !next.slot.startTime || !next.slot.endTime) {
+    return false;
+  }
+  const gap = timeToMinutes(next.slot.startTime) - timeToMinutes(previous.slot.endTime);
+  if (gap > 0) return false;
+  const previousMembers = new Set(previous.band.members.map(normalizeMemberName));
+  return next.band.members.some((m) => previousMembers.has(normalizeMemberName(m)));
+}
+
+// ---------- Hard constraint 2: block concentration ------------------------
+//
+// A person appearing in N bands that day may occupy at most ceil(N/2) of
+// them within any single block — so 2 appearances must split across at
+// least 2 blocks, 3–4 allow at most 2 in one block, 5 allow at most 3, etc.
+export type PersonAppearanceDistribution = {
+  personId: string;
+  displayName: string;
+  totalAppearances: number;
+  appearancesByBlock: Record<string, number>;
+  maxAllowedPerBlock: number;
+};
+
+export function computePersonAppearanceDistribution(
+  slots: TimetableSlot[],
+  bands: Band[],
+  blocks: ScheduleBlock[],
+): PersonAppearanceDistribution[] {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+
+  const byPerson = new Map<string, { displayName: string; countsByBlock: Map<string, number> }>();
+  for (const block of blocks) {
+    for (const slotId of block.slotIds) {
+      const slot = slotById.get(slotId);
+      if (!slot?.bandId) continue;
+      const band = bandMap.get(slot.bandId);
+      if (!band) continue;
+      const seenInThisSlot = new Set<string>();
+      for (const rawName of band.members) {
+        const key = normalizeMemberName(rawName);
+        if (!key || seenInThisSlot.has(key)) continue;
+        seenInThisSlot.add(key);
+        const entry = byPerson.get(key) ?? { displayName: rawName, countsByBlock: new Map<string, number>() };
+        entry.countsByBlock.set(block.id, (entry.countsByBlock.get(block.id) ?? 0) + 1);
+        byPerson.set(key, entry);
+      }
+    }
+  }
+
+  return [...byPerson.entries()].map(([personId, { displayName, countsByBlock }]) => {
+    const totalAppearances = [...countsByBlock.values()].reduce((sum, count) => sum + count, 0);
+    const appearancesByBlock: Record<string, number> = {};
+    countsByBlock.forEach((count, blockId) => {
+      appearancesByBlock[blockId] = count;
+    });
+    return {
+      personId,
+      displayName,
+      totalAppearances,
+      appearancesByBlock,
+      maxAllowedPerBlock: Math.ceil(totalAppearances / 2),
+    };
+  });
+}
+
+export function violatesBlockConcentration(
+  personId: string,
+  slots: TimetableSlot[],
+  bands: Band[],
+  blocks: ScheduleBlock[],
+): boolean {
+  const distribution = computePersonAppearanceDistribution(slots, bands, blocks).find(
+    (d) => d.personId === personId,
+  );
+  if (!distribution) return false;
+  return Object.values(distribution.appearancesByBlock).some((count) => count > distribution.maxAllowedPerBlock);
+}
+
+// ---------- Hard constraint validation (all three, combined) -------------
+//
+// Richer than a plain string list — each violation keeps the slot/band/
+// person ids responsible, since both the debug output and this module's
+// own "drop the worst offender" safety net (pruneToValidSchedule) need to
+// act on *who* violated *what*, not just a human-readable sentence. Every
+// violation's `.message` is still a ready-to-display string.
+export type HardConstraintViolationType = "TIME_CONSTRAINT" | "CONSECUTIVE_APPEARANCE" | "BLOCK_CONCENTRATION";
+export type HardConstraintViolation = {
+  type: HardConstraintViolationType;
+  message: string;
+  slotIds: string[];
+  bandIds: string[];
+  personIds?: string[];
+};
+export type ValidationResult = {
+  isValid: boolean;
+  violations: HardConstraintViolation[];
+};
+
+export function validateHardConstraints(slots: TimetableSlot[], context: ScheduleContext): ValidationResult {
+  const violations: HardConstraintViolation[] = [];
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+
+  // 1. 出演可能時間・時間指定
+  for (const slot of slots) {
+    if (!slot.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (band && !canPlaceBandInSlot(band, context.day, slot, context.venueHours)) {
+      violations.push({
+        type: "TIME_CONSTRAINT",
+        message: `${band.name}が出演可能時間外の枠(${slot.startTime || "?"})に配置されています`,
+        slotIds: [slot.id],
+        bandIds: [band.id],
+      });
+    }
+  }
+
+  // 2. 同一人物の連続出演禁止 — raw array-adjacent slots only, so a divider
+  // row between two performances already breaks adjacency entirely.
+  for (let i = 0; i < slots.length - 1; i++) {
+    const a = slots[i];
+    const b = slots[i + 1];
+    if (!a.bandId || !b.bandId) continue;
+    const bandA = bandMap.get(a.bandId);
+    const bandB = bandMap.get(b.bandId);
+    if (!bandA || !bandB) continue;
+    if (violatesConsecutiveAppearance({ band: bandA, slot: a }, { band: bandB, slot: b })) {
+      const membersA = new Set(bandA.members.map(normalizeMemberName));
+      const sharedPersonIds = [...new Set(bandB.members.map(normalizeMemberName))].filter((id) =>
+        membersA.has(id),
+      );
+      violations.push({
+        type: "CONSECUTIVE_APPEARANCE",
+        message: `${bandA.name}と${bandB.name}に同一メンバーが連続出演しています`,
+        slotIds: [a.id, b.id],
+        bandIds: [bandA.id, bandB.id],
+        personIds: sharedPersonIds,
+      });
+    }
+  }
+
+  // 3. 同一人物のブロック集中制限 (ceil(N/2))
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+  const distribution = computePersonAppearanceDistribution(slots, context.allBands, context.blocks);
+  for (const person of distribution) {
+    for (const [blockId, count] of Object.entries(person.appearancesByBlock)) {
+      if (count <= person.maxAllowedPerBlock) continue;
+      const block = context.blocks.find((b) => b.id === blockId);
+      const offendingSlotIds = (block?.slotIds ?? []).filter((slotId) => {
+        const slot = slotById.get(slotId);
+        if (!slot?.bandId) return false;
+        const band = bandMap.get(slot.bandId);
+        return band?.members.some((m) => normalizeMemberName(m) === person.personId) ?? false;
+      });
+      violations.push({
+        type: "BLOCK_CONCENTRATION",
+        message: `${person.displayName}が同一ブロックに${count}回出演しています（上限${person.maxAllowedPerBlock}回）`,
+        slotIds: offendingSlotIds,
+        bandIds: [...new Set(offendingSlotIds.map((id) => slotById.get(id)!.bandId!))],
+        personIds: [person.personId],
+      });
+    }
+  }
+
+  return { isValid: violations.length === 0, violations };
+}
+
+export function isValidSchedule(slots: TimetableSlot[], context: ScheduleContext): boolean {
+  return validateHardConstraints(slots, context).violations.length === 0;
+}
+
+// ---------- Soft constraints: ライブ構成評価 -------------------------------
+//
+// Position/rating are both normalized to 0〜1 and compared *within each
+// block independently* — the scoring resets at every break, since a
+// block's own "トリ" (closing slot) is what should get the highest-rated
+// band, not the day's literal last slot.
+export function getNormalizedPosition(index: number, totalSlots: number): number {
+  if (totalSlots <= 1) return 1;
+  return index / (totalSlots - 1);
+}
+
+export function normalizeRating(rating: number): number {
+  return (rating - 1) / 4;
+}
+
+export function calculatePositionRatingPenalty(normalizedPosition: number, rating: number): number {
+  return Math.abs(normalizedPosition - normalizeRating(rating));
+}
+
+// Some downward steps (a later band rated lower than the one before it)
+// are fine — this is a soft preference for a gentle rise, not a strict
+// monotonic order.
+export function calculateDescendingPenalty(currentRating: number, nextRating: number): number {
+  return Math.max(0, currentRating - nextRating);
+}
+
+export function calculateBlockClosingBonus(rating: number): number {
+  return normalizeRating(rating);
+}
+
+function getBlockEntries(
+  slots: TimetableSlot[],
+  bandMap: Map<string, Band>,
+  block: ScheduleBlock,
+): { slot: TimetableSlot; band: Band }[] {
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+  const entries: { slot: TimetableSlot; band: Band }[] = [];
+  for (const slotId of block.slotIds) {
+    const slot = slotById.get(slotId);
+    if (!slot?.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (band) entries.push({ slot, band });
+  }
+  return entries;
+}
+
+// 拡張可能な評価設計: each ScoreComponent is an independent, named factor.
+// A future one (学年/人気度/特別出演/イベントテーマ/ジャンル傾向/固定順序/
+// PA・機材転換の都合など) is just one more entry in scoreComponents below
+// — nothing about the search loops in solveDayAssignment or
+// improveDayByLiveComposition needs to change.
+export type ScoreComponent = {
+  name: string;
+  weight: number;
+  calculate: (slots: TimetableSlot[], context: ScheduleContext) => number;
+};
+
+const positionRatingComponent: ScoreComponent = {
+  name: "positionRating",
+  weight: 1,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    let totalPenalty = 0;
+    for (const block of context.blocks) {
+      const entries = getBlockEntries(slots, bandMap, block);
+      entries.forEach(({ band }, index) => {
+        const rating = getLiveCompositionRating(band);
+        const position = getNormalizedPosition(index, entries.length);
+        totalPenalty += calculatePositionRatingPenalty(position, rating);
+      });
+    }
+    return -totalPenalty;
+  },
+};
+
+// Weighted down relative to positionRating (raw 1〜5 differences, not
+// normalized 0〜1, so its natural scale is ~4x larger) so it acts as a
+// tie-breaking nudge among positionRating-equivalent candidates rather
+// than dominating the search.
+const descendingPenaltyComponent: ScoreComponent = {
+  name: "descendingPenalty",
+  weight: 0.25,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    let totalPenalty = 0;
+    for (const block of context.blocks) {
+      const entries = getBlockEntries(slots, bandMap, block);
+      for (let i = 0; i < entries.length - 1; i++) {
+        totalPenalty += calculateDescendingPenalty(
+          getLiveCompositionRating(entries[i].band),
+          getLiveCompositionRating(entries[i + 1].band),
+        );
+      }
+    }
+    return -totalPenalty;
+  },
+};
+
+const blockClosingComponent: ScoreComponent = {
+  name: "blockClosing",
+  weight: 1,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    let bonus = 0;
+    for (const block of context.blocks) {
+      const entries = getBlockEntries(slots, bandMap, block);
+      if (entries.length === 0) continue;
+      bonus += calculateBlockClosingBonus(getLiveCompositionRating(entries[entries.length - 1].band));
+      if (entries.length >= 2) {
+        bonus += calculateBlockClosingBonus(getLiveCompositionRating(entries[entries.length - 2].band)) * 0.5;
+      }
+    }
+    return bonus;
+  },
+};
+
+export const scoreComponents: ScoreComponent[] = [
+  positionRatingComponent,
+  descendingPenaltyComponent,
+  blockClosingComponent,
+];
+
+export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContext): number {
+  return scoreComponents.reduce((total, component) => total + component.weight * component.calculate(slots, context), 0);
+}
+
+export function evaluateScheduleBreakdown(slots: TimetableSlot[], context: ScheduleContext): Record<string, number> {
+  const breakdown: Record<string, number> = {};
+  for (const component of scoreComponents) {
+    breakdown[component.name] = component.weight * component.calculate(slots, context);
+  }
+  return breakdown;
+}
+
+// ---------- Debug / failure reporting ------------------------------------
+
+export type SchedulingFailureType =
+  | "NO_VALID_SCHEDULE"
+  | "BLOCK_CONCENTRATION_CONFLICT"
+  | "CONSECUTIVE_APPEARANCE_CONFLICT"
+  | "TIME_CONSTRAINT_CONFLICT";
+
+export type SchedulingFailure = {
+  type: SchedulingFailureType;
+  message: string;
+  affectedPersonIds?: string[];
+  affectedBandIds?: string[];
+};
+
+export type SchedulingDebugResult = {
+  hardConstraintsValid: boolean;
+  totalScore: number;
+  scoreBreakdown: {
+    positionRatingScore: number;
+    descendingPenalty: number;
+    blockClosingBonus: number;
+  };
+  personDistribution: PersonAppearanceDistribution[];
+  violations: string[];
+  failures: SchedulingFailure[];
+};
+
+// Admin/developer-only — never rendered in any general-user-facing view.
+// Callers decide where (if anywhere) to surface this; see useAppStore.ts's
+// autoScheduleAllDays, which only console.debug()s it in dev builds.
+export function buildSchedulingDebugResult(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+  failures: SchedulingFailure[] = [],
+): SchedulingDebugResult {
+  const validation = validateHardConstraints(slots, context);
+  const positionRatingScore = positionRatingComponent.weight * positionRatingComponent.calculate(slots, context);
+  const descendingPenalty = descendingPenaltyComponent.weight * descendingPenaltyComponent.calculate(slots, context);
+  const blockClosingBonus = blockClosingComponent.weight * blockClosingComponent.calculate(slots, context);
+  return {
+    hardConstraintsValid: validation.isValid,
+    totalScore: positionRatingScore + descendingPenalty + blockClosingBonus,
+    scoreBreakdown: { positionRatingScore, descendingPenalty, blockClosingBonus },
+    personDistribution: computePersonAppearanceDistribution(slots, context.allBands, context.blocks),
+    violations: validation.violations.map((v) => v.message),
+    failures,
+  };
+}
+
+const VIOLATION_TYPE_TO_FAILURE_TYPE: Record<HardConstraintViolationType, SchedulingFailureType> = {
+  TIME_CONSTRAINT: "TIME_CONSTRAINT_CONFLICT",
+  CONSECUTIVE_APPEARANCE: "CONSECUTIVE_APPEARANCE_CONFLICT",
+  BLOCK_CONCENTRATION: "BLOCK_CONCENTRATION_CONFLICT",
+};
+
+function buildFailureMessage(type: SchedulingFailureType, bandNames: string[]): string {
+  const names = bandNames.join("、") || "一部のバンド";
+  switch (type) {
+    case "TIME_CONSTRAINT_CONFLICT":
+      return `出演可能時間の制約を満たせず、${names} を未配置のままにしました`;
+    case "CONSECUTIVE_APPEARANCE_CONFLICT":
+      return `同一人物の連続出演を避けられず、${names} を未配置のままにしました`;
+    case "BLOCK_CONCENTRATION_CONFLICT":
+      return `同一人物のブロック集中制限（同一ブロック最大ceil(N/2)回）を満たせず、${names} を未配置のままにしました`;
+    case "NO_VALID_SCHEDULE":
+    default:
+      return `制約をすべて満たす配置が見つからず、${names} を未配置のままにしました`;
+  }
+}
+
+function pickSlotToRemove(violations: HardConstraintViolation[]): string | null {
+  const freq = new Map<string, number>();
+  for (const v of violations) {
+    for (const slotId of v.slotIds) freq.set(slotId, (freq.get(slotId) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [slotId, count] of freq) {
+    if (count > bestCount) {
+      best = slotId;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+// Step 1's safety net. If the annealing search below still leaves its best
+// arrangement with hard-constraint violations — e.g. a day where physically
+// no full placement can satisfy every constraint at once (too few blocks,
+// a time window only one block can ever satisfy, or some combination of
+// constraints with no joint solution) — this never returns an invalid
+// schedule. It repeatedly drops the single band most implicated across all
+// remaining violations, re-validates, and repeats, the same "genuinely
+// infeasible bands stay unplaced" philosophy this module already used for
+// time-eligibility alone, now covering every hard constraint. Every
+// removed band is reported back as a SchedulingFailure instead of
+// disappearing silently — see this feature's "ブロック数不足時の扱い"
+// requirement.
+function pruneToValidSchedule(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+): { slots: TimetableSlot[]; failures: SchedulingFailure[] } {
+  let current = slots;
+  const byFailureType = new Map<SchedulingFailureType, { bandIds: Set<string>; personIds: Set<string> }>();
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  const maxAttempts = current.filter((s) => s.bandId).length;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = validateHardConstraints(current, context);
+    if (result.isValid) break;
+
+    const slotId = pickSlotToRemove(result.violations);
+    if (!slotId) break;
+    const slot = current.find((s) => s.id === slotId);
+    const bandId = slot?.bandId;
+    if (!bandId) break;
+
+    for (const v of result.violations) {
+      if (!v.slotIds.includes(slotId)) continue;
+      const failureType = VIOLATION_TYPE_TO_FAILURE_TYPE[v.type];
+      const entry = byFailureType.get(failureType) ?? { bandIds: new Set<string>(), personIds: new Set<string>() };
+      entry.bandIds.add(bandId);
+      v.personIds?.forEach((p) => entry.personIds.add(p));
+      byFailureType.set(failureType, entry);
+    }
+
+    current = recomputeTimes(
+      current.map((s) => (s.id === slotId ? { ...s, bandId: null } : s)),
+      context.day.settings,
+      context.allBands,
+    );
+  }
+
+  const failures: SchedulingFailure[] = [...byFailureType].map(([type, { bandIds, personIds }]) => ({
+    type,
+    message: buildFailureMessage(type, [...bandIds].map((id) => bandMap.get(id)?.name ?? id)),
+    affectedBandIds: [...bandIds],
+    affectedPersonIds: [...personIds],
+  }));
+
+  return { slots: current, failures };
+}
+
+// ---------- Step 1: initial hard-constraint-satisfying placement ---------
 
 function shuffle<T>(items: T[]): T[] {
   const arr = [...items];
@@ -50,178 +565,42 @@ function shuffle<T>(items: T[]): T[] {
   return arr;
 }
 
-// Same block-dividing rule as computeSlotBlocks in useAppStore (customLabel
-// slots are dividers), reimplemented locally over a plain slot array —
-// this module intentionally has zero dependency on the store so it stays
-// a pure, independently testable algorithm.
-function computeBlockBySlotId(slots: TimetableSlot[]): Map<string, number> {
-  const blockBySlotId = new Map<string, number>();
-  let block = 0;
-  for (const slot of slots) {
-    if (slot.customLabel !== null) {
-      block++;
-      continue;
-    }
-    if (slot.bandId) blockBySlotId.set(slot.id, block);
-  }
-  return blockBySlotId;
-}
-
-// Hard-constraint proxy: every placed band must satisfy its own
-// availability (time designation) for the slot it landed in.
-function eligibilityPenalty(
-  slots: TimetableSlot[],
-  day: TimetableDay,
-  bandMap: Map<string, Band>,
-  venueHours: VenueHours,
-): number {
-  let penalty = 0;
-  for (const slot of slots) {
-    if (!slot.bandId) continue;
-    const band = bandMap.get(slot.bandId);
-    if (band && !canPlaceBandInSlot(band, day, slot, venueHours)) {
-      penalty += INELIGIBLE_SLOT_PENALTY;
-    }
-  }
-  return penalty;
-}
-
-// Constraint A + C: literal array-adjacent slot pairs. Returns both
-// penalties from one shared pass since they're both computed off the same
-// pair — kept as one function so Step 2 (see computeHardConstraintPenalty
-// below) and scoreArrangement can each pick only the parts they need
-// without walking the slot list twice or re-deriving the adjacency logic.
-function adjacencyPenalties(
-  slots: TimetableSlot[],
-  bandMap: Map<string, Band>,
-): { consecutiveMemberPenalty: number; sameArtistPenalty: number } {
-  let consecutiveMemberPenalty = 0;
-  let sameArtistPenalty = 0;
-  for (let i = 0; i < slots.length - 1; i++) {
-    const a = slots[i];
-    const b = slots[i + 1];
-    if (!a.bandId || !b.bandId) continue;
-    const bandA = bandMap.get(a.bandId);
-    const bandB = bandMap.get(b.bandId);
-    if (!bandA || !bandB) continue;
-
-    if (bandA.name && bandA.name === bandB.name) {
-      sameArtistPenalty += SAME_ARTIST_ADJACENCY_PENALTY;
-    }
-
-    if (a.startTime && a.endTime && b.startTime && b.endTime) {
-      const gap = timeToMinutes(b.startTime) - timeToMinutes(a.endTime);
-      if (gap <= 0) {
-        const membersA = new Set(bandA.members.map(normalizeMemberName));
-        const sharesMember = bandB.members.some((m) => membersA.has(normalizeMemberName(m)));
-        if (sharesMember) consecutiveMemberPenalty += CONSECUTIVE_MEMBER_PENALTY;
-      }
-    }
-  }
-  return { consecutiveMemberPenalty, sameArtistPenalty };
-}
-
-// Constraint B: 100% block concentration (a member with 2+ performances
-// that day, all landing in the same block).
-function blockConcentrationPenalty(slots: TimetableSlot[], bandMap: Map<string, Band>): number {
-  let penalty = 0;
-  const blockBySlotId = computeBlockBySlotId(slots);
-  const byMember = new Map<string, { count: number; blocks: Set<number> }>();
-  for (const slot of slots) {
-    if (!slot.bandId) continue;
-    const band = bandMap.get(slot.bandId);
-    if (!band) continue;
-    const block = blockBySlotId.get(slot.id);
-    if (block === undefined) continue;
-    const seenInThisSlot = new Set<string>();
-    for (const rawName of band.members) {
-      const key = normalizeMemberName(rawName);
-      if (!key || seenInThisSlot.has(key)) continue;
-      seenInThisSlot.add(key);
-      const entry = byMember.get(key) ?? { count: 0, blocks: new Set<number>() };
-      entry.count++;
-      entry.blocks.add(block);
-      byMember.set(key, entry);
-    }
-  }
-  for (const { count, blocks } of byMember.values()) {
-    if (count >= 2 && blocks.size === 1) penalty += BLOCK_CONCENTRATION_PENALTY;
-  }
-  return penalty;
-}
-
-// Scores one candidate day arrangement — lower is better, 0 is a
-// perfectly clean schedule. Takes the day only for its `.id` (eligibility
-// needs it) and `.settings` are already baked into `slots`' start/end
-// times by the caller before this is called. Unchanged from before the
-// Step 2 (ライブ構成評価) addition — same four penalty components, same
-// total — just decomposed into the shared helpers above so Step 2 can
-// reuse the hard-constraint subset without a second implementation.
-function scoreArrangement(
-  slots: TimetableSlot[],
-  day: TimetableDay,
-  bands: Band[],
-  venueHours: VenueHours,
-): number {
-  const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const { consecutiveMemberPenalty, sameArtistPenalty } = adjacencyPenalties(slots, bandMap);
-  return (
-    eligibilityPenalty(slots, day, bandMap, venueHours) +
-    consecutiveMemberPenalty +
-    sameArtistPenalty +
-    blockConcentrationPenalty(slots, bandMap)
-  );
-}
-
-// Step 2's hard-constraint gate — the same three checks the user's spec
-// calls out as hard (時間指定 via eligibilityPenalty, 連続出演禁止 via
-// consecutiveMemberPenalty, ブロック分散ルール via
-// blockConcentrationPenalty), reusing the exact same functions
-// scoreArrangement uses for Step 1 rather than reimplementing any of
-// them. Same-artist adjacency is deliberately excluded — it's a soft
-// preference in this codebase, not one of the constraints Step 2 is
-// required to treat as hard.
-export function computeHardConstraintPenalty(
-  slots: TimetableSlot[],
-  day: TimetableDay,
-  bands: Band[],
-  venueHours: VenueHours,
-): number {
-  const bandMap = new Map(bands.map((b) => [b.id, b]));
-  return (
-    eligibilityPenalty(slots, day, bandMap, venueHours) +
-    adjacencyPenalties(slots, bandMap).consecutiveMemberPenalty +
-    blockConcentrationPenalty(slots, bandMap)
-  );
-}
+// Bounded so a single solve() call can't noticeably stall the UI even for
+// an unusually large day — within the 1000–5000 range this feature was
+// scoped to. Each iteration is O(slot count), so even the top of that
+// range stays well under real-time budgets for any timetable someone
+// would actually build by hand.
+const MAX_ITERATIONS = 1500;
 
 // Fills `day`'s empty performance slots with `candidateBands` (expected to
 // be the same length — the caller's balancing pass sizes them to match,
-// but this clamps defensively if not) by searching for a low-penalty
-// ordering via simulated annealing, then returns the day's full slot list
-// with times recomputed. Any candidate that's still ineligible for its
-// slot in the best arrangement found is pulled back out rather than
-// force-placed — a genuinely infeasible fit (no slot on this day satisfies
-// that band's own desired/NG time window) should leave the slot empty,
-// the same way a manual placement attempt would refuse it.
+// but this clamps defensively if not) by searching for a *hard-constraint
+// violation count* of zero via simulated annealing — never a blended
+// score. Any violations still present in the best arrangement found are
+// resolved by pruneToValidSchedule, which pulls the offending bands back
+// out rather than force-placing them (reported via the returned
+// `failures`), the same way a manual placement attempt would refuse an
+// infeasible drop.
 export function solveDayAssignment(
   day: TimetableDay,
   candidateBands: Band[],
   allBands: Band[],
   venueHours: VenueHours,
-): TimetableSlot[] {
+): { slots: TimetableSlot[]; failures: SchedulingFailure[] } {
   const emptyPositions = day.slots
     .map((slot, index) => ({ slot, index }))
     .filter(({ slot }) => slot.bandId === null && slot.customLabel === null)
     .map(({ index }) => index);
 
   if (emptyPositions.length === 0 || candidateBands.length === 0) {
-    return day.slots;
+    return { slots: day.slots, failures: [] };
   }
 
   const n = Math.min(emptyPositions.length, candidateBands.length);
   const positions = emptyPositions.slice(0, n);
   const pool = candidateBands.slice(0, n);
+  const blocks = computeScheduleBlocks(day.slots);
+  const context: ScheduleContext = { day, allBands, venueHours, blocks };
 
   function buildSlots(order: Band[]): TimetableSlot[] {
     const slots = [...day.slots];
@@ -231,13 +610,17 @@ export function solveDayAssignment(
     return recomputeTimes(slots, day.settings, allBands);
   }
 
+  function countViolations(slots: TimetableSlot[]): number {
+    return validateHardConstraints(slots, context).violations.length;
+  }
+
   let current = shuffle(pool);
   let currentSlots = buildSlots(current);
-  let currentPenalty = scoreArrangement(currentSlots, day, allBands, venueHours);
+  let currentViolations = countViolations(currentSlots);
   let best = current;
-  let bestPenalty = currentPenalty;
+  let bestViolations = currentViolations;
 
-  for (let iter = 0; iter < MAX_ITERATIONS && n > 1 && bestPenalty > 0; iter++) {
+  for (let iter = 0; iter < MAX_ITERATIONS && n > 1 && bestViolations > 0; iter++) {
     const i = Math.floor(Math.random() * n);
     let j = Math.floor(Math.random() * n);
     if (j === i) j = (j + 1) % n;
@@ -245,123 +628,52 @@ export function solveDayAssignment(
     const candidate = [...current];
     [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
     const candidateSlots = buildSlots(candidate);
-    const candidatePenalty = scoreArrangement(candidateSlots, day, allBands, venueHours);
+    const candidateViolations = countViolations(candidateSlots);
 
-    const delta = candidatePenalty - currentPenalty;
+    const delta = candidateViolations - currentViolations;
     const temperature = 1 - iter / MAX_ITERATIONS;
-    if (delta <= 0 || Math.random() < Math.exp(-delta / (temperature * 50 + 1))) {
+    if (delta <= 0 || Math.random() < Math.exp(-delta / (temperature + 0.05))) {
       current = candidate;
-      currentPenalty = candidatePenalty;
-      if (currentPenalty < bestPenalty) {
+      currentViolations = candidateViolations;
+      if (currentViolations < bestViolations) {
         best = current;
-        bestPenalty = currentPenalty;
+        bestViolations = currentViolations;
       }
     }
   }
 
-  let finalSlots = buildSlots(best);
-  const bandMap = new Map(allBands.map((b) => [b.id, b]));
-  finalSlots = finalSlots.map((slot) => {
-    if (!slot.bandId) return slot;
-    const band = bandMap.get(slot.bandId);
-    if (band && !canPlaceBandInSlot(band, day, slot, venueHours)) {
-      return { ...slot, bandId: null };
-    }
-    return slot;
-  });
-  return recomputeTimes(finalSlots, day.settings, allBands);
+  const bestSlots = buildSlots(best);
+  return pruneToValidSchedule(bestSlots, context);
 }
 
-// ---------- Step 2: ライブ構成評価による改善 --------------------------------
+// ---------- Step 3: ライブ構成評価による局所探索 ---------------------------
 //
-// Takes Step 1's output (solveDayAssignment's result) as input and looks
-// for slot-to-slot swaps, within that same day, that move higher-rated
-// bands later and lower-rated bands earlier — without ever letting the
-// hard-constraint penalty (computeHardConstraintPenalty, the same
-// function Step 1's own scoring is built from) get worse than it already
-// was. It's a bounded, deterministic local search, not a sort: a plain
-// "sort placed bands by rating" would ignore every hard constraint Step 1
-// just satisfied and could easily reintroduce a consecutive-member clash
-// or break the block-distribution rule.
-
-// Bounded the same way MAX_ITERATIONS bounds Step 1 — a full pass over
-// every pair is O(n^2) for a day's band count (dozens at this app's
-// scale), and convergence (no improving swap found) is expected within a
-// handful of passes since every accepted swap must strictly increase the
-// score and the score is bounded.
+// Takes Step 1's (already hard-constraint-valid) output and looks for
+// slot-to-slot swaps, within blocks or across them, that improve
+// evaluateSchedule — but only ever moves between fully valid states.
+// Deterministic (no Math.random anywhere here) so the same input always
+// produces the same output, unlike Step 1's simulated annealing.
 const MAX_COMPOSITION_PASSES = 20;
 
-function normalizedPositionOf(index: number, total: number): number {
-  if (total <= 1) return 0;
-  return index / (total - 1);
-}
+export function improveDayByLiveComposition(day: TimetableDay, bands: Band[], venueHours: VenueHours): TimetableSlot[] {
+  const blocks = computeScheduleBlocks(day.slots);
+  const context: ScheduleContext = { day, allBands: bands, venueHours, blocks };
 
-// 拡張可能な評価設計: this is the one score*() function implemented today.
-// A future factor (学年/人気度/特別出演/イベントテーマ/ジャンル傾向) would be
-// its own score*(band, normalizedPosition) function, added as one more
-// term in scoreSchedule below — nothing about the search loop in
-// improveDayByLiveComposition would need to change.
-//
-// 評価5(最大)ほど後半(normalizedPosition→1)が望ましく、評価1(最小)ほど前半
-// (→0)が望ましい。評価3(既定値)は中立 — bias 0 で位置に関わらず常に0を返す。
-function scoreLiveComposition(band: Band, normalizedPosition: number): number {
-  const rating = getLiveCompositionRating(band);
-  const bias = rating - DEFAULT_LIVE_COMPOSITION_RATING;
-  return bias * normalizedPosition;
-}
-
-// Sums every independent score*() factor across the day's performance-slot
-// order. Only scoreLiveComposition exists today; adding a factor later is
-// `score += scoreNewFactor(...)` here plus its own function above.
-function scoreSchedule(orderedBandIds: (string | null)[], bandMap: Map<string, Band>): number {
-  let score = 0;
-  const total = orderedBandIds.length;
-  orderedBandIds.forEach((bandId, index) => {
-    if (!bandId) return;
-    const band = bandMap.get(bandId);
-    if (!band) return;
-    score += scoreLiveComposition(band, normalizedPositionOf(index, total));
-  });
-  return score;
-}
-
-// Refines `day.slots` (expected to already be Step 1's output — this
-// module never calls solveDayAssignment itself) by repeatedly swapping
-// pairs of currently-filled performance slots, keeping a swap only when
-// it (a) doesn't raise the hard-constraint penalty computed by
-// computeHardConstraintPenalty and (b) strictly improves scoreSchedule.
-// Ties are left alone, so an all-rating-3 day (or any day where no
-// feasible improving swap exists) comes back byte-for-byte identical to
-// Step 1's order. Deterministic — no Math.random anywhere in this
-// function — so the same input always produces the same output, unlike
-// Step 1's simulated annealing (which doesn't need that property).
-export function improveDayByLiveComposition(
-  day: TimetableDay,
-  bands: Band[],
-  venueHours: VenueHours,
-): TimetableSlot[] {
-  // Only rows that are actual performance slots (not 休憩・集合 dividers)
-  // count toward "前半/後半" position — divider rows don't shift when a
-  // band later in the array-index order still occupies an earlier
-  // performance position, so this mirrors solveDayAssignment's own
-  // definition of "the slots this feature is allowed to touch".
   const performanceIndices = day.slots
     .map((slot, index) => ({ slot, index }))
     .filter(({ slot }) => slot.customLabel === null)
     .map(({ index }) => index);
-
-  // Step 2 only ever swaps bands that are already placed — it never fills
-  // a slot Step 1 left empty (that's a placement decision, out of scope
-  // for a composition refinement) and never touches non-performance rows.
   const filledPositions = performanceIndices.filter((i) => day.slots[i].bandId !== null);
   if (filledPositions.length < 2) return day.slots;
 
-  const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const orderedBandIds = (slots: TimetableSlot[]) => performanceIndices.map((i) => slots[i].bandId);
+  // Step 1 is responsible for handing this a hard-constraint-valid
+  // schedule (via its own pruneToValidSchedule safety net) — if it
+  // somehow didn't, this step must not pretend to fix that by searching
+  // from an invalid starting point.
+  if (!isValidSchedule(day.slots, context)) return day.slots;
 
   let slots = day.slots;
-  let currentHardPenalty = computeHardConstraintPenalty(slots, day, bands, venueHours);
-  let currentScore = scoreSchedule(orderedBandIds(slots), bandMap);
+  let currentScore = evaluateSchedule(slots, context);
 
   let improved = true;
   let passes = 0;
@@ -381,19 +693,15 @@ export function improveDayByLiveComposition(
         candidate[posB] = { ...candidate[posB], bandId: bandIdA };
         const recomputed = recomputeTimes(candidate, day.settings, bands);
 
-        // Reuse Step 1's own hard-constraint check — reject outright if
-        // this swap would make any of the hard constraints (time
-        // designation, consecutive-member, block distribution) worse
-        // than they already are, no matter how much it would improve the
-        // composition score.
-        const candidateHardPenalty = computeHardConstraintPenalty(recomputed, day, bands, venueHours);
-        if (candidateHardPenalty > currentHardPenalty) continue;
+        // Every candidate is fully re-validated against all three hard
+        // constraints — an improving score never overrides an invalid
+        // result.
+        if (!isValidSchedule(recomputed, context)) continue;
 
-        const candidateScore = scoreSchedule(orderedBandIds(recomputed), bandMap);
+        const candidateScore = evaluateSchedule(recomputed, context);
         if (candidateScore <= currentScore) continue;
 
         slots = recomputed;
-        currentHardPenalty = candidateHardPenalty;
         currentScore = candidateScore;
         improved = true;
       }

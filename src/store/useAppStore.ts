@@ -16,9 +16,15 @@ import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
-import { improveDayByLiveComposition, solveDayAssignment } from "../utils/autoScheduleSolver";
+import {
+  buildSchedulingDebugResult,
+  computeScheduleBlocks,
+  improveDayByLiveComposition,
+  solveDayAssignment,
+} from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
 import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
+import { useToastStore } from "./useToastStore";
 
 // Re-exported so existing importers (e.g. SlotCard's drag-eligibility
 // check) don't need to know this moved to a standalone utils module —
@@ -757,17 +763,20 @@ export const useAppStore = create<AppState>()(
   // 2. Solve: for each day, hand its balanced target list to
   //    solveDayAssignment — a small CSP solver (simulated annealing over
   //    random swaps, bounded to a fixed iteration budget so this can't
-  //    stall the UI) that searches for the ordering with the lowest total
-  //    penalty across three constraints: a member double-booked back to
-  //    back (heavy), a member's whole day concentrated in one block
-  //    (medium), and the same artist appearing in two adjacent slots
-  //    (medium). See utils/autoScheduleSolver for the scoring details.
+  //    stall the UI) that searches for a placement with zero hard-
+  //    constraint violations (time designation, no back-to-back same-
+  //    member appearances, no more than ceil(N/2) same-block appearances
+  //    for anyone in N bands that day). See utils/autoScheduleSolver for
+  //    why these are validity checks, not weighted penalties.
   //
   // Bands with no eligible day, or that don't fit any slot's time window
-  // on their assigned day even in the best arrangement the solver finds,
-  // simply stay unplaced — this never forces a bad placement to hit a
-  // perfectly even split.
-  autoScheduleAllDays: () =>
+  // on their assigned day, or that the solver simply cannot place without
+  // breaking a hard constraint even in its best arrangement, stay
+  // unplaced rather than being force-placed — solveDayAssignment reports
+  // exactly which bands and why via its returned `failures`, surfaced
+  // below as a toast rather than silently dropped.
+  autoScheduleAllDays: () => {
+    const failureMessages: string[] = [];
     set((state) => {
       if (state.days.length === 0) return state;
       const placedElsewhere = getPlacedBandIds(state.days);
@@ -829,18 +838,21 @@ export const useAppStore = create<AppState>()(
         const dayPool = targetByDay.get(dayId) ?? [];
         if (dayPool.length === 0) continue;
         const currentDay = days.find((d) => d.id === dayId)!;
-        // Step 1: unchanged — fills this day's empty slots respecting every
-        // existing hard constraint (see solveDayAssignment).
-        const solvedSlots = solveDayAssignment(
+        // Step 1: fills this day's empty slots with a hard-constraint-
+        // valid placement (or the closest it can find, reporting any
+        // band it had to leave out via `failures`).
+        const { slots: solvedSlots, failures } = solveDayAssignment(
           currentDay,
           dayPool,
           state.bands,
           state.venueHours,
         );
-        // Step 2: takes Step 1's placement as input and nudges it toward
-        // higher-rated bands performing later in the day, using only
-        // swaps that solveDayAssignment's own hard-constraint checks (via
-        // computeHardConstraintPenalty) would already have accepted — see
+        if (failures.length > 0) {
+          failureMessages.push(...failures.map((f) => `${currentDay.label}: ${f.message}`));
+        }
+        // Step 3: takes Step 1's (already valid) placement and nudges it
+        // toward higher-rated bands performing later within each block,
+        // using only swaps that stay hard-constraint-valid — see
         // autoScheduleSolver.ts for why this can't just be a sort.
         const improvedSlots = improveDayByLiveComposition(
           { ...currentDay, slots: solvedSlots },
@@ -848,10 +860,30 @@ export const useAppStore = create<AppState>()(
           state.venueHours,
         );
         days = days.map((d) => (d.id === dayId ? { ...d, slots: improvedSlots } : d));
+
+        // Admin/developer-only diagnostic — never shown in any general-
+        // user-facing view (see buildSchedulingDebugResult's own doc).
+        if (import.meta.env.DEV) {
+          const blocks = computeScheduleBlocks(improvedSlots);
+          console.debug(
+            `[autoSchedule] ${currentDay.label}`,
+            buildSchedulingDebugResult(
+              improvedSlots,
+              { day: currentDay, allBands: state.bands, venueHours: state.venueHours, blocks },
+              failures,
+            ),
+          );
+        }
       }
 
       return { days };
-    }),
+    });
+    if (failureMessages.length > 0) {
+      useToastStore
+        .getState()
+        .show(`自動配置が一部の制約を満たせず、該当バンドを未配置のままにしました（${failureMessages.join(" / ")}）`, "error");
+    }
+  },
 
   resetAllPlacements: () =>
     set((state) => ({
