@@ -8,6 +8,7 @@ import {
 } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 import { ApplicationMobileCard } from "./ApplicationMobileCard";
+import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 
 type SortKey =
   | "applicantName"
@@ -260,15 +261,16 @@ export function ApplicationTable({
         <div className="hidden min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-700 md:block">
           <table className="w-full table-fixed border-collapse text-xs">
             <colgroup>
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[14%]" />
-              <col className="w-[14%]" />
-              <col className="w-[6%]" />
               <col className="w-[9%]" />
-              <col className="w-[7%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[5%]" />
               <col className="w-[8%]" />
+              <col className="w-[6%]" />
+              <col className="w-[7%]" />
+              <col className="w-[11%]" />
               <col className="w-[12%]" />
             </colgroup>
             <thead className="sticky top-0 border-b border-slate-700 bg-slate-900">
@@ -301,6 +303,9 @@ export function ApplicationTable({
                   出演希望日{sortIndicator("desiredDateTime")}
                 </th>
                 <th className={plainHeaderClass}>状態</th>
+                <th className={plainHeaderClass} title="管理者専用。一般公開データには含まれません">
+                  ライブ構成評価
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -368,6 +373,13 @@ export function ApplicationTable({
                         却下
                       </button>
                     </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {app.linkedBandId ? (
+                      <LiveCompositionRatingStars bandId={app.linkedBandId} />
+                    ) : (
+                      <span className="text-slate-600">-</span>
+                    )}
                   </td>
                 </tr>
               ))}

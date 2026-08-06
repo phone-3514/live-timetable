@@ -3,6 +3,7 @@ import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 import { HighParticipationBadge, MemberBadgeList, SetlistLines } from "./ApplicationTable";
+import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 
 type Props = {
   app: Application;
@@ -75,6 +76,13 @@ export function ApplicationMobileCard({
       {highParticipationInfo.highCount > 0 && (
         <div className="mt-2">
           <HighParticipationBadge info={highParticipationInfo} />
+        </div>
+      )}
+
+      {app.linkedBandId && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-slate-500">ライブ構成評価</span>
+          <LiveCompositionRatingStars bandId={app.linkedBandId} />
         </div>
       )}
 

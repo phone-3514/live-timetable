@@ -53,6 +53,14 @@ export type Band = {
   gearTags: string[];
   raw: string;
   parseWarning?: string;
+  // 管理者専用「ライブ構成評価」(1〜5, 既定値3=中立) — 出演申し込み管理画面の
+  // 承認済みバンド行にのみ表示・編集する。一般閲覧/出演者ページ/パンフレット/
+  // 会場画面/PA画面には表示せず、公開用ドキュメント(PublicBand, see
+  // pamphlet/types.ts)には含めない。未設定は3として扱う — 常に
+  // getLiveCompositionRating(見て src/utils/liveCompositionRating.ts) 経由で
+  // 読むこと。自動振り分けStep2(autoScheduleSolver.ts)がこの値を使って
+  // 評価5ほど後半・評価1ほど前半へ寄せる改善を行う。
+  liveCompositionRating?: number;
 };
 
 // ---------- Application Manager ----------

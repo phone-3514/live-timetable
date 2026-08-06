@@ -16,8 +16,9 @@ import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
-import { solveDayAssignment } from "../utils/autoScheduleSolver";
+import { improveDayByLiveComposition, solveDayAssignment } from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
+import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
 
 // Re-exported so existing importers (e.g. SlotCard's drag-eligibility
 // check) don't need to know this moved to a standalone utils module —
@@ -334,6 +335,12 @@ export const useAppStore = create<AppState>()(
       const bands = state.bands.map((b) => {
         if (b.id !== id) return b;
         const next = { ...b, ...partial };
+        // ライブ構成評価は保存経路に関わらず常に1〜5の整数へ制限する — 既存
+        // のBand更新処理(このupdateBand)を通すだけで満たされ、専用の保存
+        // 処理を新設する必要はない。
+        if (partial.liveCompositionRating !== undefined) {
+          next.liveCompositionRating = clampLiveCompositionRating(partial.liveCompositionRating);
+        }
         if (touchesDateHints) {
           next.allowedDayIds = resolveAllowedDayIds(next, state.days);
         }
@@ -822,13 +829,25 @@ export const useAppStore = create<AppState>()(
         const dayPool = targetByDay.get(dayId) ?? [];
         if (dayPool.length === 0) continue;
         const currentDay = days.find((d) => d.id === dayId)!;
+        // Step 1: unchanged — fills this day's empty slots respecting every
+        // existing hard constraint (see solveDayAssignment).
         const solvedSlots = solveDayAssignment(
           currentDay,
           dayPool,
           state.bands,
           state.venueHours,
         );
-        days = days.map((d) => (d.id === dayId ? { ...d, slots: solvedSlots } : d));
+        // Step 2: takes Step 1's placement as input and nudges it toward
+        // higher-rated bands performing later in the day, using only
+        // swaps that solveDayAssignment's own hard-constraint checks (via
+        // computeHardConstraintPenalty) would already have accepted — see
+        // autoScheduleSolver.ts for why this can't just be a sort.
+        const improvedSlots = improveDayByLiveComposition(
+          { ...currentDay, slots: solvedSlots },
+          state.bands,
+          state.venueHours,
+        );
+        days = days.map((d) => (d.id === dayId ? { ...d, slots: improvedSlots } : d));
       }
 
       return { days };
