@@ -25,6 +25,7 @@ import {
 import { organizerStateStorage } from "../utils/appRoleStorage";
 import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
 import { useToastStore } from "./useToastStore";
+import { useAutoScheduleDebugStore, type AutoScheduleDebugEntry } from "./useAutoScheduleDebugStore";
 
 // Re-exported so existing importers (e.g. SlotCard's drag-eligibility
 // check) don't need to know this moved to a standalone utils module —
@@ -777,6 +778,7 @@ export const useAppStore = create<AppState>()(
   // below as a toast rather than silently dropped.
   autoScheduleAllDays: () => {
     const failureMessages: string[] = [];
+    const debugEntries: AutoScheduleDebugEntry[] = [];
     set((state) => {
       if (state.days.length === 0) return state;
       const placedElsewhere = getPlacedBandIds(state.days);
@@ -861,22 +863,24 @@ export const useAppStore = create<AppState>()(
         );
         days = days.map((d) => (d.id === dayId ? { ...d, slots: improvedSlots } : d));
 
-        // Admin/developer-only diagnostic — never shown in any general-
-        // user-facing view (see buildSchedulingDebugResult's own doc).
-        if (import.meta.env.DEV) {
-          console.debug(
-            `[autoSchedule] ${currentDay.label}`,
-            buildSchedulingDebugResult(
-              improvedSlots,
-              buildScheduleContext(currentDay, state.bands, state.venueHours),
-              failures,
-            ),
-          );
-        }
+        // Admin-only "スコア詳細" — kept in memory only (see
+        // useAutoScheduleDebugStore's own doc for why this never touches
+        // Firestore/localStorage/IndexedDB), read by the Timetable
+        // Editor's debug modal.
+        debugEntries.push({
+          dayId,
+          dayLabel: currentDay.label,
+          result: buildSchedulingDebugResult(
+            improvedSlots,
+            buildScheduleContext(currentDay, state.bands, state.venueHours),
+            failures,
+          ),
+        });
       }
 
       return { days };
     });
+    useAutoScheduleDebugStore.getState().setEntries(debugEntries);
     if (failureMessages.length > 0) {
       useToastStore
         .getState()

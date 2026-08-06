@@ -15,6 +15,8 @@ import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterE
 import { MobileSlotCard } from "./MobileSlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
+import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
+import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
 import { ModalPortal } from "./ModalPortal";
@@ -138,6 +140,8 @@ export function MobileTimetable() {
   const [showScheduleReview, setShowScheduleReview] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
+  const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
+  const autoScheduleDebugEntryCount = useAutoScheduleDebugStore((s) => s.entries.length);
   const [exportingRoster, setExportingRoster] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -324,6 +328,12 @@ export function MobileTimetable() {
               📋 スケジュール確認 {reviewIssueCount > 0 && `(${reviewIssueCount})`}
             </button>
             <button
+              onClick={() => setShowAutoScheduleDebug(true)}
+              className="min-h-11 rounded border border-slate-600 px-3 font-medium text-slate-300"
+            >
+              🔍 スコア詳細 {autoScheduleDebugEntryCount > 0 && `(${autoScheduleDebugEntryCount})`}
+            </button>
+            <button
               onClick={handleExportRoster}
               disabled={exportingRoster}
               className="min-h-11 rounded border border-teal-600 bg-teal-950/30 px-3 font-medium text-teal-300 disabled:opacity-50"
@@ -359,6 +369,9 @@ export function MobileTimetable() {
       </div>
 
       {showScheduleReview && <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />}
+      {showAutoScheduleDebug && (
+        <AutoScheduleDebugModal onClose={() => setShowAutoScheduleDebug(false)} />
+      )}
       {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
       {showFuriganaImport && <FuriganaImportModal onClose={() => setShowFuriganaImport(false)} />}
 

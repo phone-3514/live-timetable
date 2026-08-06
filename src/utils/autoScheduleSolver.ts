@@ -346,7 +346,7 @@ export function getClosingPositionMultiplier(index: number, totalSlots: number):
 // SCORE_WEIGHTS below) — a rating-1 band placed at the front of a late
 // block now scores well block-locally but poorly on the global axis, and
 // the global axis is what actually catches it.
-export const FINAL_PHASE_DURATION_MINUTES = 120;
+export const FINAL_PHASE_DURATION_MINUTES = 180;
 
 // slot.startTime/endTime are wall-clock "HH:MM" strings that wrap at
 // 24:00 (see minutesToTime) — on their own they can't be ordered across a
@@ -430,15 +430,105 @@ export function getFinalPhaseProgress(
 }
 
 // At progress 0 (not yet in the final phase) this is always 0 regardless
-// of rating — no cliff-edge jump at the boundary. As progress climbs
-// toward 1, it converges on normalizeRating(rating) itself, so a rating-5
-// band gains up to +1 right at the event's close while a rating-1 band
-// gains nothing at any point — never a bonus, but never a hard-coded
-// penalty either (that asymmetry is intentional: this is one soft
-// component among several, not the only word on where a low-rated band
-// belongs).
+// of rating — no cliff-edge jump at the boundary. Rating is re-centered
+// around rating 3 (normalizeRating(3)*2-1 === 0) so the final phase
+// actively rewards 4/5, actively penalizes 1/2, and stays neutral for 3 —
+// as progress climbs toward 1 that push strengthens in whichever
+// direction the rating already points, converging on ±1 right at the
+// event's close.
 export function calculateProgressiveFinalPhaseScore(rating: number, progress: number): number {
-  return normalizeRating(rating) * progress;
+  const centeredRating = normalizeRating(rating) * 2 - 1;
+  return centeredRating * progress;
+}
+
+// A second, independent, rating-5-only push toward the final phase —
+// deliberately separate from calculateProgressiveFinalPhaseScore above
+// (see SCORE_WEIGHTS.ratingFiveFinalPhase) since a rating-5 band should
+// be pulled toward the close more insistently than "just the strongest
+// case of the general 4/5 trend." Unlike the progress-based ramp above,
+// this compares the slot's actual absolute position to finalPhaseStart
+// directly: 0 exactly at finalPhaseStart, ramping to +8 at (or past) the
+// event's end, and ramping the other direction to -8 the further before
+// finalPhaseStart a rating-5 band sits — clamped both ways so an
+// extremely early rating-5 placement doesn't produce an unbounded
+// penalty, just a capped one. Non-rating-5 bands always score 0 here.
+export function calculateRatingFiveFinalPhaseScore(
+  rating: number,
+  slotStartMinutes: number,
+  finalPhaseStart: number,
+  eventEndMinutes: number,
+): number {
+  if (rating !== 5) return 0;
+  const finalPhaseDuration = eventEndMinutes - finalPhaseStart;
+  if (finalPhaseDuration <= 0) return 0;
+  const relativePosition = (slotStartMinutes - finalPhaseStart) / finalPhaseDuration;
+  return Math.max(-1, Math.min(1, relativePosition)) * 8;
+}
+
+// ---------- 低評価出演者グループの前半ブロック優先 --------------------------
+//
+// Not a property stored on a person — computed fresh from the candidate
+// `slots` being scored, every time. A person only ever counts as a
+// "low-rated band group" for as long as literally every band they're
+// placed in *today* is rated 1 or 2; nothing here is written back to the
+// person/member themselves, and nothing here is persisted (see
+// buildSchedulingDebugResult's own doc for the same rule applied to the
+// whole debug result).
+export type PerformerLowRatingProfile = {
+  personId: string;
+  displayName: string;
+  bandIds: string[];
+  ratings: number[];
+  isLowRatedBandGroup: boolean;
+};
+
+export function isLowRatedPerformerGroup(personBandRatings: number[]): boolean {
+  return personBandRatings.length >= 2 && personBandRatings.every((rating) => rating <= 2);
+}
+
+// Reuses the exact same member-identity pass computePersonAppearanceDistribution
+// uses (normalizeMemberName over each placed band's `members`) rather than
+// a second person-matching implementation — only the grouping differs
+// (by distinct band, not by block).
+export function computePerformerLowRatingProfiles(
+  slots: TimetableSlot[],
+  bands: Band[],
+): PerformerLowRatingProfile[] {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const byPerson = new Map<string, { displayName: string; bandIds: Set<string> }>();
+  for (const slot of slots) {
+    if (!slot.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band) continue;
+    const seenInThisSlot = new Set<string>();
+    for (const rawName of band.members) {
+      const key = normalizeMemberName(rawName);
+      if (!key || seenInThisSlot.has(key)) continue;
+      seenInThisSlot.add(key);
+      const entry = byPerson.get(key) ?? { displayName: rawName, bandIds: new Set<string>() };
+      entry.bandIds.add(band.id);
+      byPerson.set(key, entry);
+    }
+  }
+  return [...byPerson.entries()].map(([personId, { displayName, bandIds }]) => {
+    const bandIdList = [...bandIds];
+    const ratings = bandIdList.map((id) => getLiveCompositionRating(bandMap.get(id)!));
+    return { personId, displayName, bandIds: bandIdList, ratings, isLowRatedBandGroup: isLowRatedPerformerGroup(ratings) };
+  });
+}
+
+// Only nonzero for the day's LAST block (index 2 of exactly 3) and only
+// for a qualifying low-rated group — this is what makes the rule a soft
+// nudge rather than a 4th hard constraint: it costs points, it never
+// excludes a candidate the way validateHardConstraints does.
+export function calculateLowRatedPerformerFinalBlockPenalty(
+  totalBlockCount: number,
+  isLowRatedGroup: boolean,
+  blockIndex: number,
+): number {
+  if (totalBlockCount !== 3) return 0;
+  if (!isLowRatedGroup) return 0;
+  return blockIndex === 2 ? -4 : 0;
 }
 
 function getBlockEntries(
@@ -478,9 +568,11 @@ export type ScoreComponent = {
 export const SCORE_WEIGHTS = {
   globalTimeline: 1,
   finalPhase: 2,
+  ratingFiveFinalPhase: 3,
   blockTimeline: 1,
   smoothness: 0.5,
   blockClosing: 1,
+  lowRatedPerformerDistribution: 2,
 };
 
 // Layer 1: ライブ全体の時間軸評価 — how well a band's rating matches its
@@ -532,6 +624,33 @@ const finalPhaseComponent: ScoreComponent = {
       if (!band || !abs) continue;
       const progress = getFinalPhaseProgress(abs.start, finalPhaseStart, eventEndMinutes);
       total += calculateProgressiveFinalPhaseScore(getLiveCompositionRating(band), progress);
+      count++;
+    }
+    return count > 0 ? total / count : 0;
+  },
+};
+
+// Layer 1c: 評価5の終盤優先 — averaged only over rating-5 bands (everyone
+// else always contributes exactly 0 here, so folding them into the
+// denominator would just dilute the signal by however many non-5 bands
+// happen to exist that day).
+const ratingFiveFinalPhaseComponent: ScoreComponent = {
+  name: "ratingFiveFinalPhase",
+  weight: SCORE_WEIGHTS.ratingFiveFinalPhase,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    const { eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
+    const finalPhaseStart = getFinalPhaseStart(context.eventStartMinutes, eventEndMinutes);
+    let total = 0;
+    let count = 0;
+    for (const slot of slots) {
+      if (!slot.bandId) continue;
+      const band = bandMap.get(slot.bandId);
+      const abs = absoluteMinutesBySlotId.get(slot.id);
+      if (!band || !abs) continue;
+      const rating = getLiveCompositionRating(band);
+      if (rating !== 5) continue;
+      total += calculateRatingFiveFinalPhaseScore(rating, abs.start, finalPhaseStart, eventEndMinutes);
       count++;
     }
     return count > 0 ? total / count : 0;
@@ -614,43 +733,98 @@ const blockClosingComponent: ScoreComponent = {
   },
 };
 
+// Layer 5: 低評価出演者グループの前半ブロック優先 — a day-level nudge,
+// not a per-slot one: it only ever engages for a 3-block day, and even
+// then only for bands belonging to a "low-rated band group" person. See
+// calculateLowRatedPerformerFinalBlockPenalty — deliberately capped at
+// exactly one penalty per qualifying BAND (never per member), so a band
+// with several such members doesn't cost more than one with just one.
+const lowRatedPerformerDistributionComponent: ScoreComponent = {
+  name: "lowRatedPerformerDistribution",
+  weight: SCORE_WEIGHTS.lowRatedPerformerDistribution,
+  calculate: (slots, context) => {
+    const totalBlockCount = context.blocks.length;
+    if (totalBlockCount !== 3) return 0;
+    const qualifyingBandIds = new Set<string>();
+    for (const profile of computePerformerLowRatingProfiles(slots, context.allBands)) {
+      if (!profile.isLowRatedBandGroup) continue;
+      for (const bandId of profile.bandIds) qualifyingBandIds.add(bandId);
+    }
+    if (qualifyingBandIds.size === 0) return 0;
+
+    const blockIndexBySlotId = new Map<string, number>();
+    context.blocks.forEach((block, idx) => block.slotIds.forEach((id) => blockIndexBySlotId.set(id, idx)));
+    const blockIndexByBandId = new Map<string, number>();
+    for (const slot of slots) {
+      if (!slot.bandId) continue;
+      const idx = blockIndexBySlotId.get(slot.id);
+      if (idx !== undefined) blockIndexByBandId.set(slot.bandId, idx);
+    }
+
+    let total = 0;
+    for (const bandId of qualifyingBandIds) {
+      const blockIndex = blockIndexByBandId.get(bandId);
+      if (blockIndex === undefined) continue;
+      total += calculateLowRatedPerformerFinalBlockPenalty(totalBlockCount, true, blockIndex);
+    }
+    return total / qualifyingBandIds.size;
+  },
+};
+
 export const scoreComponents: ScoreComponent[] = [
   globalTimelineComponent,
   finalPhaseComponent,
+  ratingFiveFinalPhaseComponent,
   blockTimelineComponent,
   smoothnessComponent,
   blockClosingComponent,
+  lowRatedPerformerDistributionComponent,
 ];
 
 export type ScheduleScoreBreakdown = {
   globalTimelineScore: number;
   finalPhaseScore: number;
+  ratingFiveFinalPhaseScore: number;
   blockTimelineScore: number;
   smoothnessScore: number;
   blockClosingScore: number;
+  lowRatedPerformerDistributionScore: number;
   totalScore: number;
 };
 
-// The two-layer scoring's whole point: both the global-timeline and
-// block-timeline (plus smoothness and block-closing) components are
-// calculated over the SAME candidate `slots` and summed into one
-// totalScore — never "pick one layer or the other." A rating-1 band at a
-// late block's front scores well on blockTimelineScore alone but poorly
-// on globalTimelineScore and finalPhaseScore, and it's the sum that Step
-// 3's local search actually compares.
+// The two-layer scoring's whole point: every layer is calculated over the
+// SAME candidate `slots` and summed into one totalScore — never "pick one
+// layer or the other." A rating-1 band at a late block's front scores
+// well on blockTimelineScore alone but poorly on globalTimelineScore and
+// finalPhaseScore, and it's the sum that Step 3's local search actually
+// compares. totalScore is always exactly the sum of the other six fields
+// here — nothing is computed independently of this breakdown.
 export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContext): ScheduleScoreBreakdown {
   const globalTimelineScore = globalTimelineComponent.weight * globalTimelineComponent.calculate(slots, context);
   const finalPhaseScore = finalPhaseComponent.weight * finalPhaseComponent.calculate(slots, context);
+  const ratingFiveFinalPhaseScore =
+    ratingFiveFinalPhaseComponent.weight * ratingFiveFinalPhaseComponent.calculate(slots, context);
   const blockTimelineScore = blockTimelineComponent.weight * blockTimelineComponent.calculate(slots, context);
   const smoothnessScore = smoothnessComponent.weight * smoothnessComponent.calculate(slots, context);
   const blockClosingScore = blockClosingComponent.weight * blockClosingComponent.calculate(slots, context);
+  const lowRatedPerformerDistributionScore =
+    lowRatedPerformerDistributionComponent.weight * lowRatedPerformerDistributionComponent.calculate(slots, context);
   return {
     globalTimelineScore,
     finalPhaseScore,
+    ratingFiveFinalPhaseScore,
     blockTimelineScore,
     smoothnessScore,
     blockClosingScore,
-    totalScore: globalTimelineScore + finalPhaseScore + blockTimelineScore + smoothnessScore + blockClosingScore,
+    lowRatedPerformerDistributionScore,
+    totalScore:
+      globalTimelineScore +
+      finalPhaseScore +
+      ratingFiveFinalPhaseScore +
+      blockTimelineScore +
+      smoothnessScore +
+      blockClosingScore +
+      lowRatedPerformerDistributionScore,
   };
 }
 
@@ -672,53 +846,85 @@ export type SchedulingFailure = {
 export type SchedulingDebugSlot = {
   slotId: string;
   bandId: string;
+  bandName: string;
   rating: number;
   startTime: string;
   blockId: string;
+  blockIndex: number;
   globalPosition: number;
   blockPosition: number;
   isFinalPhase: boolean;
+  finalPhaseProgress: number;
+  performerIds: string[];
   scoreContributions: {
     globalTimeline: number;
     finalPhase: number;
+    ratingFiveFinalPhase: number;
     blockTimeline: number;
     smoothness: number;
     blockClosing: number;
+    lowRatedPerformerDistribution: number;
+    total: number;
   };
+};
+
+export type SchedulingDebugPerformer = {
+  personId: string;
+  displayName: string;
+  totalAppearances: number;
+  appearancesByBlock: Record<string, number>;
+  maxAllowedPerBlock: number;
+  bandRatings: number[];
+  isLowRatedBandGroup: boolean;
+  appearsInFinalBlock: boolean;
 };
 
 export type SchedulingDebugResult = {
   hardConstraintsValid: boolean;
-  scoreBreakdown: ScheduleScoreBreakdown;
-  personDistribution: PersonAppearanceDistribution[];
+  totalScore: number;
+  scoreBreakdown: Omit<ScheduleScoreBreakdown, "totalScore">;
   slots: SchedulingDebugSlot[];
+  performers: SchedulingDebugPerformer[];
   violations: string[];
+  warnings: string[];
   failures: SchedulingFailure[];
 };
 
-// Admin/developer-only — never rendered in any general-user-facing view.
+// Admin/developer-only — never rendered in any general-user-facing view,
+// never written to Firestore/Realtime Database/localStorage/IndexedDB.
 // Callers decide where (if anywhere) to surface this; see useAppStore.ts's
-// autoScheduleAllDays, which only console.debug()s it in dev builds. Per
-// placed band, this shows exactly what each score layer contributed —
-// the "why did this band end up here" a developer or organizer needs when
-// a result looks off — reusing the same pure formula functions the
-// scoring itself is built from rather than re-deriving anything.
+// autoScheduleAllDays, which hands it to a memory-only Zustand store (no
+// persist middleware) that only the organizer-only Timetable Editor's
+// "スコア詳細" modal reads. Per placed band, this shows exactly what each
+// score layer contributed — the "why did this band end up here" a
+// developer or organizer needs when a result looks off — reusing the
+// exact same pure formula functions the scoring itself is built from
+// rather than re-deriving anything.
 export function buildSchedulingDebugResult(
   slots: TimetableSlot[],
   context: ScheduleContext,
   failures: SchedulingFailure[] = [],
 ): SchedulingDebugResult {
   const validation = validateHardConstraints(slots, context);
-  const scoreBreakdown = evaluateSchedule(slots, context);
+  const { totalScore, ...scoreBreakdown } = evaluateSchedule(slots, context);
   const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
   const { eventStartMinutes, eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(
     slots,
     context.eventStartMinutes,
   );
   const finalPhaseStart = getFinalPhaseStart(eventStartMinutes, eventEndMinutes);
+  const totalBlockCount = context.blocks.length;
+
+  const lowRatingProfiles = computePerformerLowRatingProfiles(slots, context.allBands);
+  const lowRatingProfileByPersonId = new Map(lowRatingProfiles.map((p) => [p.personId, p]));
+  const qualifyingBandIds = new Set<string>();
+  for (const profile of lowRatingProfiles) {
+    if (!profile.isLowRatedBandGroup) continue;
+    for (const bandId of profile.bandIds) qualifyingBandIds.add(bandId);
+  }
 
   const debugSlots: SchedulingDebugSlot[] = [];
-  for (const block of context.blocks) {
+  context.blocks.forEach((block, blockIndex) => {
     const entries = getBlockEntries(slots, bandMap, block);
     entries.forEach(({ slot, band }, index) => {
       const rating = getLiveCompositionRating(band);
@@ -727,37 +933,101 @@ export function buildSchedulingDebugResult(
       const globalPosition = abs ? getGlobalNormalizedPosition(abs.start, eventStartMinutes, eventEndMinutes) : 0;
       const progress = abs ? getFinalPhaseProgress(abs.start, finalPhaseStart, eventEndMinutes) : 0;
       const next = entries[index + 1];
+      const performerIds = [...new Set(band.members.map(normalizeMemberName).filter(Boolean))];
+
+      const globalTimeline = -calculateGlobalPositionPenalty(globalPosition, rating) * SCORE_WEIGHTS.globalTimeline;
+      const finalPhase = calculateProgressiveFinalPhaseScore(rating, progress) * SCORE_WEIGHTS.finalPhase;
+      const ratingFiveFinalPhase = abs
+        ? calculateRatingFiveFinalPhaseScore(rating, abs.start, finalPhaseStart, eventEndMinutes) *
+          SCORE_WEIGHTS.ratingFiveFinalPhase
+        : 0;
+      const blockTimeline = -calculatePositionRatingPenalty(blockPosition, rating) * SCORE_WEIGHTS.blockTimeline;
+      const smoothness = next
+        ? -calculateDescendingPenalty(rating, getLiveCompositionRating(next.band)) * SCORE_WEIGHTS.smoothness
+        : 0;
+      const blockClosing =
+        calculateBlockClosingBonus(rating) *
+        getClosingPositionMultiplier(index, entries.length) *
+        SCORE_WEIGHTS.blockClosing;
+      const lowRatedPerformerDistribution = qualifyingBandIds.has(band.id)
+        ? calculateLowRatedPerformerFinalBlockPenalty(totalBlockCount, true, blockIndex) *
+          SCORE_WEIGHTS.lowRatedPerformerDistribution
+        : 0;
+
       debugSlots.push({
         slotId: slot.id,
         bandId: band.id,
+        bandName: band.name,
         rating,
         startTime: slot.startTime,
         blockId: block.id,
+        blockIndex,
         globalPosition,
         blockPosition,
         isFinalPhase: abs ? abs.start >= finalPhaseStart : false,
+        finalPhaseProgress: progress,
+        performerIds,
         scoreContributions: {
-          globalTimeline: -calculateGlobalPositionPenalty(globalPosition, rating) * SCORE_WEIGHTS.globalTimeline,
-          finalPhase: calculateProgressiveFinalPhaseScore(rating, progress) * SCORE_WEIGHTS.finalPhase,
-          blockTimeline: -calculatePositionRatingPenalty(blockPosition, rating) * SCORE_WEIGHTS.blockTimeline,
-          smoothness: next
-            ? -calculateDescendingPenalty(rating, getLiveCompositionRating(next.band)) * SCORE_WEIGHTS.smoothness
-            : 0,
-          blockClosing:
-            calculateBlockClosingBonus(rating) *
-            getClosingPositionMultiplier(index, entries.length) *
-            SCORE_WEIGHTS.blockClosing,
+          globalTimeline,
+          finalPhase,
+          ratingFiveFinalPhase,
+          blockTimeline,
+          smoothness,
+          blockClosing,
+          lowRatedPerformerDistribution,
+          total:
+            globalTimeline +
+            finalPhase +
+            ratingFiveFinalPhase +
+            blockTimeline +
+            smoothness +
+            blockClosing +
+            lowRatedPerformerDistribution,
         },
       });
     });
+  });
+
+  const finalBlockIndex = totalBlockCount - 1;
+  const performers: SchedulingDebugPerformer[] = computePersonAppearanceDistribution(
+    slots,
+    context.allBands,
+    context.blocks,
+  ).map((distribution) => ({
+    personId: distribution.personId,
+    displayName: distribution.displayName,
+    totalAppearances: distribution.totalAppearances,
+    appearancesByBlock: distribution.appearancesByBlock,
+    maxAllowedPerBlock: distribution.maxAllowedPerBlock,
+    bandRatings: lowRatingProfileByPersonId.get(distribution.personId)?.ratings ?? [],
+    isLowRatedBandGroup: lowRatingProfileByPersonId.get(distribution.personId)?.isLowRatedBandGroup ?? false,
+    appearsInFinalBlock: (distribution.appearancesByBlock[context.blocks[finalBlockIndex]?.id ?? ""] ?? 0) > 0,
+  }));
+
+  const warnings: string[] = [];
+  if (totalBlockCount === 3) {
+    for (const performer of performers) {
+      if (performer.isLowRatedBandGroup && performer.appearsInFinalBlock) {
+        warnings.push(
+          `${performer.displayName}は出演バンドすべての評価が2以下ですが、第3ブロックへの配置を回避できませんでした`,
+        );
+      }
+    }
+  }
+  for (const slot of debugSlots) {
+    if (slot.rating === 5 && !slot.isFinalPhase) {
+      warnings.push(`評価5の${slot.bandName}が終盤（終了${FINAL_PHASE_DURATION_MINUTES}分前以降）の外に配置されています`);
+    }
   }
 
   return {
     hardConstraintsValid: validation.isValid,
+    totalScore,
     scoreBreakdown,
-    personDistribution: computePersonAppearanceDistribution(slots, context.allBands, context.blocks),
     slots: debugSlots,
+    performers,
     violations: validation.violations.map((v) => v.message),
+    warnings,
     failures,
   };
 }

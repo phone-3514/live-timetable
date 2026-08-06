@@ -14,6 +14,8 @@ import { DayPanel } from "./DayPanel";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
+import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
+import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
 import type { TimetableDay } from "../types";
 
 // Stable (never-reallocated) fallbacks for the ?? below — an inline `?? []`
@@ -56,6 +58,8 @@ export function DesktopTimetable() {
   const [showScheduleReview, setShowScheduleReview] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
+  const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
+  const autoScheduleDebugEntryCount = useAutoScheduleDebugStore((s) => s.entries.length);
   const [exportingRoster, setExportingRoster] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   // -1 means "query changed, haven't jumped to a match yet" — the first
@@ -258,6 +262,18 @@ export function DesktopTimetable() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setShowAutoScheduleDebug(true)}
+          className="min-h-11 shrink-0 rounded border border-slate-600 px-3 font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
+          title="直近の一括自動配置で、各出演枠がなぜその位置になったかスコア内訳を確認します（管理者専用）"
+        >
+          🔍 スコア詳細
+          {autoScheduleDebugEntryCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-slate-500 px-1.5 py-0.5 text-[10px] font-bold text-slate-950">
+              {autoScheduleDebugEntryCount}
+            </span>
+          )}
+        </button>
         <details ref={moreDetailsRef} className="group relative ml-auto shrink-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-500 bg-slate-800 px-3 text-xs font-semibold text-slate-200 shadow-sm hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:min-h-0 md:py-1.5" aria-label="管理と出力メニュー">
             <span aria-hidden="true">🧰</span><span>管理・出力</span><span aria-hidden="true" className="text-[9px] transition-transform group-open:rotate-180">▼</span>
@@ -315,6 +331,9 @@ export function DesktopTimetable() {
       {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
       {showFuriganaImport && (
         <FuriganaImportModal onClose={() => setShowFuriganaImport(false)} />
+      )}
+      {showAutoScheduleDebug && (
+        <AutoScheduleDebugModal onClose={() => setShowAutoScheduleDebug(false)} />
       )}
     </div>
   );
