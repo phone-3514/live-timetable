@@ -147,13 +147,20 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                         <span className="text-slate-400">
                           採用: {active.result.optimizationSummary.acceptedMoveCount}件（交換
                           {active.result.optimizationSummary.acceptedMovesByType.swap}・挿入
-                          {active.result.optimizationSummary.acceptedMovesByType.insert}）
+                          {active.result.optimizationSummary.acceptedMovesByType.insert}・配置
+                          {active.result.optimizationSummary.acceptedMovesByType.place}）
                         </span>
                         <span className="text-slate-400">評価候補数: {active.result.optimizationSummary.candidateCount}</span>
+                        <span className="text-slate-400">必須候補（未配置修復）: {active.result.optimizationSummary.mandatoryCandidateCount}</span>
                         <span className="text-slate-400">ハード制約違反: {active.result.optimizationSummary.hardConstraintViolationCount}</span>
                         <span className="text-slate-400">改善なし: {active.result.optimizationSummary.noImprovementCount}</span>
                         <span className="text-slate-400">候補上限で省略: {active.result.optimizationSummary.skippedCandidateCount}</span>
-                        <span className="text-slate-400 sm:col-span-3">停止理由: {active.result.optimizationSummary.stoppedBy}</span>
+                        <span className="text-slate-400">停止理由: {active.result.optimizationSummary.stoppedBy}</span>
+                        <span className={active.result.optimizationSummary.isCompleteValidSchedule ? "text-emerald-400" : "text-rose-400"}>
+                          {active.result.optimizationSummary.isCompleteValidSchedule
+                            ? "✓ 全バンド配置済み"
+                            : `✗ 未配置 ${active.result.optimizationSummary.unassignedBandCountBefore}→${active.result.optimizationSummary.unassignedBandCountAfter}件`}
+                        </span>
                       </div>
                       {active.result.optimizationSummary.unresolvedIssues.length > 0 && (
                         <ul className="mt-2 space-y-1">
@@ -197,6 +204,11 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                                 最終ブロックに出演あり
                               </span>
                             )}
+                            {p.ratingFiveFinalConcentrationException.applied && (
+                              <span className="ml-1.5 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                評価5終盤集中例外：適用
+                              </span>
+                            )}
                             <div className="mt-1 flex flex-wrap gap-1">
                               {Object.entries(p.appearancesByBlock).map(([blockId, count]) => (
                                 <span key={blockId} className="rounded bg-slate-700/50 px-1.5 py-0.5 text-[10px] text-slate-400">
@@ -204,6 +216,20 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                                 </span>
                               ))}
                             </div>
+                            {p.ratingFiveFinalConcentrationException.applied && (
+                              <p className="mt-1 text-[10px] text-emerald-300">
+                                対象バンド: {p.ratingFiveFinalConcentrationException.bandIds.join("、")}
+                              </p>
+                            )}
+                            {p.invalidConcentrations.length > 0 && (
+                              <ul className="mt-1 space-y-0.5">
+                                {p.invalidConcentrations.map((c, i) => (
+                                  <li key={i} className="text-[10px] text-rose-300">
+                                    評価5終盤集中例外：対象外（理由: {c.reason}） — {c.blockId}: {c.bandIds.join("、")}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </li>
                         ))}
                       </ul>

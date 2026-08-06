@@ -211,6 +211,169 @@ export function violatesBlockConcentration(
   return Object.values(distribution.appearancesByBlock).some((count) => count > distribution.maxAllowedPerBlock);
 }
 
+// ---------- 評価5終盤集中の限定的な例外 -------------------------------------
+//
+// ceil(N/2) はハード制約のまま — この例外は、ブロック集中制限そのものを
+// ソフト制約へ格下げするものではない。唯一の例外は「最終ブロックの終盤に
+// 評価5バンド本人の出演だけが集中した」場合。判定は人物単位・ブロック単位
+// で行われ、Firestoreへは何も保存しない(自動振り分け実行のたびに再計算)。
+//
+// 仕様A: 例外条件(3つとも)は、その(人物, ブロック)に集中している出演
+// "全体"に対して課す — 「通常許容枠 + 超過分」という区分をこの判定では
+// 使わない(区分は今もsortAppearancesDeterministicallyで表示用にだけ使える
+// が、有効/無効の判定には一切関与しない)。理由:
+//   - 評価3・評価4を含む集中(ケースA)は、全出演に評価5以外が1件でも
+//     混ざっていればallAppearancesAreRatingFiveがfalseになり、無効。
+//   - 評価5同士でも1件が終盤外(ケースB)はallAppearancesAreFinalPhaseが
+//     false — 全出演が終盤内である必要がある。
+//   - 評価5バンドの移動で別人物(例: 評価1のペア)に生じた集中(ケースC)は、
+//     その"別人物"自身の全出演の評価がrating5ではないため、その人物・
+//     ブロックの判定だけが独立して無効になる — 評価5バンドの移動が「原因」
+//     かどうかを判定する必要がない。
+//   - 連続出演禁止(ケースD)はこの例外と完全に独立した別のハード制約
+//     (violatesConsecutiveAppearance)であり、この例外は一切関与しない。
+export type PersonBlockAppearance = {
+  personId: string;
+  displayName: string;
+  blockId: string;
+  blockIndex: number;
+  bandId: string;
+  rating: number;
+  slotId: string;
+  slotStartMinutes: number;
+  isFinalPhase: boolean;
+};
+
+export type BlockConcentrationReason =
+  | "WITHIN_STANDARD_LIMIT"
+  | "RATING_FIVE_FINAL_PHASE_EXCEPTION"
+  | "NON_RATING_FIVE_CONCENTRATION"
+  | "OUTSIDE_FINAL_BLOCK"
+  | "OUTSIDE_FINAL_PHASE";
+
+export type BlockConcentrationValidation = {
+  isValid: boolean;
+  standardLimit: number;
+  actualCount: number;
+  exceptionApplied: boolean;
+  exceptionBandIds: string[];
+  violatingBandIds: string[];
+  reason: BlockConcentrationReason;
+};
+
+// デバッグ表示など、出演の並び順を安定させたい箇所のための決定的な並び替え
+// — 開始時刻→スロットID→バンドIDの順。判定ロジック(仕様A)では使わない。
+function sortAppearancesDeterministically(appearances: PersonBlockAppearance[]): PersonBlockAppearance[] {
+  return [...appearances].sort(
+    (a, b) =>
+      a.slotStartMinutes - b.slotStartMinutes ||
+      a.slotId.localeCompare(b.slotId) ||
+      a.bandId.localeCompare(b.bandId),
+  );
+}
+
+// 仕様A: 例外の判定基準は「超過分だけ」ではなく、そのブロックに集中している
+// 出演"全体"。評価5以外が1件でも混ざっていれば(評価3・評価4を問わず)、
+// またそのうち1件でも終盤外なら、集中している全出演が無効になる —
+// 「通常枠+超過分」という区分自体をこの判定では使わない。
+export function validatePersonBlockConcentration(
+  appearances: PersonBlockAppearance[],
+  totalAppearances: number,
+  totalBlockCount: number,
+): BlockConcentrationValidation {
+  const standardLimit = Math.ceil(totalAppearances / 2);
+  if (appearances.length <= standardLimit) {
+    return {
+      isValid: true,
+      standardLimit,
+      actualCount: appearances.length,
+      exceptionApplied: false,
+      exceptionBandIds: [],
+      violatingBandIds: [],
+      reason: "WITHIN_STANDARD_LIMIT",
+    };
+  }
+
+  const isFinalBlock = appearances[0].blockIndex === totalBlockCount - 1;
+  const allAppearancesAreRatingFive = appearances.every((a) => a.rating === 5);
+  const allAppearancesAreFinalPhase = appearances.every((a) => a.isFinalPhase);
+
+  if (isFinalBlock && allAppearancesAreRatingFive && allAppearancesAreFinalPhase) {
+    return {
+      isValid: true,
+      standardLimit,
+      actualCount: appearances.length,
+      exceptionApplied: true,
+      exceptionBandIds: sortAppearancesDeterministically(appearances).map((a) => a.bandId),
+      violatingBandIds: [],
+      reason: "RATING_FIVE_FINAL_PHASE_EXCEPTION",
+    };
+  }
+
+  return {
+    isValid: false,
+    standardLimit,
+    actualCount: appearances.length,
+    exceptionApplied: false,
+    exceptionBandIds: [],
+    violatingBandIds: sortAppearancesDeterministically(appearances).map((a) => a.bandId),
+    reason: !isFinalBlock
+      ? "OUTSIDE_FINAL_BLOCK"
+      : !allAppearancesAreRatingFive
+        ? "NON_RATING_FIVE_CONCENTRATION"
+        : "OUTSIDE_FINAL_PHASE",
+  };
+}
+
+// computePersonAppearanceDistributionと同じメンバー正規化パスを再利用しつつ、
+// (人物, ブロック)単位で各出演の評価・時刻・終盤判定まで持つ詳細版。
+// validateHardConstraintsのブロック集中検証とデバッグ表示の両方が、この
+// 一箇所だけを起点にする。
+function computePersonBlockAppearances(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+): Map<string, Map<string, PersonBlockAppearance[]>> {
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  const blockIndexBySlotId = new Map<string, number>();
+  context.blocks.forEach((block, idx) => block.slotIds.forEach((id) => blockIndexBySlotId.set(id, idx)));
+  const { absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
+
+  const result = new Map<string, Map<string, PersonBlockAppearance[]>>();
+  for (const slot of slots) {
+    if (!slot.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band) continue;
+    const blockIndex = blockIndexBySlotId.get(slot.id);
+    if (blockIndex === undefined) continue;
+    const block = context.blocks[blockIndex];
+    const abs = absoluteMinutesBySlotId.get(slot.id);
+    const isFinalPhase = abs ? abs.start >= context.finalPhaseStart : false;
+    const rating = getLiveCompositionRating(band);
+    const seenInThisSlot = new Set<string>();
+    for (const rawName of band.members) {
+      const key = normalizeMemberName(rawName);
+      if (!key || seenInThisSlot.has(key)) continue;
+      seenInThisSlot.add(key);
+      const byBlock = result.get(key) ?? new Map<string, PersonBlockAppearance[]>();
+      const list = byBlock.get(block.id) ?? [];
+      list.push({
+        personId: key,
+        displayName: rawName,
+        blockId: block.id,
+        blockIndex,
+        bandId: band.id,
+        rating,
+        slotId: slot.id,
+        slotStartMinutes: abs?.start ?? 0,
+        isFinalPhase,
+      });
+      byBlock.set(block.id, list);
+      result.set(key, byBlock);
+    }
+  }
+  return result;
+}
+
 // ---------- Hard constraint validation (all three, combined) -------------
 //
 // Richer than a plain string list — each violation keeps the slot/band/
@@ -273,25 +436,22 @@ export function validateHardConstraints(slots: TimetableSlot[], context: Schedul
     }
   }
 
-  // 3. 同一人物のブロック集中制限 (ceil(N/2))
-  const slotById = new Map(slots.map((s) => [s.id, s]));
+  // 3. 同一人物のブロック集中制限 (ceil(N/2)) — 評価5終盤集中は限定的な例外
+  // (validatePersonBlockConcentrationの6条件をすべて満たす場合のみ有効)。
   const distribution = computePersonAppearanceDistribution(slots, context.allBands, context.blocks);
-  for (const person of distribution) {
-    for (const [blockId, count] of Object.entries(person.appearancesByBlock)) {
-      if (count <= person.maxAllowedPerBlock) continue;
-      const block = context.blocks.find((b) => b.id === blockId);
-      const offendingSlotIds = (block?.slotIds ?? []).filter((slotId) => {
-        const slot = slotById.get(slotId);
-        if (!slot?.bandId) return false;
-        const band = bandMap.get(slot.bandId);
-        return band?.members.some((m) => normalizeMemberName(m) === person.personId) ?? false;
-      });
+  const totalAppearancesByPerson = new Map(distribution.map((d) => [d.personId, d.totalAppearances]));
+  const blockAppearancesByPerson = computePersonBlockAppearances(slots, context);
+  for (const [personId, byBlock] of blockAppearancesByPerson) {
+    const totalAppearances = totalAppearancesByPerson.get(personId) ?? 0;
+    for (const appearances of byBlock.values()) {
+      const result = validatePersonBlockConcentration(appearances, totalAppearances, context.blocks.length);
+      if (result.isValid) continue;
       violations.push({
         type: "BLOCK_CONCENTRATION",
-        message: `${person.displayName}が同一ブロックに${count}回出演しています（上限${person.maxAllowedPerBlock}回）`,
-        slotIds: offendingSlotIds,
-        bandIds: [...new Set(offendingSlotIds.map((id) => slotById.get(id)!.bandId!))],
-        personIds: [person.personId],
+        message: `${appearances[0].displayName}が同一ブロックに${result.actualCount}回出演しています（上限${result.standardLimit}回）`,
+        slotIds: appearances.map((a) => a.slotId),
+        bandIds: result.violatingBandIds,
+        personIds: [personId],
       });
     }
   }
@@ -301,6 +461,39 @@ export function validateHardConstraints(slots: TimetableSlot[], context: Schedul
 
 export function isValidSchedule(slots: TimetableSlot[], context: ScheduleContext): boolean {
   return validateHardConstraints(slots, context).violations.length === 0;
+}
+
+// ---------- 完成したタイムテーブルの判定 ------------------------------------
+//
+// ハード制約を満たしているだけでは「完成」とみなさない — 一部バンドが
+// 未配置のまま残っていても、以前は`validateHardConstraints`だけを見ると
+// 「ハード制約を満たしている」と判定されてしまっていた(未配置バンドは単に
+// どの制約判定にも登場しないため)。isCompleteValidScheduleは、その両方
+// (ハード制約 かつ 全バンド配置)を満たして初めてtrueになる。
+export type ScheduleValidationResult = {
+  hardConstraintsValid: boolean;
+  allBandsAssigned: boolean;
+  isCompleteValidSchedule: boolean;
+  unassignedBandIds: string[];
+  violations: HardConstraintViolation[];
+};
+
+export function validateCompleteSchedule(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+  expectedBandIds: string[],
+): ScheduleValidationResult {
+  const hardResult = validateHardConstraints(slots, context);
+  const placedBandIds = new Set(slots.filter((s) => s.bandId).map((s) => s.bandId!));
+  const unassignedBandIds = expectedBandIds.filter((id) => !placedBandIds.has(id));
+  const allBandsAssigned = unassignedBandIds.length === 0;
+  return {
+    hardConstraintsValid: hardResult.isValid,
+    allBandsAssigned,
+    isCompleteValidSchedule: hardResult.isValid && allBandsAssigned,
+    unassignedBandIds,
+    violations: hardResult.violations,
+  };
 }
 
 // ---------- Soft constraints: ライブ構成評価 -------------------------------
@@ -917,6 +1110,19 @@ export type SchedulingDebugPerformer = {
   bandRatings: number[];
   isLowRatedBandGroup: boolean;
   appearsInFinalBlock: boolean;
+  /** 最終ブロック終盤への評価5集中例外の適用状況。ブロックごとに1件 —
+   * 複数ブロックで超過している(通常はあり得ないが)場合も網羅する。 */
+  ratingFiveFinalConcentrationException: {
+    applied: boolean;
+    blockId?: string;
+    bandIds: string[];
+  };
+  /** 例外の対象にならなかった通常のブロック集中違反(あれば)。 */
+  invalidConcentrations: Array<{
+    blockId: string;
+    bandIds: string[];
+    reason: BlockConcentrationReason;
+  }>;
 };
 
 export type SchedulingDebugResult = {
@@ -1035,20 +1241,44 @@ export function buildSchedulingDebugResult(
   });
 
   const finalBlockIndex = totalBlockCount - 1;
+  const blockAppearancesByPerson = computePersonBlockAppearances(slots, context);
   const performers: SchedulingDebugPerformer[] = computePersonAppearanceDistribution(
     slots,
     context.allBands,
     context.blocks,
-  ).map((distribution) => ({
-    personId: distribution.personId,
-    displayName: distribution.displayName,
-    totalAppearances: distribution.totalAppearances,
-    appearancesByBlock: distribution.appearancesByBlock,
-    maxAllowedPerBlock: distribution.maxAllowedPerBlock,
-    bandRatings: lowRatingProfileByPersonId.get(distribution.personId)?.ratings ?? [],
-    isLowRatedBandGroup: lowRatingProfileByPersonId.get(distribution.personId)?.isLowRatedBandGroup ?? false,
-    appearsInFinalBlock: (distribution.appearancesByBlock[context.blocks[finalBlockIndex]?.id ?? ""] ?? 0) > 0,
-  }));
+  ).map((distribution) => {
+    const byBlock = blockAppearancesByPerson.get(distribution.personId);
+    const exceptionBandIds: string[] = [];
+    let exceptionBlockId: string | undefined;
+    const invalidConcentrations: SchedulingDebugPerformer["invalidConcentrations"] = [];
+    if (byBlock) {
+      for (const [blockId, appearances] of byBlock) {
+        const concentration = validatePersonBlockConcentration(appearances, distribution.totalAppearances, totalBlockCount);
+        if (concentration.exceptionApplied) {
+          exceptionBandIds.push(...concentration.exceptionBandIds);
+          exceptionBlockId = blockId;
+        } else if (!concentration.isValid) {
+          invalidConcentrations.push({ blockId, bandIds: concentration.violatingBandIds, reason: concentration.reason });
+        }
+      }
+    }
+    return {
+      personId: distribution.personId,
+      displayName: distribution.displayName,
+      totalAppearances: distribution.totalAppearances,
+      appearancesByBlock: distribution.appearancesByBlock,
+      maxAllowedPerBlock: distribution.maxAllowedPerBlock,
+      bandRatings: lowRatingProfileByPersonId.get(distribution.personId)?.ratings ?? [],
+      isLowRatedBandGroup: lowRatingProfileByPersonId.get(distribution.personId)?.isLowRatedBandGroup ?? false,
+      appearsInFinalBlock: (distribution.appearancesByBlock[context.blocks[finalBlockIndex]?.id ?? ""] ?? 0) > 0,
+      ratingFiveFinalConcentrationException: {
+        applied: exceptionBandIds.length > 0,
+        blockId: exceptionBlockId,
+        bandIds: exceptionBandIds,
+      },
+      invalidConcentrations,
+    };
+  });
 
   const warnings: string[] = [];
   if (totalBlockCount === 3) {
@@ -1227,14 +1457,14 @@ export function solveDayAssignment(
   allBands: Band[],
   venueHours: VenueHours,
   options: SolveDayAssignmentOptions = {},
-): { slots: TimetableSlot[]; failures: SchedulingFailure[] } {
+): { slots: TimetableSlot[]; failures: SchedulingFailure[]; unplacedBandIds: string[] } {
   const emptyPositions = day.slots
     .map((slot, index) => ({ slot, index }))
     .filter(({ slot }) => slot.bandId === null && slot.customLabel === null)
     .map(({ index }) => index);
 
   if (emptyPositions.length === 0 || candidateBands.length === 0) {
-    return { slots: day.slots, failures: [] };
+    return { slots: day.slots, failures: [], unplacedBandIds: [] };
   }
 
   const random = options.seed !== undefined ? mulberry32(options.seed) : Math.random;
@@ -1284,7 +1514,10 @@ export function solveDayAssignment(
   }
 
   const bestSlots = buildSlots(best);
-  return pruneToValidSchedule(bestSlots, context);
+  const { slots: finalSlots, failures } = pruneToValidSchedule(bestSlots, context);
+  const placedBandIds = new Set(finalSlots.filter((s) => s.bandId).map((s) => s.bandId!));
+  const unplacedBandIds = pool.map((b) => b.id).filter((id) => !placedBandIds.has(id));
+  return { slots: finalSlots, failures, unplacedBandIds };
 }
 
 // ---------- Step 3: ライブ構成評価による局所探索 ---------------------------
@@ -1308,7 +1541,11 @@ export function solveDayAssignment(
 // ---- 候補移動の型 (Phase 1: SWAP と INSERT のみ) --------------------------
 export type SwapMove = { type: "SWAP"; firstSlotId: string; secondSlotId: string };
 export type InsertMove = { type: "INSERT"; sourceSlotId: string; targetSlotId: string };
-export type OptimizationMove = SwapMove | InsertMove;
+// 未配置バンドを空き枠へ割り当てる候補。SWAP/INSERTは`slots`に既に登場する
+// バンドの位置だけを動かすため、まだどこにも配置されていないバンドを新しく
+// 導入できるのはPLACEだけ — 全バンド配置(#9)を実現する唯一の移動タイプ。
+export type PlaceMove = { type: "PLACE"; bandId: string; targetSlotId: string };
+export type OptimizationMove = SwapMove | InsertMove | PlaceMove;
 
 export type EvaluatedMove = {
   move: OptimizationMove;
@@ -1347,11 +1584,32 @@ export function generateInsertMoves(performanceSlots: TimetableSlot[]): InsertMo
   return moves;
 }
 
+// 未配置バンドを、まだ空いている出演枠へ割り当てる候補。既に埋まっている
+// 枠は対象にしない(そこへ置くにはまずそのバンドを追い出す必要があり、
+// それはSWAPが担当する領域) — PLACEは「空いている場所へ新しく入れる」
+// ことだけに専念する、単純で決定的な候補。
+export function generatePlaceMoves(performanceSlots: TimetableSlot[], unplacedBandIds: string[]): PlaceMove[] {
+  if (unplacedBandIds.length === 0) return [];
+  const emptySlotIds = performanceSlots.filter((s) => s.bandId === null).map((s) => s.id);
+  const moves: PlaceMove[] = [];
+  for (const bandId of unplacedBandIds) {
+    for (const targetSlotId of emptySlotIds) {
+      moves.push({ type: "PLACE", bandId, targetSlotId });
+    }
+  }
+  return moves;
+}
+
 // 候補生成 (このfeatureのStep3全体で唯一の生成箇所) — 候補の適用・検証・
-// 評価とは混在させない。
-export function generateCandidateMoves(slots: TimetableSlot[]): OptimizationMove[] {
+// 評価とは混在させない。unplacedBandIdsを渡すとPLACE候補も含める(呼び出し
+// 側でmandatory/normalの優先度分けに使う — see improveDayByLiveComposition)。
+export function generateCandidateMoves(slots: TimetableSlot[], unplacedBandIds: string[] = []): OptimizationMove[] {
   const performanceSlots = slots.filter((s) => s.customLabel === null);
-  return [...generateSwapMoves(performanceSlots), ...generateInsertMoves(performanceSlots)];
+  return [
+    ...generatePlaceMoves(performanceSlots, unplacedBandIds),
+    ...generateSwapMoves(performanceSlots),
+    ...generateInsertMoves(performanceSlots),
+  ];
 }
 
 function applySwapMove(slots: TimetableSlot[], move: SwapMove): TimetableSlot[] {
@@ -1364,6 +1622,10 @@ function applySwapMove(slots: TimetableSlot[], move: SwapMove): TimetableSlot[] 
     if (s.id === second.id) return { ...s, bandId: first.bandId };
     return s;
   });
+}
+
+function applyPlaceMove(slots: TimetableSlot[], move: PlaceMove): TimetableSlot[] {
+  return slots.map((s) => (s.id === move.targetSlotId && s.bandId === null ? { ...s, bandId: move.bandId } : s));
 }
 
 // arrayMove (既存依存の@dnd-kit/sortable、新規依存の追加なし) を使い、
@@ -1390,7 +1652,8 @@ export function applyOptimizationMove(
   day: TimetableDay,
   bands: Band[],
 ): TimetableSlot[] {
-  const next = move.type === "SWAP" ? applySwapMove(slots, move) : applyInsertMove(slots, move);
+  const next =
+    move.type === "SWAP" ? applySwapMove(slots, move) : move.type === "INSERT" ? applyInsertMove(slots, move) : applyPlaceMove(slots, move);
   return recomputeTimes(next, day.settings, bands);
 }
 
@@ -1451,10 +1714,23 @@ function estimateSlotContributionForRating(slot: SchedulingDebugSlot, rating: nu
   return globalTimeline + finalPhase + blockTimeline;
 }
 
+// このモジュール内でSWAP/INSERT/PLACEそれぞれの対象スロットIDを取り出す
+// 唯一の場所 — estimateMoveScoreDelta・moveTieBreakKey・rankAndLimitCandidateMoves
+// の3箇所が同じロジックを複製しないようにする。PLACEはtargetSlotIdだけが
+// 実在のスロットID(bandIdはスロットIDではない)。
+function getMoveSlotIds(move: OptimizationMove): string[] {
+  if (move.type === "SWAP") return [move.firstSlotId, move.secondSlotId];
+  if (move.type === "INSERT") return [move.sourceSlotId, move.targetSlotId];
+  return [move.targetSlotId];
+}
+
 export function estimateMoveScoreDelta(move: OptimizationMove, debugResult: SchedulingDebugResult): number {
+  // PLACE候補は常にmandatory(件数上限の対象外)で、この見積もりは候補の
+  // 並び替え・絞り込みにしか使わないため、PLACEに対しては評価しない
+  // (未配置バンドの解消そのものが最優先で、推定スコアで割り込む必要がない)。
+  if (move.type === "PLACE") return 0;
   const slotDebugById = new Map(debugResult.slots.map((s) => [s.slotId, s]));
-  const [idA, idB] =
-    move.type === "SWAP" ? [move.firstSlotId, move.secondSlotId] : [move.sourceSlotId, move.targetSlotId];
+  const [idA, idB] = getMoveSlotIds(move);
   const a = slotDebugById.get(idA);
   const b = slotDebugById.get(idB);
   if (!a && !b) return 0;
@@ -1466,9 +1742,9 @@ export function estimateMoveScoreDelta(move: OptimizationMove, debugResult: Sche
 }
 
 function moveTieBreakKey(move: OptimizationMove): string {
-  return move.type === "SWAP"
-    ? `SWAP:${move.firstSlotId}:${move.secondSlotId}`
-    : `INSERT:${move.sourceSlotId}:${move.targetSlotId}`;
+  if (move.type === "SWAP") return `SWAP:${move.firstSlotId}:${move.secondSlotId}`;
+  if (move.type === "INSERT") return `INSERT:${move.sourceSlotId}:${move.targetSlotId}`;
+  return `PLACE:${move.bandId}:${move.targetSlotId}`;
 }
 
 // 候補が上限以下ならそのまま全件、超える場合は (1) 問題枠を含む候補 →
@@ -1484,7 +1760,7 @@ function rankAndLimitCandidateMoves(
 
   const slotDebugById = new Map(debugResult.slots.map((s) => [s.slotId, s]));
   const ranked = moves.map((move) => {
-    const ids = move.type === "SWAP" ? [move.firstSlotId, move.secondSlotId] : [move.sourceSlotId, move.targetSlotId];
+    const ids = getMoveSlotIds(move);
     const isPriority = ids.some((id) => {
       const sd = slotDebugById.get(id);
       return sd ? isPriorityOptimizationTarget(sd) : false;
@@ -1508,7 +1784,9 @@ function rankAndLimitCandidateMoves(
 
 export const OPTIMIZATION_LIMITS = {
   maxIterations: 100,
-  maxCandidatesPerIteration: 300,
+  // PLACE候補(未配置バンド×空き枠、mandatoryとして無制限に評価される)を
+  // 除いた、通常のSWAP/INSERT候補に対する1反復あたりの上限。300→1000。
+  maxCandidatesPerIteration: 1000,
   maxRuntimeMs: 5000,
 };
 
@@ -1524,9 +1802,14 @@ export type OptimizationOptions = {
   /** 実行時間上限のテストを実時間に依存させないための注入可能な時計。
    * 省略時はDate.now。 */
   now?: () => number;
+  /** Step1がpruneToValidSchedule等で未配置のまま残したバンドID
+   * (solveDayAssignmentの戻り値のunplacedBandIds)。指定すると、これらを
+   * `day`の空き出演枠へ配置するPLACE候補が毎反復mandatoryとして評価され、
+   * ソフト最適化より優先される。 */
+  unplacedBandIds?: string[];
 };
 
-export type OptimizationMoveType = "swap" | "insert";
+export type OptimizationMoveType = "swap" | "insert" | "place";
 export type OptimizationStopReason = "NO_IMPROVING_MOVE" | "ITERATION_LIMIT" | "CANDIDATE_LIMIT" | "RUNTIME_LIMIT";
 export type UnresolvedIssueType =
   | "RATING_FIVE_OUTSIDE_FINAL_PHASE"
@@ -1561,6 +1844,15 @@ export type OptimizationSummary = {
   acceptedMovesByType: Record<OptimizationMoveType, number>;
   stoppedBy: OptimizationStopReason;
   unresolvedIssues: UnresolvedIssue[];
+  /** 未配置バンド数の変化 — 未配置修復(PLACE, mandatory)がソフト最適化
+   * より優先されたことをここで確認できる。 */
+  unassignedBandCountBefore: number;
+  unassignedBandCountAfter: number;
+  /** どのバンドが最終的に未配置のまま残ったか(順序は不定)。 */
+  unassignedBandIds: string[];
+  /** mandatoryCandidateCount(PLACE)は通常候補の件数上限に一切含まれない。 */
+  mandatoryCandidateCount: number;
+  isCompleteValidSchedule: boolean;
 };
 
 // 候補上限・反復上限・実行時間上限へ到達した場合、「ハード制約上不可能」
@@ -1645,8 +1937,18 @@ export function improveDayByLiveComposition(
   };
   const now = options.now ?? Date.now;
   const startTime = now();
+  // 未配置バンドの修復(PLACE)は、ソフト最適化(SWAP/INSERT)より必ず先に
+  // 検討される — 各反復の選定ロジック自体がこれを保証する(下記参照)。
+  // 別関数・別ループとして"修復フェーズ"を切り出さず、既存のhill-climbing
+  // ループへPLACEを合流させているのは、同じ探索基盤(候補生成・適用・
+  // ハード制約検証・スコア評価・状態キャッシュ)を複製しないため。
+  const remainingUnplacedBandIds = new Set(options.unplacedBandIds ?? []);
+  const initialUnassignedBandCount = remainingUnplacedBandIds.size;
+  const initiallyExpectedBandIds = [
+    ...new Set([...day.slots.filter((s) => s.bandId).map((s) => s.bandId!), ...remainingUnplacedBandIds]),
+  ];
 
-  const emptySummary = (score: number): OptimizationSummary => ({
+  const emptySummary = (score: number, unassignedCount: number): OptimizationSummary => ({
     initialScore: score,
     finalScore: score,
     totalImprovement: 0,
@@ -1657,19 +1959,28 @@ export function improveDayByLiveComposition(
     noImprovementCount: 0,
     acceptedMoveCount: 0,
     skippedCandidateCount: 0,
-    acceptedMovesByType: { swap: 0, insert: 0 },
+    acceptedMovesByType: { swap: 0, insert: 0, place: 0 },
     stoppedBy: "NO_IMPROVING_MOVE",
     unresolvedIssues: [],
+    unassignedBandCountBefore: unassignedCount,
+    unassignedBandCountAfter: unassignedCount,
+    unassignedBandIds: [...remainingUnplacedBandIds],
+    mandatoryCandidateCount: 0,
+    isCompleteValidSchedule: unassignedCount === 0,
   });
 
   const performanceSlotCount = day.slots.filter((s) => s.customLabel === null && s.bandId !== null).length;
   // Step 1 is responsible for handing this a hard-constraint-valid
   // schedule (via its own pruneToValidSchedule safety net) — if it
   // somehow didn't, this step must not pretend to fix that by searching
-  // from an invalid starting point.
-  if (performanceSlotCount < 2 || !isValidSchedule(day.slots, context)) {
-    const score = isValidSchedule(day.slots, context) ? evaluateSchedule(day.slots, context).totalScore : 0;
-    return { slots: day.slots, summary: emptySummary(score) };
+  // from an invalid starting point. (An unplaced-band repair is still
+  // meaningful even with < 2 filled slots, so this guard only blocks on
+  // invalidity, not on having "too few" placed bands.)
+  if (!isValidSchedule(day.slots, context)) {
+    return { slots: day.slots, summary: emptySummary(0, initialUnassignedBandCount) };
+  }
+  if (performanceSlotCount < 2 && remainingUnplacedBandIds.size === 0) {
+    return { slots: day.slots, summary: emptySummary(evaluateSchedule(day.slots, context).totalScore, 0) };
   }
 
   let slots = day.slots;
@@ -1682,11 +1993,32 @@ export function improveDayByLiveComposition(
   const evaluationCache = new Map<string, EvaluatedMove | "INVALID">();
   let candidateCount = 0;
   let validCandidateCount = 0;
+  let mandatoryCandidateCount = 0;
   let acceptedMoveCount = 0;
   let skippedCandidateCount = 0;
-  const acceptedMovesByType: Record<OptimizationMoveType, number> = { swap: 0, insert: 0 };
+  const acceptedMovesByType: Record<OptimizationMoveType, number> = { swap: 0, insert: 0, place: 0 };
   let stoppedBy: OptimizationStopReason = "NO_IMPROVING_MOVE";
   let iteration = 0;
+
+  function evaluate(move: OptimizationMove): EvaluatedMove | null {
+    candidateCount++;
+    // 状態キー用にcandidateSlotsを先に作る(重複評価を避けるため) —
+    // キャッシュ未命中の場合、evaluateOptimizationMoveが同じ移動を
+    // もう一度適用するが、この規模の日程ではコストは無視できる。
+    const stateKey = createScheduleStateKey(applyOptimizationMove(slots, move, day, bands), context.day.id);
+    const cached = evaluationCache.get(stateKey);
+    let evaluated: EvaluatedMove | null;
+    if (cached === "INVALID") {
+      evaluated = null;
+    } else if (cached) {
+      evaluated = { ...cached, scoreDelta: cached.evaluation.totalScore - currentEvaluation.totalScore };
+    } else {
+      evaluated = evaluateOptimizationMove(slots, move, day, bands, context, currentEvaluation.totalScore);
+      evaluationCache.set(stateKey, evaluated ?? "INVALID");
+    }
+    if (evaluated) validCandidateCount++;
+    return evaluated;
+  }
 
   for (; iteration < limits.maxIterations; iteration++) {
     if (limits.maxRuntimeMs !== null && now() - startTime >= limits.maxRuntimeMs) {
@@ -1694,39 +2026,49 @@ export function improveDayByLiveComposition(
       break;
     }
 
+    const performanceSlots = slots.filter((s) => s.customLabel === null);
+
+    // 必須候補 (PLACE) — 通常候補の件数上限(maxCandidatesPerIteration)の
+    // 対象外。未配置バンドが残っている限り、毎反復すべて評価する。
+    const mandatoryMoves = generatePlaceMoves(performanceSlots, [...remainingUnplacedBandIds]);
+    mandatoryCandidateCount += mandatoryMoves.length;
+    let bestPlaceMove: EvaluatedMove | null = null;
+    for (const move of mandatoryMoves) {
+      const evaluated = evaluate(move);
+      // PLACEはスコアの正負を問わず採用対象 — 未配置バンド数を減らすこと
+      // 自体が最優先(#10の辞書式優先順位)であり、ソフトスコアはPLACE同士
+      // (=どのバンドをどの空き枠へ)の比較にのみ使う。
+      if (evaluated && (!bestPlaceMove || evaluated.scoreDelta > bestPlaceMove.scoreDelta)) {
+        bestPlaceMove = evaluated;
+      }
+    }
+
+    // 通常候補 (SWAP/INSERT) — 事前推定・優先度・件数上限を適用。
+    const normalMoves = [...generateSwapMoves(performanceSlots), ...generateInsertMoves(performanceSlots)];
     const debugResult = buildSchedulingDebugResult(slots, context);
-    const rawMoves = generateCandidateMoves(slots);
-    const { candidates, skippedCount } = rankAndLimitCandidateMoves(
-      rawMoves,
+    const { candidates: rankedNormalMoves, skippedCount } = rankAndLimitCandidateMoves(
+      normalMoves,
       debugResult,
       limits.maxCandidatesPerIteration,
     );
     skippedCandidateCount += skippedCount;
 
-    let bestMove: EvaluatedMove | null = null;
-    for (const move of candidates) {
-      candidateCount++;
-      // 状態キー用にcandidateSlotsを先に作る(重複評価を避けるため) —
-      // キャッシュ未命中の場合、evaluateOptimizationMoveが同じ移動を
-      // もう一度適用するが、この規模の日程ではコストは無視できる。
-      const stateKey = createScheduleStateKey(applyOptimizationMove(slots, move, day, bands), context.day.id);
-      const cached = evaluationCache.get(stateKey);
-      let evaluated: EvaluatedMove | null;
-      if (cached === "INVALID") {
-        evaluated = null;
-      } else if (cached) {
-        evaluated = { ...cached, scoreDelta: cached.evaluation.totalScore - currentEvaluation.totalScore };
-      } else {
-        evaluated = evaluateOptimizationMove(slots, move, day, bands, context, currentEvaluation.totalScore);
-        evaluationCache.set(stateKey, evaluated ?? "INVALID");
-      }
-      if (!evaluated) continue;
-      validCandidateCount++;
-      if (evaluated.scoreDelta > MIN_IMPROVEMENT && (!bestMove || evaluated.scoreDelta > bestMove.scoreDelta)) {
-        bestMove = evaluated;
+    let bestOtherMove: EvaluatedMove | null = null;
+    // PLACEで解決できる反復では、SWAP/INSERTを評価するまでもなく必ず
+    // PLACEが選ばれる(下記の選定ロジック)ので、無駄な評価をしない。
+    if (!bestPlaceMove) {
+      for (const move of rankedNormalMoves) {
+        const evaluated = evaluate(move);
+        if (evaluated && evaluated.scoreDelta > MIN_IMPROVEMENT && (!bestOtherMove || evaluated.scoreDelta > bestOtherMove.scoreDelta)) {
+          bestOtherMove = evaluated;
+        }
       }
     }
 
+    // 辞書式優先順位: (1) 未配置バンドを減らす候補(PLACE)を常に優先 —
+    // (2) それが無い反復に限り、ソフトスコアを最も改善するSWAP/INSERTを
+    // 採用する。
+    const bestMove = bestPlaceMove ?? bestOtherMove;
     if (!bestMove) {
       stoppedBy = "NO_IMPROVING_MOVE";
       break;
@@ -1735,12 +2077,18 @@ export function improveDayByLiveComposition(
     slots = bestMove.schedule;
     currentEvaluation = bestMove.evaluation;
     acceptedMoveCount++;
-    acceptedMovesByType[bestMove.move.type === "SWAP" ? "swap" : "insert"]++;
+    if (bestMove.move.type === "PLACE") {
+      acceptedMovesByType.place++;
+      remainingUnplacedBandIds.delete(bestMove.move.bandId);
+    } else {
+      acceptedMovesByType[bestMove.move.type === "SWAP" ? "swap" : "insert"]++;
+    }
   }
   if (iteration >= limits.maxIterations) stoppedBy = "ITERATION_LIMIT";
 
   const finalDebug = buildSchedulingDebugResult(slots, context);
   const searchStats = { candidateCount, validCandidateCount, skippedCandidateCount, stoppedBy };
+  const completeValidation = validateCompleteSchedule(slots, context, initiallyExpectedBandIds);
   const summary: OptimizationSummary = {
     initialScore,
     finalScore: currentEvaluation.totalScore,
@@ -1755,6 +2103,11 @@ export function improveDayByLiveComposition(
     acceptedMovesByType,
     stoppedBy,
     unresolvedIssues: collectUnresolvedIssues(finalDebug, searchStats),
+    unassignedBandCountBefore: initialUnassignedBandCount,
+    unassignedBandCountAfter: remainingUnplacedBandIds.size,
+    unassignedBandIds: completeValidation.unassignedBandIds,
+    mandatoryCandidateCount,
+    isCompleteValidSchedule: completeValidation.isCompleteValidSchedule,
   };
 
   return { slots, summary };
