@@ -1,7 +1,7 @@
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { VenueHours } from "./parseBands";
 import { canPlaceBandInSlot } from "./scheduleEligibility";
-import { recomputeTimes } from "./scheduleTimes";
+import { alignTimeToReference, recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
 import { timeToMinutes } from "./time";
 import { getLiveCompositionRating } from "./liveCompositionRating";
@@ -75,17 +75,36 @@ export function computeScheduleBlocks(slots: TimetableSlot[]): ScheduleBlock[] {
   return blocks;
 }
 
-// The read-only context every hard/soft check needs. `blocks` is computed
-// once from the day's slot *structure* (divider positions never move
-// during a search — only which band occupies which already-existing
-// performance slot changes), so it's safe to reuse across an entire
-// search rather than recomputing it every candidate.
+// The read-only context every hard/soft check needs. `blocks` and
+// `eventStartMinutes` are computed once from the day's slot *structure*
+// (divider positions and the day's own start time never move during a
+// search — only which band occupies which already-existing performance
+// slot changes), so both are safe to reuse across an entire search rather
+// than recomputing them every candidate. `eventStartMinutes` is NOT the
+// day's *end* — the end shifts with band durations as swaps happen, so
+// it's recomputed per-candidate from the actual `slots` being scored (see
+// computeEventTimeRange) rather than cached here.
 export type ScheduleContext = {
   day: TimetableDay;
   allBands: Band[];
   venueHours: VenueHours;
   blocks: ScheduleBlock[];
+  eventStartMinutes: number;
 };
+
+// Builds the context once per day/search — the one place that assembles
+// `blocks` and `eventStartMinutes` together, so solveDayAssignment,
+// improveDayByLiveComposition, and the debug builder never construct this
+// object by hand differently from one another.
+export function buildScheduleContext(day: TimetableDay, allBands: Band[], venueHours: VenueHours): ScheduleContext {
+  return {
+    day,
+    allBands,
+    venueHours,
+    blocks: computeScheduleBlocks(day.slots),
+    eventStartMinutes: timeToMinutes(day.settings.startTime),
+  };
+}
 
 // ---------- Hard constraint 1: consecutive appearance --------------------
 //
@@ -306,6 +325,122 @@ export function calculateBlockClosingBonus(rating: number): number {
   return normalizeRating(rating);
 }
 
+// A slot at index N-1 (the block's last) gets the full closing bonus; N-2
+// (second-to-last) gets half; everything else gets none. Shared by
+// blockClosingComponent and the debug builder so "who counts as the
+// block's closer" is defined in exactly one place.
+export function getClosingPositionMultiplier(index: number, totalSlots: number): number {
+  if (index === totalSlots - 1) return 1;
+  if (index === totalSlots - 2) return 0.5;
+  return 0;
+}
+
+// ---------- Global timeline + 終盤補正 -------------------------------------
+//
+// Everything above scores a band's position *within its own block* only.
+// That alone under-serves a late block: block-local position 0 (a perfect
+// fit for a rating-1 band, by that measure alone) can still land well
+// into the back half of the live event's actual running time once you
+// count every block before it. The functions below score a band's
+// position across the WHOLE day instead, so the two layers combine (see
+// SCORE_WEIGHTS below) — a rating-1 band placed at the front of a late
+// block now scores well block-locally but poorly on the global axis, and
+// the global axis is what actually catches it.
+export const FINAL_PHASE_DURATION_MINUTES = 120;
+
+// slot.startTime/endTime are wall-clock "HH:MM" strings that wrap at
+// 24:00 (see minutesToTime) — on their own they can't be ordered across a
+// midnight crossing. alignTimeToReference is this codebase's one existing
+// tool for resolving that ambiguity (see recomputeTimes, which uses it
+// the same way): walking the slots in order, each time resolving the next
+// wall-clock string to whichever absolute-minutes occurrence is nearest
+// the previous slot's resolved end. `eventStartMinutes` is minute 0 of
+// this absolute scale.
+function computeAbsoluteMinutes(
+  slots: TimetableSlot[],
+  eventStartMinutes: number,
+): Map<string, { start: number; end: number }> {
+  const result = new Map<string, { start: number; end: number }>();
+  let reference = eventStartMinutes;
+  for (const slot of slots) {
+    if (!slot.startTime || !slot.endTime) continue;
+    const start = alignTimeToReference(slot.startTime, reference);
+    const end = alignTimeToReference(slot.endTime, start);
+    result.set(slot.id, { start, end });
+    reference = end;
+  }
+  return result;
+}
+
+export type EventTimeRange = {
+  eventStartMinutes: number;
+  eventEndMinutes: number;
+  absoluteMinutesBySlotId: Map<string, { start: number; end: number }>;
+};
+
+// Recomputed from the actual candidate `slots` being scored (never cached
+// on ScheduleContext) because band durations can differ, so a swap can
+// shift every slot after it — the day's real end time is a property of
+// *this* candidate arrangement, not a fixed fact about the day.
+export function computeEventTimeRange(slots: TimetableSlot[], eventStartMinutes: number): EventTimeRange {
+  const absoluteMinutesBySlotId = computeAbsoluteMinutes(slots, eventStartMinutes);
+  let eventEndMinutes = eventStartMinutes;
+  for (const { end } of absoluteMinutesBySlotId.values()) {
+    if (end > eventEndMinutes) eventEndMinutes = end;
+  }
+  return { eventStartMinutes, eventEndMinutes, absoluteMinutesBySlotId };
+}
+
+export function getGlobalNormalizedPosition(
+  slotStartMinutes: number,
+  eventStartMinutes: number,
+  eventEndMinutes: number,
+): number {
+  const duration = eventEndMinutes - eventStartMinutes;
+  if (duration <= 0) return 0;
+  return Math.max(0, Math.min(1, (slotStartMinutes - eventStartMinutes) / duration));
+}
+
+export function calculateGlobalPositionPenalty(globalPosition: number, rating: number): number {
+  return Math.abs(globalPosition - normalizeRating(rating));
+}
+
+// The final-phase window's lower bound never goes earlier than the event
+// itself starts — a live event shorter than FINAL_PHASE_DURATION_MINUTES
+// (2h) simply spends its entire run "in the final phase" rather than
+// producing a nonsensical negative-length or pre-start window.
+export function getFinalPhaseStart(eventStartMinutes: number, eventEndMinutes: number): number {
+  return Math.max(eventStartMinutes, eventEndMinutes - FINAL_PHASE_DURATION_MINUTES);
+}
+
+// 0 before the final phase starts, 1 at (or past) the event's end,
+// ramping linearly between — this is what keeps the final-phase bonus
+// from snapping on all at once the instant a slot crosses finalPhaseStart
+// (see calculateProgressiveFinalPhaseScore).
+export function getFinalPhaseProgress(
+  slotStartMinutes: number,
+  finalPhaseStart: number,
+  eventEndMinutes: number,
+): number {
+  if (slotStartMinutes <= finalPhaseStart) return 0;
+  if (slotStartMinutes >= eventEndMinutes) return 1;
+  const span = eventEndMinutes - finalPhaseStart;
+  if (span <= 0) return 0;
+  return (slotStartMinutes - finalPhaseStart) / span;
+}
+
+// At progress 0 (not yet in the final phase) this is always 0 regardless
+// of rating — no cliff-edge jump at the boundary. As progress climbs
+// toward 1, it converges on normalizeRating(rating) itself, so a rating-5
+// band gains up to +1 right at the event's close while a rating-1 band
+// gains nothing at any point — never a bonus, but never a hard-coded
+// penalty either (that asymmetry is intentional: this is one soft
+// component among several, not the only word on where a low-rated band
+// belongs).
+export function calculateProgressiveFinalPhaseScore(rating: number, progress: number): number {
+  return normalizeRating(rating) * progress;
+}
+
 function getBlockEntries(
   slots: TimetableSlot[],
   bandMap: Map<string, Band>,
@@ -333,34 +468,112 @@ export type ScoreComponent = {
   calculate: (slots: TimetableSlot[], context: ScheduleContext) => number;
 };
 
-const positionRatingComponent: ScoreComponent = {
-  name: "positionRating",
-  weight: 1,
+// Every weight lives here and nowhere else — adjusting the balance
+// between "where in the whole day" vs "where in this block" vs "how
+// smooth" vs "who closes the block" a band lands is a one-line change.
+// finalPhase starts weighted heaviest since it's the most specific,
+// highest-stakes signal (the last two hours of the whole event); the
+// others are initial values per this feature's own spec, meant to be
+// tuned against real event data rather than treated as final.
+export const SCORE_WEIGHTS = {
+  globalTimeline: 1,
+  finalPhase: 2,
+  blockTimeline: 1,
+  smoothness: 0.5,
+  blockClosing: 1,
+};
+
+// Layer 1: ライブ全体の時間軸評価 — how well a band's rating matches its
+// position across the WHOLE day (not just its own block). This is what
+// stops a rating-1 band from parking itself at the front of a block that,
+// block-locally, looks like "the start" but is actually most of the way
+// through the live event.
+const globalTimelineComponent: ScoreComponent = {
+  name: "globalTimeline",
+  weight: SCORE_WEIGHTS.globalTimeline,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    const { eventStartMinutes, eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(
+      slots,
+      context.eventStartMinutes,
+    );
+    let totalPenalty = 0;
+    let count = 0;
+    for (const slot of slots) {
+      if (!slot.bandId) continue;
+      const band = bandMap.get(slot.bandId);
+      const abs = absoluteMinutesBySlotId.get(slot.id);
+      if (!band || !abs) continue;
+      const position = getGlobalNormalizedPosition(abs.start, eventStartMinutes, eventEndMinutes);
+      totalPenalty += calculateGlobalPositionPenalty(position, getLiveCompositionRating(band));
+      count++;
+    }
+    return count > 0 ? -totalPenalty / count : 0;
+  },
+};
+
+// Layer 1b: 終了2時間前ルール — a soft, progressively-ramping bonus for
+// high-rated bands the closer a slot sits to the event's actual end.
+// Never a hard requirement (a band that can't physically go there due to
+// its own time window just scores worse here, nothing more).
+const finalPhaseComponent: ScoreComponent = {
+  name: "finalPhase",
+  weight: SCORE_WEIGHTS.finalPhase,
+  calculate: (slots, context) => {
+    const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+    const { eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
+    const finalPhaseStart = getFinalPhaseStart(context.eventStartMinutes, eventEndMinutes);
+    let total = 0;
+    let count = 0;
+    for (const slot of slots) {
+      if (!slot.bandId) continue;
+      const band = bandMap.get(slot.bandId);
+      const abs = absoluteMinutesBySlotId.get(slot.id);
+      if (!band || !abs) continue;
+      const progress = getFinalPhaseProgress(abs.start, finalPhaseStart, eventEndMinutes);
+      total += calculateProgressiveFinalPhaseScore(getLiveCompositionRating(band), progress);
+      count++;
+    }
+    return count > 0 ? total / count : 0;
+  },
+};
+
+// Layer 2: ブロック内の時間軸評価 — unchanged in spirit from before this
+// feature: within its own break-to-break block, a band's position should
+// still roughly match its rating. Renamed from positionRating to
+// blockTimeline to make the two-layer split explicit; the math is
+// identical, just averaged over placed bands instead of summed so its
+// scale stays comparable across blocks of different sizes.
+const blockTimelineComponent: ScoreComponent = {
+  name: "blockTimeline",
+  weight: SCORE_WEIGHTS.blockTimeline,
   calculate: (slots, context) => {
     const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
     let totalPenalty = 0;
+    let count = 0;
     for (const block of context.blocks) {
       const entries = getBlockEntries(slots, bandMap, block);
       entries.forEach(({ band }, index) => {
         const rating = getLiveCompositionRating(band);
         const position = getNormalizedPosition(index, entries.length);
         totalPenalty += calculatePositionRatingPenalty(position, rating);
+        count++;
       });
     }
-    return -totalPenalty;
+    return count > 0 ? -totalPenalty / count : 0;
   },
 };
 
-// Weighted down relative to positionRating (raw 1〜5 differences, not
-// normalized 0〜1, so its natural scale is ~4x larger) so it acts as a
-// tie-breaking nudge among positionRating-equivalent candidates rather
-// than dominating the search.
-const descendingPenaltyComponent: ScoreComponent = {
-  name: "descendingPenalty",
-  weight: 0.25,
+// Layer 3: 評価推移の滑らかさ — same "penalize a drop, allow a rise"
+// formula as before, renamed from descendingPenalty, now averaged per
+// adjacent pair rather than summed.
+const smoothnessComponent: ScoreComponent = {
+  name: "smoothness",
+  weight: SCORE_WEIGHTS.smoothness,
   calculate: (slots, context) => {
     const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
     let totalPenalty = 0;
+    let count = 0;
     for (const block of context.blocks) {
       const entries = getBlockEntries(slots, bandMap, block);
       for (let i = 0; i < entries.length - 1; i++) {
@@ -368,46 +581,77 @@ const descendingPenaltyComponent: ScoreComponent = {
           getLiveCompositionRating(entries[i].band),
           getLiveCompositionRating(entries[i + 1].band),
         );
+        count++;
       }
     }
-    return -totalPenalty;
+    return count > 0 ? -totalPenalty / count : 0;
   },
 };
 
+// Layer 4: ブロック終端評価 — the last (and, at half weight, second-to-
+// last) slot in each block gets a bonus for a high rating. Averaged per
+// non-empty block so a day with more blocks doesn't automatically score
+// higher here than one with fewer.
 const blockClosingComponent: ScoreComponent = {
   name: "blockClosing",
-  weight: 1,
+  weight: SCORE_WEIGHTS.blockClosing,
   calculate: (slots, context) => {
     const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
-    let bonus = 0;
+    let totalBonus = 0;
+    let blockCount = 0;
     for (const block of context.blocks) {
       const entries = getBlockEntries(slots, bandMap, block);
       if (entries.length === 0) continue;
-      bonus += calculateBlockClosingBonus(getLiveCompositionRating(entries[entries.length - 1].band));
-      if (entries.length >= 2) {
-        bonus += calculateBlockClosingBonus(getLiveCompositionRating(entries[entries.length - 2].band)) * 0.5;
-      }
+      blockCount++;
+      entries.forEach(({ band }, index) => {
+        const multiplier = getClosingPositionMultiplier(index, entries.length);
+        if (multiplier > 0) {
+          totalBonus += calculateBlockClosingBonus(getLiveCompositionRating(band)) * multiplier;
+        }
+      });
     }
-    return bonus;
+    return blockCount > 0 ? totalBonus / blockCount : 0;
   },
 };
 
 export const scoreComponents: ScoreComponent[] = [
-  positionRatingComponent,
-  descendingPenaltyComponent,
+  globalTimelineComponent,
+  finalPhaseComponent,
+  blockTimelineComponent,
+  smoothnessComponent,
   blockClosingComponent,
 ];
 
-export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContext): number {
-  return scoreComponents.reduce((total, component) => total + component.weight * component.calculate(slots, context), 0);
-}
+export type ScheduleScoreBreakdown = {
+  globalTimelineScore: number;
+  finalPhaseScore: number;
+  blockTimelineScore: number;
+  smoothnessScore: number;
+  blockClosingScore: number;
+  totalScore: number;
+};
 
-export function evaluateScheduleBreakdown(slots: TimetableSlot[], context: ScheduleContext): Record<string, number> {
-  const breakdown: Record<string, number> = {};
-  for (const component of scoreComponents) {
-    breakdown[component.name] = component.weight * component.calculate(slots, context);
-  }
-  return breakdown;
+// The two-layer scoring's whole point: both the global-timeline and
+// block-timeline (plus smoothness and block-closing) components are
+// calculated over the SAME candidate `slots` and summed into one
+// totalScore — never "pick one layer or the other." A rating-1 band at a
+// late block's front scores well on blockTimelineScore alone but poorly
+// on globalTimelineScore and finalPhaseScore, and it's the sum that Step
+// 3's local search actually compares.
+export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContext): ScheduleScoreBreakdown {
+  const globalTimelineScore = globalTimelineComponent.weight * globalTimelineComponent.calculate(slots, context);
+  const finalPhaseScore = finalPhaseComponent.weight * finalPhaseComponent.calculate(slots, context);
+  const blockTimelineScore = blockTimelineComponent.weight * blockTimelineComponent.calculate(slots, context);
+  const smoothnessScore = smoothnessComponent.weight * smoothnessComponent.calculate(slots, context);
+  const blockClosingScore = blockClosingComponent.weight * blockClosingComponent.calculate(slots, context);
+  return {
+    globalTimelineScore,
+    finalPhaseScore,
+    blockTimelineScore,
+    smoothnessScore,
+    blockClosingScore,
+    totalScore: globalTimelineScore + finalPhaseScore + blockTimelineScore + smoothnessScore + blockClosingScore,
+  };
 }
 
 // ---------- Debug / failure reporting ------------------------------------
@@ -425,36 +669,94 @@ export type SchedulingFailure = {
   affectedBandIds?: string[];
 };
 
+export type SchedulingDebugSlot = {
+  slotId: string;
+  bandId: string;
+  rating: number;
+  startTime: string;
+  blockId: string;
+  globalPosition: number;
+  blockPosition: number;
+  isFinalPhase: boolean;
+  scoreContributions: {
+    globalTimeline: number;
+    finalPhase: number;
+    blockTimeline: number;
+    smoothness: number;
+    blockClosing: number;
+  };
+};
+
 export type SchedulingDebugResult = {
   hardConstraintsValid: boolean;
-  totalScore: number;
-  scoreBreakdown: {
-    positionRatingScore: number;
-    descendingPenalty: number;
-    blockClosingBonus: number;
-  };
+  scoreBreakdown: ScheduleScoreBreakdown;
   personDistribution: PersonAppearanceDistribution[];
+  slots: SchedulingDebugSlot[];
   violations: string[];
   failures: SchedulingFailure[];
 };
 
 // Admin/developer-only — never rendered in any general-user-facing view.
 // Callers decide where (if anywhere) to surface this; see useAppStore.ts's
-// autoScheduleAllDays, which only console.debug()s it in dev builds.
+// autoScheduleAllDays, which only console.debug()s it in dev builds. Per
+// placed band, this shows exactly what each score layer contributed —
+// the "why did this band end up here" a developer or organizer needs when
+// a result looks off — reusing the same pure formula functions the
+// scoring itself is built from rather than re-deriving anything.
 export function buildSchedulingDebugResult(
   slots: TimetableSlot[],
   context: ScheduleContext,
   failures: SchedulingFailure[] = [],
 ): SchedulingDebugResult {
   const validation = validateHardConstraints(slots, context);
-  const positionRatingScore = positionRatingComponent.weight * positionRatingComponent.calculate(slots, context);
-  const descendingPenalty = descendingPenaltyComponent.weight * descendingPenaltyComponent.calculate(slots, context);
-  const blockClosingBonus = blockClosingComponent.weight * blockClosingComponent.calculate(slots, context);
+  const scoreBreakdown = evaluateSchedule(slots, context);
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  const { eventStartMinutes, eventEndMinutes, absoluteMinutesBySlotId } = computeEventTimeRange(
+    slots,
+    context.eventStartMinutes,
+  );
+  const finalPhaseStart = getFinalPhaseStart(eventStartMinutes, eventEndMinutes);
+
+  const debugSlots: SchedulingDebugSlot[] = [];
+  for (const block of context.blocks) {
+    const entries = getBlockEntries(slots, bandMap, block);
+    entries.forEach(({ slot, band }, index) => {
+      const rating = getLiveCompositionRating(band);
+      const blockPosition = getNormalizedPosition(index, entries.length);
+      const abs = absoluteMinutesBySlotId.get(slot.id);
+      const globalPosition = abs ? getGlobalNormalizedPosition(abs.start, eventStartMinutes, eventEndMinutes) : 0;
+      const progress = abs ? getFinalPhaseProgress(abs.start, finalPhaseStart, eventEndMinutes) : 0;
+      const next = entries[index + 1];
+      debugSlots.push({
+        slotId: slot.id,
+        bandId: band.id,
+        rating,
+        startTime: slot.startTime,
+        blockId: block.id,
+        globalPosition,
+        blockPosition,
+        isFinalPhase: abs ? abs.start >= finalPhaseStart : false,
+        scoreContributions: {
+          globalTimeline: -calculateGlobalPositionPenalty(globalPosition, rating) * SCORE_WEIGHTS.globalTimeline,
+          finalPhase: calculateProgressiveFinalPhaseScore(rating, progress) * SCORE_WEIGHTS.finalPhase,
+          blockTimeline: -calculatePositionRatingPenalty(blockPosition, rating) * SCORE_WEIGHTS.blockTimeline,
+          smoothness: next
+            ? -calculateDescendingPenalty(rating, getLiveCompositionRating(next.band)) * SCORE_WEIGHTS.smoothness
+            : 0,
+          blockClosing:
+            calculateBlockClosingBonus(rating) *
+            getClosingPositionMultiplier(index, entries.length) *
+            SCORE_WEIGHTS.blockClosing,
+        },
+      });
+    });
+  }
+
   return {
     hardConstraintsValid: validation.isValid,
-    totalScore: positionRatingScore + descendingPenalty + blockClosingBonus,
-    scoreBreakdown: { positionRatingScore, descendingPenalty, blockClosingBonus },
+    scoreBreakdown,
     personDistribution: computePersonAppearanceDistribution(slots, context.allBands, context.blocks),
+    slots: debugSlots,
     violations: validation.violations.map((v) => v.message),
     failures,
   };
@@ -556,10 +858,24 @@ function pruneToValidSchedule(
 
 // ---------- Step 1: initial hard-constraint-satisfying placement ---------
 
-function shuffle<T>(items: T[]): T[] {
+// A small, seedable PRNG (mulberry32) — production callers omit the seed
+// (falling back to Math.random, unchanged behavior), but tests can pass
+// one so "same input -> same output" is actually checkable for a search
+// that's fundamentally randomized by design.
+function mulberry32(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(items: T[], random: () => number): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -571,6 +887,13 @@ function shuffle<T>(items: T[]): T[] {
 // range stays well under real-time budgets for any timetable someone
 // would actually build by hand.
 const MAX_ITERATIONS = 1500;
+
+export type SolveDayAssignmentOptions = {
+  /** Fixes the simulated annealing's randomness. Omit in production (the
+   * default, Math.random, is what's always been used); pass a fixed
+   * number in tests for reproducible results. */
+  seed?: number;
+};
 
 // Fills `day`'s empty performance slots with `candidateBands` (expected to
 // be the same length — the caller's balancing pass sizes them to match,
@@ -586,6 +909,7 @@ export function solveDayAssignment(
   candidateBands: Band[],
   allBands: Band[],
   venueHours: VenueHours,
+  options: SolveDayAssignmentOptions = {},
 ): { slots: TimetableSlot[]; failures: SchedulingFailure[] } {
   const emptyPositions = day.slots
     .map((slot, index) => ({ slot, index }))
@@ -596,11 +920,11 @@ export function solveDayAssignment(
     return { slots: day.slots, failures: [] };
   }
 
+  const random = options.seed !== undefined ? mulberry32(options.seed) : Math.random;
   const n = Math.min(emptyPositions.length, candidateBands.length);
   const positions = emptyPositions.slice(0, n);
   const pool = candidateBands.slice(0, n);
-  const blocks = computeScheduleBlocks(day.slots);
-  const context: ScheduleContext = { day, allBands, venueHours, blocks };
+  const context = buildScheduleContext(day, allBands, venueHours);
 
   function buildSlots(order: Band[]): TimetableSlot[] {
     const slots = [...day.slots];
@@ -614,15 +938,15 @@ export function solveDayAssignment(
     return validateHardConstraints(slots, context).violations.length;
   }
 
-  let current = shuffle(pool);
+  let current = shuffle(pool, random);
   let currentSlots = buildSlots(current);
   let currentViolations = countViolations(currentSlots);
   let best = current;
   let bestViolations = currentViolations;
 
   for (let iter = 0; iter < MAX_ITERATIONS && n > 1 && bestViolations > 0; iter++) {
-    const i = Math.floor(Math.random() * n);
-    let j = Math.floor(Math.random() * n);
+    const i = Math.floor(random() * n);
+    let j = Math.floor(random() * n);
     if (j === i) j = (j + 1) % n;
 
     const candidate = [...current];
@@ -632,7 +956,7 @@ export function solveDayAssignment(
 
     const delta = candidateViolations - currentViolations;
     const temperature = 1 - iter / MAX_ITERATIONS;
-    if (delta <= 0 || Math.random() < Math.exp(-delta / (temperature + 0.05))) {
+    if (delta <= 0 || random() < Math.exp(-delta / (temperature + 0.05))) {
       current = candidate;
       currentViolations = candidateViolations;
       if (currentViolations < bestViolations) {
@@ -656,8 +980,7 @@ export function solveDayAssignment(
 const MAX_COMPOSITION_PASSES = 20;
 
 export function improveDayByLiveComposition(day: TimetableDay, bands: Band[], venueHours: VenueHours): TimetableSlot[] {
-  const blocks = computeScheduleBlocks(day.slots);
-  const context: ScheduleContext = { day, allBands: bands, venueHours, blocks };
+  const context = buildScheduleContext(day, bands, venueHours);
 
   const performanceIndices = day.slots
     .map((slot, index) => ({ slot, index }))
@@ -673,8 +996,13 @@ export function improveDayByLiveComposition(day: TimetableDay, bands: Band[], ve
   if (!isValidSchedule(day.slots, context)) return day.slots;
 
   let slots = day.slots;
-  let currentScore = evaluateSchedule(slots, context);
+  let currentScore = evaluateSchedule(slots, context).totalScore;
 
+  // Ties are never taken (candidateScore must be strictly greater) — this
+  // is also what satisfies "on a tie, prefer whatever's closest to Step
+  // 1's original arrangement": a non-improving swap is simply never
+  // applied, so the result never drifts further from Step 1's output than
+  // an actual score improvement justifies.
   let improved = true;
   let passes = 0;
   while (improved && passes < MAX_COMPOSITION_PASSES) {
@@ -698,7 +1026,7 @@ export function improveDayByLiveComposition(day: TimetableDay, bands: Band[], ve
         // result.
         if (!isValidSchedule(recomputed, context)) continue;
 
-        const candidateScore = evaluateSchedule(recomputed, context);
+        const candidateScore = evaluateSchedule(recomputed, context).totalScore;
         if (candidateScore <= currentScore) continue;
 
         slots = recomputed;

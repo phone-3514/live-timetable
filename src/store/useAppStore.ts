@@ -17,8 +17,8 @@ import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import {
+  buildScheduleContext,
   buildSchedulingDebugResult,
-  computeScheduleBlocks,
   improveDayByLiveComposition,
   solveDayAssignment,
 } from "../utils/autoScheduleSolver";
@@ -864,12 +864,11 @@ export const useAppStore = create<AppState>()(
         // Admin/developer-only diagnostic — never shown in any general-
         // user-facing view (see buildSchedulingDebugResult's own doc).
         if (import.meta.env.DEV) {
-          const blocks = computeScheduleBlocks(improvedSlots);
           console.debug(
             `[autoSchedule] ${currentDay.label}`,
             buildSchedulingDebugResult(
               improvedSlots,
-              { day: currentDay, allBands: state.bands, venueHours: state.venueHours, blocks },
+              buildScheduleContext(currentDay, state.bands, state.venueHours),
               failures,
             ),
           );
