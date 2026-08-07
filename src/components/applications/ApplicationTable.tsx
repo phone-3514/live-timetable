@@ -6,9 +6,11 @@ import {
   type HighParticipationInfo,
   type MemberFrameCount,
 } from "../../store/useApplicationStore";
+import { useAppStore } from "../../store/useAppStore";
 import { Badge } from "./Badge";
 import { ApplicationMobileCard } from "./ApplicationMobileCard";
 import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
+import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
 
 type SortKey =
   | "applicantName"
@@ -90,6 +92,30 @@ export function HighParticipationBadge({ info }: { info: HighParticipationInfo }
         </p>
       )}
     </div>
+  );
+}
+
+// Opens the exact same Band-editing modal the Timetable Editor's own
+// per-slot "⋮" button opens (PlacedBandDetailModal — see that component's
+// own doc for what it edits and how it saves) — not a second, parallel
+// edit UI. `slot` is intentionally omitted (see PlacedBandDetailModal's
+// now-optional `slot` prop): there's no timetable slot in this screen's
+// context, only a Band. Only ever called with a `bandId` the caller has
+// already confirmed came from a truthy `linkedBandId` (both call sites
+// below gate on that), but still guards against a stale id (a linked
+// Band that's since been deleted) the same way LiveCompositionRatingStars
+// does, so a stale reference can't crash this screen.
+export function EditBandButton({ bandId, className }: { bandId: string; className: string }) {
+  const band = useAppStore((s) => s.bands.find((b) => b.id === bandId));
+  const [showEdit, setShowEdit] = useState(false);
+  if (!band) return null;
+  return (
+    <>
+      <button type="button" onClick={() => setShowEdit(true)} className={className}>
+        編集
+      </button>
+      {showEdit && <PlacedBandDetailModal band={band} onClose={() => setShowEdit(false)} />}
+    </>
   );
 }
 
@@ -372,6 +398,12 @@ export function ApplicationTable({
                       >
                         却下
                       </button>
+                      {app.linkedBandId && (
+                        <EditBandButton
+                          bandId={app.linkedBandId}
+                          className="rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+                        />
+                      )}
                     </div>
                   </td>
                   <td className="px-2 py-1.5">

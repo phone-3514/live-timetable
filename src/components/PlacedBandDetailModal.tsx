@@ -10,7 +10,12 @@ import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
 interface Props {
   band: Band;
-  slot: TimetableSlot;
+  // Optional so this same modal can be opened from a context with no
+  // timetable slot at all (e.g. the Application Manager's own "編集"
+  // entry point) — display-only (see the 演奏時間 dd below), never read
+  // for editing/validation/save, so nothing else in this component needs
+  // to change to support that case.
+  slot?: TimetableSlot;
   onClose: () => void;
 }
 
@@ -265,7 +270,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                 </div>
               ) : (
                 <>
-                  {slot.startTime && slot.endTime
+                  {slot?.startTime && slot?.endTime
                     ? `${slot.startTime} - ${slot.endTime}`
                     : "未配置"}
                   {band.durationMinutes != null && (

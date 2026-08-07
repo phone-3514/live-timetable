@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
-import { HighParticipationBadge, MemberBadgeList, SetlistLines } from "./ApplicationTable";
+import { EditBandButton, HighParticipationBadge, MemberBadgeList, SetlistLines } from "./ApplicationTable";
 import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 
 type Props = {
@@ -122,6 +122,12 @@ export function ApplicationMobileCard({
         >
           却下
         </button>
+        {app.linkedBandId && (
+          <EditBandButton
+            bandId={app.linkedBandId}
+            className="min-h-11 flex-1 rounded-md border-2 border-slate-600 text-sm font-semibold text-slate-300 hover:bg-slate-700"
+          />
+        )}
       </div>
     </div>
   );
