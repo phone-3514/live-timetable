@@ -161,6 +161,16 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                             ? "✓ 全バンド配置済み"
                             : `✗ 未配置 ${active.result.optimizationSummary.unassignedBandCountBefore}→${active.result.optimizationSummary.unassignedBandCountAfter}件`}
                         </span>
+                        <span
+                          className={
+                            active.result.optimizationSummary.ratingOneFinalPhaseCountAfter === 0
+                              ? "text-emerald-400"
+                              : "text-amber-400"
+                          }
+                        >
+                          評価1の終盤配置: {active.result.optimizationSummary.ratingOneFinalPhaseCountBefore}→
+                          {active.result.optimizationSummary.ratingOneFinalPhaseCountAfter}件
+                        </span>
                       </div>
                       {active.result.optimizationSummary.unresolvedIssues.length > 0 && (
                         <ul className="mt-2 space-y-1">

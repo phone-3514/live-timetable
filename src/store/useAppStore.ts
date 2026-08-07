@@ -778,6 +778,7 @@ export const useAppStore = create<AppState>()(
   // below as a toast rather than silently dropped.
   autoScheduleAllDays: () => {
     const failureMessages: string[] = [];
+    const ratingOneWarningMessages: string[] = [];
     const debugEntries: AutoScheduleDebugEntry[] = [];
     set((state) => {
       if (state.days.length === 0) return state;
@@ -884,6 +885,20 @@ export const useAppStore = create<AppState>()(
           );
         }
 
+        // 評価1バンドの終盤配置回避はハード制約ではない(#9の全バンド配置や
+        // 既存のハード制約を優先した上での、あくまで最善努力の妥協)ため、
+        // failureMessagesとは別扱い — summary.unresolvedIssuesに積まれた
+        // 妥協理由の文言(バンド名・配置時刻・終盤開始時刻・理由を含む)を
+        // そのまま利用する(autoScheduleSolver.ts側で組み立て済み)。
+        if (summary.ratingOneFinalPhaseCountAfter > 0) {
+          const messages = summary.unresolvedIssues
+            .filter((issue) => issue.type === "RATING_ONE_IN_FINAL_PHASE")
+            .map((issue) => issue.message);
+          if (messages.length > 0) {
+            ratingOneWarningMessages.push(`${currentDay.label}: ${messages.join(" / ")}`);
+          }
+        }
+
         // Admin-only "スコア詳細" — kept in memory only (see
         // useAutoScheduleDebugStore's own doc for why this never touches
         // Firestore/localStorage/IndexedDB), read by the Timetable
@@ -907,6 +922,12 @@ export const useAppStore = create<AppState>()(
       useToastStore
         .getState()
         .show(`自動配置が一部の制約を満たせず、該当バンドを未配置のままにしました（${failureMessages.join(" / ")}）`, "error");
+    } else if (ratingOneWarningMessages.length > 0) {
+      // トーストは1件しか表示できないため、ハード制約の未配置(上記)がある
+      // 場合はそちらを優先する — 評価1終盤配置は既存のハード制約と全バンド
+      // 配置を維持した上での妥協であり、詳細はスコア詳細(管理者専用)でも
+      // 確認できる。
+      useToastStore.getState().show(`評価1のバンドを終盤に配置せざるを得ませんでした（${ratingOneWarningMessages.join(" / ")}）`, "info");
     }
   },
 

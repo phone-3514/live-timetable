@@ -4,7 +4,7 @@ import type { VenueHours } from "./parseBands";
 import { canPlaceBandInSlot } from "./scheduleEligibility";
 import { alignTimeToReference, recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
-import { timeToMinutes } from "./time";
+import { minutesToTime, timeToMinutes } from "./time";
 import { getLiveCompositionRating } from "./liveCompositionRating";
 
 // 自動編成アシスト (Auto-Draft Assist) — a small CSP solver run per day.
@@ -695,6 +695,86 @@ export function calculateRatingFiveFinalPhaseScore(
   return Math.max(-1, Math.min(1, relativePosition)) * 8;
 }
 
+// ---------- 評価1バンドの終盤配置回避 (ハード制約ではない優先比較) ----------
+//
+// 時間指定・連続出演禁止・ブロック集中制限・全バンド配置(#9)といった既存の
+// ハード制約は常にこれより優先される — この優先比較はハード制約を追加する
+// ものではなく、Step 3の局所探索が候補を比較する際の「独立した優先軸」を
+// もう1段追加するだけ。SCORE_WEIGHTS・evaluateScheduleは一切変更しない
+// (スコア加減点には含めない)。
+//
+// 候補比較の辞書順:
+//   1. 既存ハード制約を満たし、全バンド配置済みであること — 既存の
+//      PLACE最優先の仕組み(改行の「全バンド配置」)がこれをすでに保証する
+//      (SWAP/INSERTは配置済みバンド数を変えないため、一度全配置済みに
+//      なれば以後も維持される)。ここでは追加のコードを要しない。
+//   2. 評価1バンドが終盤(finalPhaseStart以降、境界を含む)に配置されている
+//      件数が少ないこと。
+//   3. 既存のソフトスコア(totalScore)が高いこと。
+export type RatingOneFinalPhasePlacement = {
+  bandId: string;
+  bandName: string;
+  slotId: string;
+  startTime: string;
+};
+
+// finalPhaseStartはcontextで固定済み(Step1の初期有効解基準) — 候補ごとに
+// 再計算しない。境界時刻(=finalPhaseStartちょうど)は終盤に含む
+// (isFinalPhaseの既存の`>=`規約と統一 — 「19:00が最終フェーズ開始なら
+// 19:00配置も対象」)。
+export function computeRatingOneFinalPhasePlacements(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+): RatingOneFinalPhasePlacement[] {
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  const { absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
+  const result: RatingOneFinalPhasePlacement[] = [];
+  for (const slot of slots) {
+    if (!slot.bandId) continue;
+    const band = bandMap.get(slot.bandId);
+    if (!band || getLiveCompositionRating(band) !== 1) continue;
+    const abs = absoluteMinutesBySlotId.get(slot.id);
+    if (abs && abs.start >= context.finalPhaseStart) {
+      result.push({ bandId: band.id, bandName: band.name, slotId: slot.id, startTime: slot.startTime });
+    }
+  }
+  return result;
+}
+
+// Step 3のホットパス(候補1件ごとに呼ばれる)向けの件数版 — ロジックは
+// computeRatingOneFinalPhasePlacementsと同一で、詳細リストを複製しない。
+export function countRatingOneFinalPhasePlacements(slots: TimetableSlot[], context: ScheduleContext): number {
+  return computeRatingOneFinalPhasePlacements(slots, context).length;
+}
+
+// 辞書式優先比較(#2→#3) — 負値ならa、正値ならbを優先する。件数・スコア
+// 自体の計算はこの関数の外で行い、SWAP/INSERT/PLACEいずれの候補にも
+// 同じ比較を適用できるようプリミティブなタプルだけを受け取る。
+export function compareRatingOneFinalPhasePriority(
+  a: { ratingOneFinalPhaseCount: number; totalScore: number },
+  b: { ratingOneFinalPhaseCount: number; totalScore: number },
+): number {
+  if (a.ratingOneFinalPhaseCount !== b.ratingOneFinalPhaseCount) {
+    return a.ratingOneFinalPhaseCount - b.ratingOneFinalPhaseCount;
+  }
+  return b.totalScore - a.totalScore;
+}
+
+// 現在の状態と比べて「(#2→#3の辞書式で)本当に改善しているか」の判定 —
+// #2が厳密に減るなら(#3のスコアが多少下がっても)true、#2が同じなら
+// #3がminScoreImprovementを超えて上回る場合のみtrue。SWAP/INSERTの採用可否
+// にのみ使う(PLACEは全バンド配置(#1)が常に最優先のため、この判定を経ずに
+// 採用される — 既存のPLACE最優先ロジックは変更しない)。
+export function isRatingOnePriorityImprovement(
+  candidate: { ratingOneFinalPhaseCount: number; totalScore: number },
+  current: { ratingOneFinalPhaseCount: number; totalScore: number },
+  minScoreImprovement: number,
+): boolean {
+  if (candidate.ratingOneFinalPhaseCount < current.ratingOneFinalPhaseCount) return true;
+  if (candidate.ratingOneFinalPhaseCount > current.ratingOneFinalPhaseCount) return false;
+  return candidate.totalScore - current.totalScore > minScoreImprovement;
+}
+
 // ---------- 低評価出演者グループの前半ブロック優先 --------------------------
 //
 // Not a property stored on a person — computed fresh from the candidate
@@ -1294,6 +1374,9 @@ export function buildSchedulingDebugResult(
     if (slot.rating === 5 && !slot.isFinalPhase) {
       warnings.push(`評価5の${slot.bandName}が終盤（終了${FINAL_PHASE_DURATION_MINUTES}分前以降）の外に配置されています`);
     }
+    if (slot.rating === 1 && slot.isFinalPhase) {
+      warnings.push(`評価1の${slot.bandName}が終盤（終了${FINAL_PHASE_DURATION_MINUTES}分前以降）に配置されています`);
+    }
   }
 
   return {
@@ -1552,6 +1635,10 @@ export type EvaluatedMove = {
   schedule: TimetableSlot[];
   evaluation: ScheduleScoreBreakdown;
   scoreDelta: number;
+  /** この候補適用後のスケジュール全体における評価1バンドの終盤配置件数 —
+   * compareRatingOneFinalPhasePriority/isRatingOnePriorityImprovementの
+   * 比較にのみ使う、スコアとは独立した値。 */
+  ratingOneFinalPhaseCount: number;
 };
 
 // 全出演枠ペアの交換候補 — 隣接や同一ブロックに限らず、離れたブロック間
@@ -1682,7 +1769,13 @@ export function evaluateOptimizationMove(
   const candidate = applyOptimizationMove(slots, move, day, bands);
   if (!isValidSchedule(candidate, context)) return null;
   const evaluation = evaluateSchedule(candidate, context);
-  return { move, schedule: candidate, evaluation, scoreDelta: evaluation.totalScore - currentTotalScore };
+  return {
+    move,
+    schedule: candidate,
+    evaluation,
+    scoreDelta: evaluation.totalScore - currentTotalScore,
+    ratingOneFinalPhaseCount: countRatingOneFinalPhasePlacements(candidate, context),
+  };
 }
 
 // ---- 問題枠の優先探索と事前推定 -------------------------------------------
@@ -1739,6 +1832,14 @@ export function estimateMoveScoreDelta(move: OptimizationMove, debugResult: Sche
   const before = (a ? estimateSlotContributionForRating(a, ratingA) : 0) + (b ? estimateSlotContributionForRating(b, ratingB) : 0);
   const after = (a ? estimateSlotContributionForRating(a, ratingB) : 0) + (b ? estimateSlotContributionForRating(b, ratingA) : 0);
   return after - before;
+}
+
+// EvaluatedMove(schedule/evaluation一式を持つ実際の候補)から、
+// compareRatingOneFinalPhasePriority/isRatingOnePriorityImprovementが
+// 受け取るプリミティブなタプルだけを取り出す変換 — 比較関数自体をテスト
+// しやすい形(EvaluatedMoveのフル構築を要しない)に保つための薄いアダプタ。
+function ratingOnePriorityKeyOf(evaluated: EvaluatedMove): { ratingOneFinalPhaseCount: number; totalScore: number } {
+  return { ratingOneFinalPhaseCount: evaluated.ratingOneFinalPhaseCount, totalScore: evaluated.evaluation.totalScore };
 }
 
 function moveTieBreakKey(move: OptimizationMove): string {
@@ -1814,7 +1915,8 @@ export type OptimizationStopReason = "NO_IMPROVING_MOVE" | "ITERATION_LIMIT" | "
 export type UnresolvedIssueType =
   | "RATING_FIVE_OUTSIDE_FINAL_PHASE"
   | "LOW_RATING_IN_FINAL_BLOCK"
-  | "LOW_RATED_PERFORMER_IN_FINAL_BLOCK";
+  | "LOW_RATED_PERFORMER_IN_FINAL_BLOCK"
+  | "RATING_ONE_IN_FINAL_PHASE";
 export type UnresolvedIssueReason =
   | "ALL_EVALUATED_MOVES_INVALID"
   | "NO_IMPROVING_MOVE_FOUND"
@@ -1853,6 +1955,10 @@ export type OptimizationSummary = {
   /** mandatoryCandidateCount(PLACE)は通常候補の件数上限に一切含まれない。 */
   mandatoryCandidateCount: number;
   isCompleteValidSchedule: boolean;
+  /** 評価1バンドの終盤配置件数(Step 3の探索前後) — ハード制約ではなく、
+   * compareRatingOneFinalPhasePriorityによる独立した優先軸の実績値。 */
+  ratingOneFinalPhaseCountBefore: number;
+  ratingOneFinalPhaseCountAfter: number;
 };
 
 // 候補上限・反復上限・実行時間上限へ到達した場合、「ハード制約上不可能」
@@ -1915,6 +2021,84 @@ function collectUnresolvedIssues(
   return issues;
 }
 
+// ---------- 評価1バンドが終盤に残った場合の妥協理由の推定 -------------------
+//
+// 探索終了時点でなお終盤に残っている評価1バンドについて、「なぜ終盤外へ
+// 動かせなかったか」をベストエフォートで推定する。終盤外の各出演枠へ
+// SWAPした場合のハード制約検証結果だけを見る簡易診断(INSERTは調べない、
+// 既存のSWAP適用・検証をそのまま再利用するのみ) — 厳密な原因特定を保証
+// するものではなく、原因を特定できない場合(=有効なSWAPは存在するが、
+// スコア上の理由などでStep 3が採用しなかった場合)は既定のメッセージへ
+// フォールバックする。
+const RATING_ONE_COMPROMISE_REASON_LABEL: Record<HardConstraintViolationType, string> = {
+  TIME_CONSTRAINT: "時間指定",
+  CONSECUTIVE_APPEARANCE: "出演者の連続出演回避",
+  BLOCK_CONCENTRATION: "ブロック集中制限",
+};
+
+function buildRatingOneCompromiseMessage(
+  placement: RatingOneFinalPhasePlacement,
+  finalPhaseStart: number,
+  reasonTypes: HardConstraintViolationType[],
+  noAvailableSlot: boolean,
+): string {
+  const prefix = `評価1の${placement.bandName}を終盤（${minutesToTime(finalPhaseStart)}以降）の${placement.startTime || "?"}に配置したままにしました`;
+  if (noAvailableSlot) {
+    return `${prefix}（理由: 終盤外の空き枠不足）`;
+  }
+  if (reasonTypes.length > 0) {
+    return `${prefix}（理由: ${reasonTypes.map((t) => RATING_ONE_COMPROMISE_REASON_LABEL[t]).join("・")}）`;
+  }
+  return `${prefix}（既存のハード制約と全バンド配置を維持した候補の中で、これ以上削減できませんでした）`;
+}
+
+export function collectRatingOneFinalPhaseIssues(
+  slots: TimetableSlot[],
+  context: ScheduleContext,
+  day: TimetableDay,
+  bands: Band[],
+  reason: UnresolvedIssueReason,
+): UnresolvedIssue[] {
+  const placements = computeRatingOneFinalPhasePlacements(slots, context);
+  if (placements.length === 0) return [];
+
+  const performanceSlots = slots.filter((s) => s.customLabel === null);
+  const { absoluteMinutesBySlotId } = computeEventTimeRange(slots, context.eventStartMinutes);
+  const nonFinalPhaseSlotIds = performanceSlots
+    .filter((s) => {
+      const abs = absoluteMinutesBySlotId.get(s.id);
+      return abs ? abs.start < context.finalPhaseStart : false;
+    })
+    .map((s) => s.id);
+  const noAvailableSlot = nonFinalPhaseSlotIds.length === 0;
+
+  return placements.map((placement) => {
+    const foundTypes = new Set<HardConstraintViolationType>();
+    if (!noAvailableSlot) {
+      for (const targetSlotId of nonFinalPhaseSlotIds) {
+        const swapped = applyOptimizationMove(
+          slots,
+          { type: "SWAP", firstSlotId: placement.slotId, secondSlotId: targetSlotId },
+          day,
+          bands,
+        );
+        const validation = validateHardConstraints(swapped, context);
+        for (const v of validation.violations) {
+          if (v.bandIds.includes(placement.bandId) || v.slotIds.includes(placement.slotId) || v.slotIds.includes(targetSlotId)) {
+            foundTypes.add(v.type);
+          }
+        }
+      }
+    }
+    return {
+      type: "RATING_ONE_IN_FINAL_PHASE",
+      bandIds: [placement.bandId],
+      reason,
+      message: buildRatingOneCompromiseMessage(placement, context.finalPhaseStart, [...foundTypes], noAvailableSlot),
+    };
+  });
+}
+
 // Step 1の初期有効解を受け取り、SWAP/INSERT候補による丘登り法
 // (hill-climbing)で改善する。各反復で、ハード制約を満たす候補のうち総合
 // スコアが最も改善する候補を1件だけ採用する(最初に見つかった改善ではない)
@@ -1948,7 +2132,7 @@ export function improveDayByLiveComposition(
     ...new Set([...day.slots.filter((s) => s.bandId).map((s) => s.bandId!), ...remainingUnplacedBandIds]),
   ];
 
-  const emptySummary = (score: number, unassignedCount: number): OptimizationSummary => ({
+  const emptySummary = (score: number, unassignedCount: number, ratingOneFinalPhaseCount: number): OptimizationSummary => ({
     initialScore: score,
     finalScore: score,
     totalImprovement: 0,
@@ -1967,6 +2151,8 @@ export function improveDayByLiveComposition(
     unassignedBandIds: [...remainingUnplacedBandIds],
     mandatoryCandidateCount: 0,
     isCompleteValidSchedule: unassignedCount === 0,
+    ratingOneFinalPhaseCountBefore: ratingOneFinalPhaseCount,
+    ratingOneFinalPhaseCountAfter: ratingOneFinalPhaseCount,
   });
 
   const performanceSlotCount = day.slots.filter((s) => s.customLabel === null && s.bandId !== null).length;
@@ -1977,15 +2163,24 @@ export function improveDayByLiveComposition(
   // meaningful even with < 2 filled slots, so this guard only blocks on
   // invalidity, not on having "too few" placed bands.)
   if (!isValidSchedule(day.slots, context)) {
-    return { slots: day.slots, summary: emptySummary(0, initialUnassignedBandCount) };
+    return { slots: day.slots, summary: emptySummary(0, initialUnassignedBandCount, countRatingOneFinalPhasePlacements(day.slots, context)) };
   }
   if (performanceSlotCount < 2 && remainingUnplacedBandIds.size === 0) {
-    return { slots: day.slots, summary: emptySummary(evaluateSchedule(day.slots, context).totalScore, 0) };
+    return {
+      slots: day.slots,
+      summary: emptySummary(
+        evaluateSchedule(day.slots, context).totalScore,
+        0,
+        countRatingOneFinalPhasePlacements(day.slots, context),
+      ),
+    };
   }
 
   let slots = day.slots;
   let currentEvaluation = evaluateSchedule(slots, context);
   const initialScore = currentEvaluation.totalScore;
+  let currentRatingOneFinalPhaseCount = countRatingOneFinalPhasePlacements(slots, context);
+  const initialRatingOneFinalPhaseCount = currentRatingOneFinalPhaseCount;
 
   // 1回のsolve実行中だけメモリ上に保持する評価キャッシュ・訪問済み状態
   // (Firestore等へは一切保存しない)。キーは同じBand割り当てなら常に同じ
@@ -2035,10 +2230,15 @@ export function improveDayByLiveComposition(
     let bestPlaceMove: EvaluatedMove | null = null;
     for (const move of mandatoryMoves) {
       const evaluated = evaluate(move);
-      // PLACEはスコアの正負を問わず採用対象 — 未配置バンド数を減らすこと
-      // 自体が最優先(#10の辞書式優先順位)であり、ソフトスコアはPLACE同士
+      // PLACEは(評価1終盤配置数・スコアの正負を問わず)採用対象 — 未配置
+      // バンド数を減らすこと自体が最優先(#1の辞書式優先順位、既存どおり
+      // 不変)であり、compareRatingOneFinalPhasePriorityはPLACE候補同士
       // (=どのバンドをどの空き枠へ)の比較にのみ使う。
-      if (evaluated && (!bestPlaceMove || evaluated.scoreDelta > bestPlaceMove.scoreDelta)) {
+      if (
+        evaluated &&
+        (!bestPlaceMove ||
+          compareRatingOneFinalPhasePriority(ratingOnePriorityKeyOf(evaluated), ratingOnePriorityKeyOf(bestPlaceMove)) < 0)
+      ) {
         bestPlaceMove = evaluated;
       }
     }
@@ -2057,17 +2257,38 @@ export function improveDayByLiveComposition(
     // PLACEで解決できる反復では、SWAP/INSERTを評価するまでもなく必ず
     // PLACEが選ばれる(下記の選定ロジック)ので、無駄な評価をしない。
     if (!bestPlaceMove) {
+      // 候補同士の比較は評価1終盤配置数(#2)→既存ソフトスコア(#3)の辞書式
+      // — SWAP/INSERT/PLACEすべてに同じcompareRatingOneFinalPhasePriority
+      // を使う。
       for (const move of rankedNormalMoves) {
         const evaluated = evaluate(move);
-        if (evaluated && evaluated.scoreDelta > MIN_IMPROVEMENT && (!bestOtherMove || evaluated.scoreDelta > bestOtherMove.scoreDelta)) {
+        if (
+          evaluated &&
+          (!bestOtherMove ||
+            compareRatingOneFinalPhasePriority(ratingOnePriorityKeyOf(evaluated), ratingOnePriorityKeyOf(bestOtherMove)) < 0)
+        ) {
           bestOtherMove = evaluated;
         }
+      }
+      // 「現状より本当に改善しているか」を#2→#3の辞書式で判定してから
+      // 採用する。評価1終盤配置数を厳密に減らせるなら、たとえソフトスコア
+      // が下がっても採用する — そうでない場合は既存どおり
+      // MIN_IMPROVEMENTを超えるスコア改善だけを採用する。
+      if (
+        bestOtherMove &&
+        !isRatingOnePriorityImprovement(
+          ratingOnePriorityKeyOf(bestOtherMove),
+          { ratingOneFinalPhaseCount: currentRatingOneFinalPhaseCount, totalScore: currentEvaluation.totalScore },
+          MIN_IMPROVEMENT,
+        )
+      ) {
+        bestOtherMove = null;
       }
     }
 
     // 辞書式優先順位: (1) 未配置バンドを減らす候補(PLACE)を常に優先 —
-    // (2) それが無い反復に限り、ソフトスコアを最も改善するSWAP/INSERTを
-    // 採用する。
+    // (2) それが無い反復に限り、評価1終盤配置数→ソフトスコアの順で最も
+    // 改善するSWAP/INSERTを採用する。
     const bestMove = bestPlaceMove ?? bestOtherMove;
     if (!bestMove) {
       stoppedBy = "NO_IMPROVING_MOVE";
@@ -2076,6 +2297,7 @@ export function improveDayByLiveComposition(
 
     slots = bestMove.schedule;
     currentEvaluation = bestMove.evaluation;
+    currentRatingOneFinalPhaseCount = bestMove.ratingOneFinalPhaseCount;
     acceptedMoveCount++;
     if (bestMove.move.type === "PLACE") {
       acceptedMovesByType.place++;
@@ -2089,6 +2311,7 @@ export function improveDayByLiveComposition(
   const finalDebug = buildSchedulingDebugResult(slots, context);
   const searchStats = { candidateCount, validCandidateCount, skippedCandidateCount, stoppedBy };
   const completeValidation = validateCompleteSchedule(slots, context, initiallyExpectedBandIds);
+  const unresolvedReason = pickUnresolvedReason(searchStats);
   const summary: OptimizationSummary = {
     initialScore,
     finalScore: currentEvaluation.totalScore,
@@ -2102,12 +2325,17 @@ export function improveDayByLiveComposition(
     skippedCandidateCount,
     acceptedMovesByType,
     stoppedBy,
-    unresolvedIssues: collectUnresolvedIssues(finalDebug, searchStats),
+    unresolvedIssues: [
+      ...collectUnresolvedIssues(finalDebug, searchStats),
+      ...collectRatingOneFinalPhaseIssues(slots, context, day, bands, unresolvedReason),
+    ],
     unassignedBandCountBefore: initialUnassignedBandCount,
     unassignedBandCountAfter: remainingUnplacedBandIds.size,
     unassignedBandIds: completeValidation.unassignedBandIds,
     mandatoryCandidateCount,
     isCompleteValidSchedule: completeValidation.isCompleteValidSchedule,
+    ratingOneFinalPhaseCountBefore: initialRatingOneFinalPhaseCount,
+    ratingOneFinalPhaseCountAfter: currentRatingOneFinalPhaseCount,
   };
 
   return { slots, summary };
