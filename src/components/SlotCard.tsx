@@ -12,6 +12,7 @@ import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppSto
 import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
+import { BandSwapModal } from "./BandSwapModal";
 
 // What `active.data.current` holds during a drag, from whichever of the
 // two activators started it: this row's own useSortable session
@@ -71,6 +72,7 @@ export function SlotCard({
   const hasFullConcentration = concentrationEntries.some((c) => c.level === "full");
   const [showSetlist, setShowSetlist] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showSwap, setShowSwap] = useState(false);
   // Custom-slot (休憩/リハーサル/etc.) label editing — a click-to-edit
   // toggle, NOT an always-live <input>. A mousedown that lands directly
   // on a native <input> is captured by the browser's own default
@@ -583,6 +585,24 @@ export function SlotCard({
           ⋮
         </button>
       )}
+      {band && (
+        // Manual cross-day band swap — kept at a full 44x44px touch target
+        // on every breakpoint (same reasoning as the "⋮" details button
+        // above), outside the draggable band-content div so it never picks
+        // up drag listeners.
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowSwap(true);
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-400 hover:bg-slate-700 hover:text-slate-100 active:bg-slate-600"
+          title="バンドを入れ替え"
+        >
+          ⇄
+        </button>
+      )}
       <button
         onClick={() => removeSlot(dayId, slot.id)}
         className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full text-base leading-none text-slate-500 hover:bg-rose-950/60 hover:text-rose-400 active:bg-rose-900/70 md:h-6 md:w-6"
@@ -592,6 +612,9 @@ export function SlotCard({
       </button>
       {band && showDetails && (
         <PlacedBandDetailModal band={band} slot={slot} onClose={() => setShowDetails(false)} />
+      )}
+      {band && showSwap && (
+        <BandSwapModal dayId={dayId} slot={slot} band={band} onClose={() => setShowSwap(false)} />
       )}
     </div>
   );

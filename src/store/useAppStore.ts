@@ -16,6 +16,7 @@ import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
+import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
 import {
   buildScheduleContext,
   buildSchedulingDebugResult,
@@ -101,6 +102,16 @@ type AppState = {
   // day) later, the same way inserting a row does, rather than silently
   // orphaning whoever was there back to the unplaced pool.
   insertBandAtSlot: (bandId: string, targetSlotId: string) => void;
+  // Manual "Swap band" action (possibly cross-day) — exchanges exactly the
+  // two slots' bandId, nothing else. Deliberately does NOT call
+  // recomputeTimes (unlike every other placement action above): the whole
+  // point is that neither slot's time fields move, even when the two
+  // bands have different configured durations. Re-validates via
+  // validateBandSwap itself (see bandSwap.ts) as a defensive no-op guard,
+  // the same way assignBandToSlot re-checks canPlaceBandInSlot rather than
+  // trusting the caller — the UI is expected to have already confirmed
+  // (including any warning "swap anyway" step) before calling this.
+  swapSlotBands: (firstSlotId: string, secondSlotId: string) => void;
   // Multi-select bulk actions from BandListPanel — appends every given
   // band as a new slot at the end of the target day, in order. No
   // eligibility filtering (unlike autoScheduleAllDays): this is an
@@ -584,6 +595,19 @@ export const useAppStore = create<AppState>()(
         return { ...day, slots: recomputeTimes(slots, day.settings, state.bands) };
       });
       return { days };
+    }),
+
+  swapSlotBands: (firstSlotId, secondSlotId) =>
+    set((state) => {
+      // Builds the complete hypothetical swapped state and validates that,
+      // rather than temporarily unassigning/reassigning either slot — see
+      // validateBandSwap's own doc. A blocked candidate (time/date
+      // restriction) is a silent no-op here; the UI never lets a blocked
+      // candidate reach this call in the first place, but the store stays
+      // correct even if it somehow did.
+      const validation = validateBandSwap(state.days, state.bands, state.venueHours, firstSlotId, secondSlotId);
+      if (!validation.canSwap) return state;
+      return { days: buildSwappedDays(state.days, firstSlotId, secondSlotId) };
     }),
 
   bulkAssignToDay: (bandIds, dayId) =>
