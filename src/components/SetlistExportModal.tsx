@@ -2,8 +2,10 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toCanvas, toPng } from "html-to-image";
 import { SetlistExportTemplate, PAGE_WIDTH } from "./SetlistExportTemplate";
 import { computeSetlistEntries } from "../utils/setlistExport";
+import { formatAllBandMemberDataText } from "../utils/bandMemberExport";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
+import { useToastStore } from "../store/useToastStore";
 import { LAYOUTS, THEMES, getSetlistPalette } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -40,6 +42,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
   const eventInfo = useAppStore((s) => s.eventInfo);
   const isSingleDay = useAppStore((s) => s.days.length === 1);
   const applications = useApplicationStore((s) => s.applications);
+  const showToast = useToastStore((s) => s.show);
   useEscapeKey(onClose);
   const entries = useMemo(
     () => computeSetlistEntries(day, bands, applications),
@@ -93,6 +96,20 @@ export function SetlistExportModal({ day, onClose }: Props) {
     naturalSize && areaSize
       ? Math.min(1, areaSize.width / naturalSize.width, areaSize.height / naturalSize.height)
       : 1;
+
+  // 全バンドのメンバー情報をコピー — Bandを唯一の情報源とする、この画面の
+  // 他の出力(PNG/PDF)とは完全に独立したプレーンテキストのコピー機能。
+  // day/applicationsは一切読まない(formatAllBandMemberDataText自体の
+  // ドキュメント参照) — 現在このモーダルを開いている日にかかわらず、
+  // 常に全バンド(未配置のバンドも含む)が対象になる。
+  async function handleCopyAllMembers() {
+    try {
+      await navigator.clipboard.writeText(formatAllBandMemberDataText(bands));
+      showToast("全バンドのメンバー情報をコピーしました", "success");
+    } catch {
+      showToast("クリップボードにコピーできませんでした。ブラウザの権限設定を確認してください", "error");
+    }
+  }
 
   async function handleDownloadPng() {
     const el = captureLandscapeRef.current;
@@ -330,6 +347,13 @@ export function SetlistExportModal({ day, onClose }: Props) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-700 px-4 py-3">
+          <button
+            onClick={handleCopyAllMembers}
+            title="配置の有無を問わず、全バンドのメンバー名・パートをプレーンテキストでコピーします"
+            className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
+          >
+            📋 全バンドのメンバー情報をコピー
+          </button>
           <button
             onClick={onClose}
             className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
