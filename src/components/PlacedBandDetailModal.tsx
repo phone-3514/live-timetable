@@ -4,6 +4,8 @@ import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { splitSetlistEntry } from "../utils/parseApplications";
+import { normalizeMemberName } from "../utils/normalizeMemberName";
+import { countAssignedSlotsForMember } from "../utils/memberSlotCount";
 import { Badge } from "./applications/Badge";
 import { ModalPortal } from "./ModalPortal";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
@@ -38,6 +40,8 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   useBodyScrollLock();
   const applications = useApplicationStore((s) => s.applications);
   const updateBand = useAppStore((s) => s.updateBand);
+  const days = useAppStore((s) => s.days);
+  const allBands = useAppStore((s) => s.bands);
   const syncApplicationFromBand = useApplicationStore((s) => s.syncApplicationFromBand);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
@@ -387,13 +391,25 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                 </div>
               ) : displayMembers.length > 0 ? (
                 <ul className="space-y-1">
-                  {displayMembers.map((m, i) => (
-                    <li key={i} className="flex flex-wrap items-center gap-1">
-                      {m.grade && <Badge tone="grade">{m.grade}</Badge>}
-                      {m.part && <Badge tone="part">{m.part}</Badge>}
-                      <span className="text-slate-200">{m.name}</span>
-                    </li>
-                  ))}
+                  {displayMembers.map((m, i) => {
+                    // 全日程を通じた、現在配置済みの出演枠数 — derivedな値
+                    // で、どこにも保存しない(countAssignedSlotsForMember
+                    // 自身のドキュメント参照)。この画面が開いているバンド
+                    // だけでなく、他のバンド経由の出演も数える。
+                    const slotCount = countAssignedSlotsForMember(
+                      days,
+                      allBands,
+                      normalizeMemberName(m.name),
+                    );
+                    return (
+                      <li key={i} className="flex flex-wrap items-center gap-1">
+                        {m.grade && <Badge tone="grade">{m.grade}</Badge>}
+                        {m.part && <Badge tone="part">{m.part}</Badge>}
+                        <span className="text-slate-200">{m.name}</span>
+                        <span className="text-[11px] text-slate-500">現在{slotCount}枠</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="text-slate-500">未設定</p>
