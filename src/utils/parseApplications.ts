@@ -3,6 +3,7 @@ import {
   normalizeApplicationText,
   matchBandNameLine,
   matchHeadingField,
+  matchGluedHeadingField,
   SETLIST_LINE_RE,
   stripSetlistPrefix,
   SLOT_RANK_LINE_RE,
@@ -13,6 +14,7 @@ import {
   looksLikeMemberLine,
   extractMemberDetails,
   detectHasSync,
+  containsTimeExpression,
 } from "./parseBands";
 
 // Parses the same Discord chat-log format as the Timetable Editor's
@@ -148,14 +150,67 @@ export function splitIntoMessageSegments(rawText: string): string[] {
   return segments;
 }
 
+// A line that legitimately closes out a submission — a duration, sync, or
+// schedule/time answer. Real multi-circle joint-event submissions (pasted
+// straight from a LINE Notes-style thread, one comment per band, often
+// with no バンド名 heading at all) still tend to end with one of these
+// before the next band's comment begins, which is what makeAnchors below
+// uses to recognize a headerless band starting right after one.
+function isTerminalFieldLine(line: string): boolean {
+  return (
+    SYNC_LINE_RE.test(line) ||
+    DURATION_LINE_RE.test(line) ||
+    matchHeadingField(line, SCHEDULE_HEADING_KEYWORDS) !== null ||
+    matchHeadingField(line, TIME_HEADING_KEYWORDS) !== null ||
+    matchGluedHeadingField(line, SCHEDULE_HEADING_KEYWORDS) !== null ||
+    matchGluedHeadingField(line, TIME_HEADING_KEYWORDS) !== null ||
+    containsTimeExpression(line)
+  );
+}
+
+// Any line already understood as some OTHER known field — used to keep
+// makeAnchors from mistaking, say, a member line for the start of a new
+// (headerless) band.
+function looksLikeKnownFieldLine(line: string): boolean {
+  return (
+    SETLIST_LINE_RE.test(line) ||
+    SLOT_RANK_LINE_RE.test(line) ||
+    looksLikeMemberLine(line) ||
+    isTerminalFieldLine(line)
+  );
+}
+
+// Finds every バンド名-heading line (explicit anchors, as before) PLUS,
+// for a submission written with no such heading at all, the line where it
+// implicitly begins: right after a previous block's terminal field line
+// (or at the very start of the text), as long as that line doesn't itself
+// look like some other known field. Without this, a headerless band's
+// content has no anchor of its own and silently gets swept into whichever
+// application precedes it instead of becoming its own entry.
+function findBandNameAnchors(lines: string[]): number[] {
+  const anchors: number[] = [];
+  let prevNonBlank: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.length === 0) continue;
+    if (matchBandNameLine(line) !== null) {
+      anchors.push(i);
+    } else if (
+      (prevNonBlank === null || isTerminalFieldLine(prevNonBlank)) &&
+      !looksLikeKnownFieldLine(line)
+    ) {
+      anchors.push(i);
+    }
+    prevNonBlank = line;
+  }
+  return anchors;
+}
+
 export function parseApplications(rawText: string): Application[] {
   const normalized = normalizeApplicationText(rawText);
   const lines = normalized.split("\n").map((l) => l.trim());
 
-  const anchors: number[] = [];
-  lines.forEach((line, i) => {
-    if (matchBandNameLine(line) !== null) anchors.push(i);
-  });
+  const anchors = findBandNameAnchors(lines);
 
   const headers = anchors.map((start) => findHeaderBefore(lines, start));
 
@@ -177,7 +232,10 @@ export function parseApplications(rawText: string): Application[] {
       .filter(({ line, index }) => line.length > 0 && !excludedLineIndexes.has(index))
       .map(({ line }) => line);
 
-    const bandName = matchBandNameLine(blockLines[0])?.trim() ?? "";
+    // matchBandNameLine strips the "バンド名：" heading itself, leaving just
+    // the value — for an implicit (headerless) anchor there's no such
+    // heading to strip, so the raw first line IS the band name already.
+    const bandName = matchBandNameLine(blockLines[0])?.trim() ?? blockLines[0]?.trim() ?? "";
 
     const members: ApplicationMember[] = [];
     const setlist: ApplicationSetlistItem[] = [];
@@ -205,8 +263,10 @@ export function parseApplications(rawText: string): Application[] {
         continue;
       }
 
-      const scheduleValue = matchHeadingField(line, SCHEDULE_HEADING_KEYWORDS);
-      const timeValue = matchHeadingField(line, TIME_HEADING_KEYWORDS);
+      const scheduleValue =
+        matchHeadingField(line, SCHEDULE_HEADING_KEYWORDS) ?? matchGluedHeadingField(line, SCHEDULE_HEADING_KEYWORDS);
+      const timeValue =
+        matchHeadingField(line, TIME_HEADING_KEYWORDS) ?? matchGluedHeadingField(line, TIME_HEADING_KEYWORDS);
       if (scheduleValue !== null || timeValue !== null) {
         const inlineValue = scheduleValue || timeValue;
         if (inlineValue) {
@@ -221,6 +281,16 @@ export function parseApplications(rawText: string): Application[] {
       if (looksLikeMemberLine(line)) {
         seenMemberLine = true;
         members.push(extractMemberDetails(line));
+        continue;
+      }
+
+      // Last resort for a desired-time answer with no heading/label at
+      // all (e.g. a bare "16時以降でお願いします" sentence) — checked only
+      // after every labeled field and the member check above have already
+      // failed, so a normal heading or member line is never reinterpreted
+      // as this.
+      if (containsTimeExpression(line)) {
+        scheduleParts.push(line);
         continue;
       }
 

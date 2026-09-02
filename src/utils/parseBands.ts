@@ -93,6 +93,22 @@ export function matchHeadingField(line: string, keywords: string[]): string | nu
   return matched ? split.value : null;
 }
 
+// A label glued directly to its value with no "："/":" separator at all
+// (e.g. "出演希望時間11:30以降") — splitHeadingLine's colon-based split
+// can't handle this: the line's first colon, if any, sits INSIDE the
+// value itself ("11:30"), not between label and value, so it would carve
+// off a mangled label like "出演希望時間11" instead. Checked only as a
+// fallback after matchHeadingField finds nothing, so a normal "label：
+// value" line is never affected. Deliberately exact-prefix-only (no fuzzy
+// tolerance) — fuzzy matching with no separator to anchor against would
+// risk misreading ordinary sentences that merely start with something
+// keyword-shaped.
+export function matchGluedHeadingField(line: string, keywords: string[]): string | null {
+  const keyword = keywords.find((kw) => line.startsWith(kw));
+  if (!keyword) return null;
+  return line.slice(keyword.length).replace(/^[:：]\s*/, "").trim();
+}
+
 // A day-of-month must be a real calendar day (1-31). Listing the longer
 // alternatives first lets regex backtracking self-correct glued digit runs:
 // e.g. in "9/514:00" greedily reading "51" as the day fails this alternation
@@ -239,6 +255,18 @@ export function extractTimeRange(
   return null;
 }
 
+// True when free text contains a recognizable time-of-day expression — a
+// closed range ("16:00-18:00"), an open-ended one ("16時以降"/"〜18:00"),
+// or a bare token immediately followed by 以降/以後/から/まで. Reuses the
+// exact same token/range regexes extractTimeRange itself matches against
+// (never a second pattern set), so "does this line look like a time
+// preference" and "how do we parse one" can't drift apart. Used as a
+// last-resort fallback for a desired-time answer with no heading/label at
+// all (e.g. a bare "16時以降でお願いします" sentence) — see parseApplications.ts.
+export function containsTimeExpression(text: string): boolean {
+  return TIME_RANGE_RE.test(text) || OPEN_AFTER_RE.test(text) || OPEN_BEFORE_RE.test(text);
+}
+
 // ---------- Equipment hints (同期演奏 / キーボード) ----------
 //
 // An explicit "同期演奏：あり/なし" answer (common in the chat-log format)
@@ -247,7 +275,14 @@ export function extractTimeRange(
 // heading, and free-text mentions like "オケ音源を使用"). Either way, a
 // keyword immediately followed by a negation ("オケ無し", "Key不要") must
 // not flag the band as having that equipment — see hasUnnegatedMatch.
-const SYNC_ANSWER_RE = /同期演奏\s*[:：]?\s*(あり|なし|有|無)/;
+// "演奏"/"音源" after "同期" is optional (also matches bare "同期：なし")
+// so a submitter's own wording ("同期音源：なし", "同期：あり") is read
+// just as authoritatively as "同期演奏" — without this, e.g. "同期音源：
+// なし" falls through to the whole-text keyword scan below, where "音源"
+// sitting between "同期" and "なし" breaks hasUnnegatedMatch's
+// immediately-adjacent negation check and the band gets wrongly flagged
+// as needing sync equipment.
+const SYNC_ANSWER_RE = /同期(?:演奏|音源)?\s*[:：]?\s*(あり|なし|有|無)/;
 const SYNC_KEYWORD_RE = /同期|オケ|PC/g;
 const KEYBOARD_KEYWORD_RE = /key|キーボード|鍵盤/gi;
 
@@ -408,7 +443,13 @@ function parseTableBands(rawText: string): Band[] {
 
 export const BAND_NAME_KEYWORDS = ["バンド名"];
 export const SCHEDULE_HEADING_KEYWORDS = ["希望日程", "希望日", "出演希望日", "参加可能日"];
-export const TIME_HEADING_KEYWORDS = ["希望時間", "出演可能時間", "時間帯", "出演時間帯"];
+// "出演希望時間"/"演奏希望時間" are day+time combined into one heading
+// (a real submitter's own phrasing, distinct from the narrower
+// "出演可能時間"/"出演時間帯" — too far apart for the fuzzy matcher's
+// edit-distance budget to bridge on its own) — listed as exact keywords
+// rather than widening fuzzy tolerance, so this stays a deliberate,
+// inspectable addition rather than a global loosening.
+export const TIME_HEADING_KEYWORDS = ["希望時間", "出演可能時間", "時間帯", "出演時間帯", "出演希望時間", "演奏希望時間"];
 
 export function matchBandNameLine(line: string): string | null {
   return matchHeadingField(line, BAND_NAME_KEYWORDS);
@@ -423,8 +464,17 @@ export function stripSetlistPrefix(line: string): string {
 // A standalone "希望順位"/slot-preference note ("3枠目", "第2希望"). Not
 // useful data once parsed — discarded entirely rather than stored anywhere.
 export const SLOT_RANK_LINE_RE = /^\d+\s*枠目|^第\s*\d+\s*希望/;
-export const SYNC_LINE_RE = /^同期演奏/;
-export const DURATION_LINE_RE = /^(?:演奏時間|出演時間)\s*[:：]?\s*(\d+)\s*分/;
+// "演奏"/"音源" after "同期" is optional (see SYNC_ANSWER_RE's own doc) so
+// a line like "同期音源：なし" or bare "同期：なし" is skipped here too,
+// instead of leaking through as a garbage member/setlist line.
+export const SYNC_LINE_RE = /^同期(?:演奏|音源)?/;
+// "演奏"/"出演" + "時間" is the usual heading, but some submitters drop
+// "時間" entirely and just write "演奏20分" — the shorter "演奏" alternative
+// only ever matches when the longer, more specific ones don't (regex
+// alternation tries left-to-right, backtracking into "演奏" only once
+// "演奏時間"/"出演時間" have already failed at that position), so this
+// never changes what an existing "演奏時間：10分" line parses as.
+export const DURATION_LINE_RE = /^(?:演奏時間|出演時間|演奏)\s*[:：]?\s*(\d+)\s*分/;
 // The next band's "submitter — timestamp" header line can fall inside the
 // current band's block range (it appears right before the next バンド名
 // line), so it must be filtered out explicitly rather than assumed absent.
@@ -472,7 +522,22 @@ export function extractMemberDetails(line: string): {
   const gradeMatch = GRADE_PREFIX_RE.exec(line);
   const grade = gradeMatch ? gradeMatch[0].replace(/\s+/g, "") : "";
 
-  const matches = [...line.matchAll(PART_LABEL_RE)];
+  // PART_LABEL_RE only searches the line UP TO the member's own trailing
+  // affiliation parenthesis, if any — a circle name written in Roman
+  // letters inside that paren (e.g. "河口碧真(Pharman、音研)", common at a
+  // multi-circle joint event) is itself a run of [A-Za-z]+ and, being the
+  // LAST such run on the line, would otherwise get mistaken for the part
+  // label instead of the real one earlier in the line ("Gt."). A real
+  // instrument label is always a prefix — right after the grade, before
+  // the name — never inside parentheses, so restricting the search this
+  // way never loses a genuine label; it only stops a false one after the
+  // name from winning. `matches`' indexes stay valid against the full
+  // `line` below since labelSearchRegion is a plain prefix of it (same
+  // start, so same offsets).
+  const parenIndex = line.search(/[（(]/);
+  const labelSearchRegion = parenIndex === -1 ? line : line.slice(0, parenIndex);
+
+  const matches = [...labelSearchRegion.matchAll(PART_LABEL_RE)];
   const last = matches.length > 0 ? matches[matches.length - 1] : null;
   // A multi-part label like "Vo./Ba." or "Key./Vo." doesn't match
   // PART_LABEL_RE as one run (the dot right after each abbreviation breaks
