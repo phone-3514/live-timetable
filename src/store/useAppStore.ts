@@ -233,6 +233,25 @@ function updateDaySlots(
   });
 }
 
+// A manual startTimeOverride edit can jump a slot's actual clock time far
+// from its array position — recomputeTimes cascades strictly in array
+// order and never reorders on its own, so without this the edited row
+// would stay stuck between its old neighbors instead of moving to where it
+// now belongs chronologically. alignTimeToReference (the same helper
+// recomputeTimes uses) handles a day that crosses midnight, so a 00:30 row
+// still sorts after a 23:00 row on a day that starts at, say, 18:00.
+function sortSlotsByStartTime(
+  slots: TimetableSlot[],
+  settings: TimetableSettings,
+): TimetableSlot[] {
+  const reference = timeToMinutes(settings.startTime);
+  return [...slots].sort(
+    (a, b) =>
+      alignTimeToReference(a.startTime, reference) -
+      alignTimeToReference(b.startTime, reference),
+  );
+}
+
 // Resolves a band's desiredTime/ngTime day-of-month hints ("13日") into
 // actual day ids by matching against each TimetableDay's calendar date.
 // Returns [] (unrestricted) when hints or day dates aren't available.
@@ -514,11 +533,24 @@ export const useAppStore = create<AppState>()(
     })),
 
   updateSlotContent: (dayId, slotId, partial) =>
-    set((state) => ({
-      days: updateDaySlots(state.days, dayId, state.bands, (slots) =>
-        slots.map((s) => (s.id === slotId ? { ...s, ...partial } : s)),
-      ),
-    })),
+    set((state) => {
+      const day = state.days.find((d) => d.id === dayId);
+      if (!day) return state;
+      return {
+        days: updateDaySlots(state.days, dayId, state.bands, (slots) => {
+          const updated = slots.map((s) => (s.id === slotId ? { ...s, ...partial } : s));
+          // Only a startTimeOverride edit can move a slot to a different
+          // point in the day, so only that edit re-sorts the array —
+          // resolve times once against the pre-edit order to see where
+          // the edited slot now lands, then let updateDaySlots' own
+          // recomputeTimes pass do the real, final cascade over that
+          // order.
+          if (!("startTimeOverride" in partial)) return updated;
+          const resolved = recomputeTimes(updated, day.settings, state.bands);
+          return sortSlotsByStartTime(resolved, day.settings);
+        }),
+      };
+    }),
 
   removeSlot: (dayId, slotId) =>
     set((state) => ({
