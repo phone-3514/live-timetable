@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Application } from "../../types";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
+import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import {
   computeHighParticipation,
   type HighParticipationInfo,
@@ -43,7 +44,7 @@ export function MemberBadgeList({ members }: { members: Application["members"] }
         <li key={i} className="flex flex-wrap items-center gap-1">
           {m.grade && <Badge tone="grade">{m.grade}</Badge>}
           {m.part && <Badge tone="part">{m.part}</Badge>}
-          <span className="text-slate-200">{m.name}</span>
+          <span className="text-slate-200">{stripAffiliationNoteForDisplay(m.name)}</span>
         </li>
       ))}
     </ul>

@@ -507,6 +507,17 @@ export function stripFrameCountAnnotation(name: string): string {
     .trim();
 }
 
+// A member's own circle-affiliation note ("(Pharman、音研)") is useful data
+// (normalizeMemberName strips it too, but for identity comparison), but in
+// a UI list it makes each member wrap onto multiple lines once a few long
+// affiliation notes pile up. This trims it for *display* only — the stored
+// name is never touched. Unlike normalizeMemberName, this does NOT
+// width-fold or strip internal spacing: it's for showing to a human, not
+// for comparing strings, so the person's name keeps its original spacing.
+export function stripAffiliationNoteForDisplay(name: string): string {
+  return name.split(/[（(]/)[0].trim();
+}
+
 // Instrument/part label plus, separately, the grade prefix ("2年") and the
 // bare name — used by the Application Manager, which (unlike the Timetable
 // Editor) wants the part/grade kept instead of discarded. The name
