@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
 import { useSyncThemeAttribute } from "../hooks/useSyncThemeAttribute";
 import { usePamphletCache } from "./usePamphletCache";
-import { useActiveSlotId } from "./useActiveSlotId";
+import { resolveEffectiveActiveRow, useActiveSlotId } from "./useActiveSlotId";
 import { buildPamphletRows } from "./transitionGaps";
 import type { PublicBand, PublicDay, PublicSlot } from "./types";
 import { usePublicProgress } from "./usePublicProgress";
@@ -137,15 +137,22 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
   const [selectedBand, setSelectedBand] = useState<PublicBand | null>(null);
   const [myPerformerName, setMyPerformerName] = useState<string>(() => new URLSearchParams(window.location.search).get("performer") ?? "");
   const [performerQuery, setPerformerQuery] = useState(() => new URLSearchParams(window.location.search).get("performer") ?? "");
-  const activeRowId = activeRow?.id ?? null;
-  const activeRowKind = activeRow?.kind ?? null;
+  // The rows for whichever day liveProgress currently points at — the
+  // same generated slot/transition-gap ids PamphletDaySection renders,
+  // reused (not re-derived) so resolveEffectiveActiveRow can confirm a
+  // candidate row genuinely exists before highlighting it. Empty when
+  // there's no live progress; resolveEffectiveActiveRow never looks at
+  // `rows` in that case (falls straight to the time-based `activeRow`).
+  const liveProgressDayRows = useMemo(() => {
+    const day = data?.days.find((d) => d.id === liveProgress?.dayId);
+    return day ? buildPamphletRows(day) : [];
+  }, [data, liveProgress?.dayId]);
+  // See resolveEffectiveActiveRow's own doc (useActiveSlotId.ts) for why
+  // liveProgress.slotId truthiness alone isn't enough to mean "currently
+  // performing" — it has to be reconciled against liveProgress.phase too.
   const effectiveActiveRow = useMemo(
-    () => liveProgress?.slotId
-      ? { id: liveProgress.slotId, kind: "slot" as const }
-      : activeRowId && activeRowKind
-        ? { id: activeRowId, kind: activeRowKind }
-        : null,
-    [liveProgress?.slotId, activeRowId, activeRowKind],
+    () => resolveEffectiveActiveRow(liveProgress, liveProgressDayRows, activeRow),
+    [liveProgress, liveProgressDayRows, activeRow],
   );
   // Set briefly right after the initial auto-scroll-to-now lands, so the
   // "you are here" row gets a one-time attention pulse on top of its

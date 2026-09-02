@@ -38,7 +38,17 @@ export function PerformerDashboard({ data, performerName, bands, progress }: {
   const currentIndex = progress?.slotId ? rows.findIndex(({ slot }) => slot.id === progress.slotId) : -1;
   const activeSlot = rows[currentIndex]?.slot;
   const nextSlot = rows[currentIndex + 1]?.slot;
-  const isMyPerformance = Boolean(activeSlot?.bandId && bandIds.has(activeSlot.bandId));
+  // Same root cause as PublicPamphletRoot.tsx's effectiveActiveRow: during
+  // "transition", progress.slotId still names the just-finished slot (see
+  // StageControlPanel.tsx's endCurrentPerformance), so activeSlot.bandId
+  // alone can't mean "currently performing" — only phase === "performing"
+  // does. (No equivalent guard is needed for isMyRehearsal below: a
+  // rehearsal slot has no bandId, so phaseForSlot always reports "break"
+  // for it, and progress.slotId is set directly to that slot's own id —
+  // never a dangling reference the way a finished performance's is.)
+  const isMyPerformance = Boolean(
+    progress?.phase === "performing" && activeSlot?.bandId && bandIds.has(activeSlot.bandId),
+  );
   const isMyRehearsal = Boolean(
     /リハーサル|リハ/.test(activeSlot?.customLabel ?? "") && bandNames.some((name) => activeSlot?.customLabel?.includes(name)),
   );
