@@ -10,6 +10,7 @@ import type {
 import {
   DEFAULT_VENUE_HOURS,
   extractDayOfMonthHints,
+  hasUnparsedTimeExpression,
   type VenueHours,
 } from "../utils/parseBands";
 import { minutesToTime, timeToMinutes } from "../utils/time";
@@ -1026,6 +1027,23 @@ export const useAppStore = create<AppState>()(
         ]);
       }
 
+      // Phase A — Step 1+3 for every day with bands assigned to it.
+      // Deliberately NOT running Step 4 inside this same loop: Step 4
+      // needs to see every day's post-Step-3 state and the FULL cross-day
+      // set of still-unplaced bands at once (see placeRemainingBandsRelaxed's
+      // own doc for why it searches across days, not just the day a band
+      // was originally balanced onto).
+      type PerDayResult = {
+        dayId: string;
+        dayLabel: string;
+        currentDay: TimetableDay;
+        step1Day: TimetableDay;
+        slotsAfterStep3: TimetableSlot[];
+        failures: ReturnType<typeof solveDayAssignment>["failures"];
+        summary: ReturnType<typeof improveDayByLiveComposition>["summary"];
+      };
+      const perDayResults: PerDayResult[] = [];
+
       for (const dayId of dayIds) {
         const dayPool = targetByDay.get(dayId) ?? [];
         if (dayPool.length === 0) continue;
@@ -1057,46 +1075,73 @@ export const useAppStore = create<AppState>()(
           state.venueHours,
           { unplacedBandIds },
         );
+        perDayResults.push({ dayId, dayLabel: currentDay.label, currentDay, step1Day, slotsAfterStep3: improvedSlots, failures, summary });
+      }
 
-        // Step 4 — last resort only, engaged solely when Step 1+3 still
-        // leave bands unplaced (see placeRemainingBandsRelaxed's own doc).
-        // Never runs otherwise, so a day that already places everything
-        // is completely unaffected by this step's existence.
-        let finalSlots = improvedSlots;
-        let stillUnplacedBandIds = summary.unassignedBandIds;
-        if (summary.unassignedBandCountAfter > 0) {
-          const relaxed = placeRemainingBandsRelaxed(
-            improvedSlots,
-            summary.unassignedBandIds,
-            { ...currentDay, slots: improvedSlots },
-            state.bands,
-            state.venueHours,
-          );
-          finalSlots = relaxed.slots;
-          stillUnplacedBandIds = relaxed.stillUnplacedBandIds;
-          if (relaxed.placedBandIds.length > 0) {
-            const relaxedNames = relaxed.placedBandIds
-              .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
-              .join("、");
-            relaxedPlacementMessages.push(
-              `${currentDay.label}: ${relaxedNames}（連続出演・ブロック集中の制約を緩和して配置）`,
-            );
-          }
+      // Phase B — Step 4, one cross-day last-resort pass, engaged solely
+      // when Step 1+3 left bands unplaced somewhere (see
+      // placeRemainingBandsRelaxed's own doc). Never runs otherwise, so a
+      // schedule that already places everything is completely unaffected
+      // by this step's existence.
+      const slotsByDayId = new Map(perDayResults.map((r) => [r.dayId, r.slotsAfterStep3]));
+      const allUnplacedBandIds = [...new Set(perDayResults.flatMap((r) => r.summary.unassignedBandIds))];
+      let relaxedPlacedBandIds: string[] = [];
+      let stillUnplacedBandIds: string[] = [];
+      if (allUnplacedBandIds.length > 0) {
+        const relaxed = placeRemainingBandsRelaxed(
+          slotsByDayId,
+          allUnplacedBandIds,
+          perDayResults.map((r) => r.currentDay),
+          state.bands,
+          state.venueHours,
+        );
+        for (const [dayId, slots] of relaxed.slotsByDayId) slotsByDayId.set(dayId, slots);
+        relaxedPlacedBandIds = relaxed.placedBandIds;
+        stillUnplacedBandIds = relaxed.stillUnplacedBandIds;
+        if (relaxedPlacedBandIds.length > 0) {
+          const relaxedNames = relaxedPlacedBandIds
+            .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
+            .join("、");
+          relaxedPlacementMessages.push(`${relaxedNames}（連続出演・ブロック集中の制約を緩和して配置）`);
         }
-        days = days.map((d) => (d.id === dayId ? { ...d, slots: finalSlots } : d));
+      }
+      for (const [dayId, slots] of slotsByDayId) {
+        days = days.map((d) => (d.id === dayId ? { ...d, slots } : d));
+      }
+
+      // Phase C — per-day messaging + debug entries, using the FINAL
+      // (post Step 4) slots.
+      for (const r of perDayResults) {
+        const finalSlots = slotsByDayId.get(r.dayId) ?? r.slotsAfterStep3;
 
         // Only bands still unplaced after Step 4's last-resort pass are a
         // real problem worth surfacing — Step 1's own `failures` can
         // describe bands Step 3/4 went on to successfully place.
-        if (stillUnplacedBandIds.length > 0) {
-          const stillUnplacedNames = stillUnplacedBandIds
+        const dayStillUnplacedBandIds = r.summary.unassignedBandIds.filter((id) =>
+          stillUnplacedBandIds.includes(id),
+        );
+        if (dayStillUnplacedBandIds.length > 0) {
+          const stillUnplacedNames = dayStillUnplacedBandIds
             .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
             .join("、");
-          const relevantFailureMessages = failures
-            .filter((f) => f.affectedBandIds?.some((id) => stillUnplacedBandIds.includes(id)))
+          const relevantFailureMessages = r.failures
+            .filter((f) => f.affectedBandIds?.some((id) => dayStillUnplacedBandIds.includes(id)))
             .map((f) => f.message);
+          // A band whose desiredTime/ngTime text mentions a clock time but
+          // still parsed to "no restriction" (see hasUnparsedTimeExpression)
+          // is a fixable problem, not a genuine scheduling conflict — call
+          // it out specifically so the organizer edits the field instead of
+          // assuming the day is just full.
+          const unparsedTimeNames = dayStillUnplacedBandIds
+            .map((id) => state.bands.find((b) => b.id === id))
+            .filter((b): b is Band => !!b && (hasUnparsedTimeExpression(b.desiredTime) || hasUnparsedTimeExpression(b.ngTime)))
+            .map((b) => b.name);
+          const unparsedHint =
+            unparsedTimeNames.length > 0
+              ? `（${unparsedTimeNames.join("、")}の希望時間/NG時間の書き方を確認してください）`
+              : "";
           failureMessages.push(
-            `${currentDay.label}: ${relevantFailureMessages[0] ?? `${stillUnplacedNames} を未配置のままにしました`}`,
+            `${r.dayLabel}: ${relevantFailureMessages[0] ?? `${stillUnplacedNames} を未配置のままにしました`}${unparsedHint}`,
           );
         }
 
@@ -1105,12 +1150,12 @@ export const useAppStore = create<AppState>()(
         // failureMessagesとは別扱い — summary.unresolvedIssuesに積まれた
         // 妥協理由の文言(バンド名・配置時刻・終盤開始時刻・理由を含む)を
         // そのまま利用する(autoScheduleSolver.ts側で組み立て済み)。
-        if (summary.ratingOneFinalPhaseCountAfter > 0) {
-          const messages = summary.unresolvedIssues
+        if (r.summary.ratingOneFinalPhaseCountAfter > 0) {
+          const messages = r.summary.unresolvedIssues
             .filter((issue) => issue.type === "RATING_ONE_IN_FINAL_PHASE")
             .map((issue) => issue.message);
           if (messages.length > 0) {
-            ratingOneWarningMessages.push(`${currentDay.label}: ${messages.join(" / ")}`);
+            ratingOneWarningMessages.push(`${r.dayLabel}: ${messages.join(" / ")}`);
           }
         }
 
@@ -1119,13 +1164,13 @@ export const useAppStore = create<AppState>()(
         // Firestore/localStorage/IndexedDB), read by the Timetable
         // Editor's debug modal.
         debugEntries.push({
-          dayId,
-          dayLabel: currentDay.label,
+          dayId: r.dayId,
+          dayLabel: r.dayLabel,
           result: buildSchedulingDebugResult(
             finalSlots,
-            buildScheduleContext(step1Day, state.bands, state.venueHours),
-            failures,
-            summary,
+            buildScheduleContext(r.step1Day, state.bands, state.venueHours),
+            r.failures,
+            r.summary,
           ),
         });
       }

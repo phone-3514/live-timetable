@@ -2342,42 +2342,55 @@ export function improveDayByLiveComposition(
 }
 
 export type RelaxedPlacementResult = {
-  slots: TimetableSlot[];
+  /** Updated slots for every day this pass touched — only days that
+   * actually received a placement appear here, so a caller can patch just
+   * those days rather than rewriting every day's slots unconditionally. */
+  slotsByDayId: Map<string, TimetableSlot[]>;
   /** Bands this pass placed by relaxing CONSECUTIVE_APPEARANCE/
    * BLOCK_CONCENTRATION — always worth telling the organizer about, since
    * those two rules exist to prevent exactly the arrangement this pass
    * just allowed. */
   placedBandIds: string[];
-  /** Bands that still couldn't be placed even here — no empty slot
-   * satisfied their own TIME_CONSTRAINT (day/time-window eligibility),
+  /** Bands that still couldn't be placed even here — no empty slot on any
+   * day satisfied their own TIME_CONSTRAINT (day/time-window eligibility),
    * the one constraint this pass never breaks. */
   stillUnplacedBandIds: string[];
 };
 
 // Step 4 — last resort only, called from useAppStore.ts's autoScheduleAllDays
 // after Step 1 (solveDayAssignment) and Step 3 (improveDayByLiveComposition)
-// still leave bands unplaced. Normal auto-schedule never breaks a hard
-// constraint; this is the one deliberate exception, and only for bands
-// that would otherwise go unplaced entirely. For each still-unplaced band,
-// in order, this searches the day's remaining empty performance slots for
+// still leave bands unplaced on one or more days. Normal auto-schedule
+// never breaks a hard constraint; this is the one deliberate exception,
+// and only for bands that would otherwise go unplaced entirely.
+//
+// Searches ACROSS every day, not just the one Step 1's balancing pass
+// originally assigned the band to — a band that has no room on its own
+// day but does on another (and is eligible there, per its own
+// TIME_CONSTRAINT) should still get placed, even at the cost of the two
+// days ending up with uneven band counts; an organizer would always
+// rather have every band scheduled than have Step 1's balance preserved
+// at the cost of leaving one unplaced. For each still-unplaced band, in
+// order, this searches every day's remaining empty performance slots for
 // the one whose OWN TIME_CONSTRAINT the band satisfies (day restriction +
 // desiredTime/ngTime — never relaxed, since forcing a band into a day/time
 // it explicitly can't do would defeat the point of that field) that
 // introduces the fewest CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION
-// violations among the day's other already-placed bands, ties broken by
-// whichever slot comes first in the day. A band with no TIME_CONSTRAINT-
-// satisfying empty slot at all is left in stillUnplacedBandIds — this pass
-// can only shrink the "impossible to place" set, never force a band
-// somewhere its own time constraint rules out.
+// violations among that day's other already-placed bands, ties broken by
+// whichever day/slot comes first in iteration order. A band with no
+// TIME_CONSTRAINT-satisfying empty slot on ANY day is left in
+// stillUnplacedBandIds — this pass can only shrink the "impossible to
+// place" set, never force a band somewhere its own time constraint rules
+// out.
 export function placeRemainingBandsRelaxed(
-  slots: TimetableSlot[],
+  slotsByDayId: Map<string, TimetableSlot[]>,
   unplacedBandIds: string[],
-  day: TimetableDay,
+  days: TimetableDay[],
   allBands: Band[],
   venueHours: VenueHours,
 ): RelaxedPlacementResult {
   const bandMap = new Map(allBands.map((b) => [b.id, b]));
-  let currentSlots = slots;
+  const dayMap = new Map(days.map((d) => [d.id, d]));
+  const currentSlotsByDayId = new Map(slotsByDayId);
   const placedBandIds: string[] = [];
   const stillUnplacedBandIds: string[] = [];
 
@@ -2388,35 +2401,40 @@ export function placeRemainingBandsRelaxed(
       continue;
     }
 
-    const candidateSlotIds = currentSlots
-      .filter((s) => s.bandId === null && canPlaceBandInSlot(band, day, s, venueHours))
-      .map((s) => s.id);
+    let best: { dayId: string; slots: TimetableSlot[]; violationCount: number } | null = null;
+    for (const [dayId, slots] of currentSlotsByDayId) {
+      const day = dayMap.get(dayId);
+      if (!day) continue;
+      const candidateSlotIds = slots
+        .filter((s) => s.bandId === null && canPlaceBandInSlot(band, day, s, venueHours))
+        .map((s) => s.id);
 
-    let best: { slots: TimetableSlot[]; violationCount: number } | null = null;
-    for (const targetSlotId of candidateSlotIds) {
-      const candidateSlots = applyOptimizationMove(
-        currentSlots,
-        { type: "PLACE", bandId, targetSlotId },
-        day,
-        allBands,
-      );
-      const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
-      const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
-        (v) => v.type !== "TIME_CONSTRAINT",
-      ).length;
-      if (best === null || violationCount < best.violationCount) {
-        best = { slots: candidateSlots, violationCount };
+      for (const targetSlotId of candidateSlotIds) {
+        const candidateSlots = applyOptimizationMove(
+          slots,
+          { type: "PLACE", bandId, targetSlotId },
+          day,
+          allBands,
+        );
+        const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
+        const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
+          (v) => v.type !== "TIME_CONSTRAINT",
+        ).length;
+        if (best === null || violationCount < best.violationCount) {
+          best = { dayId, slots: candidateSlots, violationCount };
+        }
+        if (violationCount === 0) break;
       }
-      if (violationCount === 0) break;
+      if (best !== null && best.violationCount === 0) break;
     }
 
     if (best === null) {
       stillUnplacedBandIds.push(bandId);
       continue;
     }
-    currentSlots = best.slots;
+    currentSlotsByDayId.set(best.dayId, best.slots);
     placedBandIds.push(bandId);
   }
 
-  return { slots: currentSlots, placedBandIds, stillUnplacedBandIds };
+  return { slotsByDayId: currentSlotsByDayId, placedBandIds, stillUnplacedBandIds };
 }

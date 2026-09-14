@@ -267,6 +267,31 @@ export function containsTimeExpression(text: string): boolean {
   return TIME_RANGE_RE.test(text) || OPEN_AFTER_RE.test(text) || OPEN_BEFORE_RE.test(text);
 }
 
+const BARE_TIME_TOKEN_RE = new RegExp(TIME_TOKEN_SRC);
+
+// True when `text` mentions something that looks like a clock time (any
+// "HH:MM"/"HH時" token) but extractTimeRange still couldn't turn it into a
+// structured range — e.g. "16:00より前"/"16:00以内", phrasing this parser
+// doesn't (yet) recognize (only 以降/以後/から/まで are). That combination
+// means the band's own stated time intent got silently discarded rather
+// than genuinely being unrestricted, which is worth surfacing to the
+// organizer so they can rewrite it into a form extractTimeRange DOES
+// recognize — see BandDetailsForm's desiredTime/ngTime fields. Built by
+// composing extractTimeRange's own token check against its own inability
+// to produce a range, rather than hand-maintaining a second "known bad
+// phrasings" list — any phrasing extractTimeRange later learns to parse
+// stops tripping this warning automatically, with nothing to update here.
+// Text with no time token at all ("全日可能", "指定なし", blank) never
+// trips this — only text that mentions a clock time specifically but
+// still resolves to null does.
+export function hasUnparsedTimeExpression(
+  text: string,
+  venue: VenueHours = DEFAULT_VENUE_HOURS,
+): boolean {
+  if (!text || !BARE_TIME_TOKEN_RE.test(text)) return false;
+  return extractTimeRange(text, venue) === null;
+}
+
 // ---------- Equipment hints (同期演奏 / キーボード) ----------
 //
 // An explicit "同期演奏：あり/なし" answer (common in the chat-log format)
