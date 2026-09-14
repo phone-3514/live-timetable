@@ -69,6 +69,14 @@ export function MemberFrameDetailModal({ app, applications, onClose }: Props) {
                   <span className="text-sm font-medium text-slate-100">
                     {stripAffiliationNoteForDisplay(d.name)}
                   </span>
+                  {d.frameOrdinal !== null && (
+                    <span
+                      className="text-xs text-slate-400"
+                      title="申請データに記載されていた、このメンバー自身の枠番号"
+                    >
+                      （{d.frameOrdinal}枠目）
+                    </span>
+                  )}
                   <Badge tone={isHigh ? "warning" : "grade"} className="ml-auto">
                     {d.bandNames.length}枠
                   </Badge>

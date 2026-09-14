@@ -507,6 +507,22 @@ export function stripFrameCountAnnotation(name: string): string {
     .trim();
 }
 
+// The specific "N枠目" ordinal within a frame-count annotation (e.g.
+// "篠原麟一(3枠目)" or bare trailing "河口碧真 2枠目") — this member's own
+// count of which of their (possibly several) slots this particular
+// listing is. Deliberately narrower than FRAME_ANNOTATION_PAREN_RE/
+// TRAILING_FRAME_ANNOTATION_RE above: those two treat ANY 枠-mentioning
+// text as noise to discard ("2枠のみ", "枠指定なし" included), but only
+// the "N枠目" phrasing actually names an ordinal — the others don't, so
+// they correctly return null here rather than a made-up number.
+const FRAME_ORDINAL_RE = /([0-9０-９]+)\s*枠目/;
+export function extractFrameOrdinal(name: string): number | null {
+  const match = FRAME_ORDINAL_RE.exec(name);
+  if (!match) return null;
+  const n = Number(match[1].normalize("NFKC"));
+  return Number.isFinite(n) ? n : null;
+}
+
 // A member's own circle-affiliation note ("(Pharman、音研)") is useful data
 // (normalizeMemberName strips it too, but for identity comparison), but in
 // a UI list it makes each member wrap onto multiple lines once a few long
@@ -529,6 +545,7 @@ export function extractMemberDetails(line: string): {
   name: string;
   part: string;
   grade: string;
+  frameOrdinal: number | null;
 } {
   const gradeMatch = GRADE_PREFIX_RE.exec(line);
   const grade = gradeMatch ? gradeMatch[0].replace(/\s+/g, "") : "";
@@ -571,7 +588,7 @@ export function extractMemberDetails(line: string): {
       ? line.trim()
       : line.slice((last!.index ?? 0) + last![0].length).trim() || line.trim();
 
-  return { name: stripFrameCountAnnotation(name), part, grade };
+  return { name: stripFrameCountAnnotation(name), part, grade, frameOrdinal: extractFrameOrdinal(name) };
 }
 
 // "Gt.Vo." -> "Gt/Vo", "Key./Vo." -> "Key/Vo", "Ba." -> "Ba".

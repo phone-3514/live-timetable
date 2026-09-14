@@ -83,6 +83,20 @@ export type ApplicationMember = {
   part: string;
   /** e.g. "3年" — empty when the source line had no grade prefix. */
   grade: string;
+  /** The "N" in a source line's own "N枠目" annotation (e.g. "3枠目" ->
+   * 3) — this member's own count of which of their (possibly several)
+   * slots this particular listing is, as the submitter wrote it. null (or
+   * absent — see below) when the line had no such annotation. Display-
+   * only; unrelated to normalizeMemberName/stripFrameCountAnnotation,
+   * which discard this same text as noise for identity comparison rather
+   * than keep it.
+   * Optional (rather than always-required) because a member list edited
+   * by hand in the Timetable Editor's band modal (see
+   * PlacedBandDetailModal → syncApplicationFromBand) has no original
+   * source line to read an ordinal from — that manual edit legitimately
+   * has nothing to put here, not a bug to work around. Treat a missing
+   * value the same as null. */
+  frameOrdinal?: number | null;
 };
 
 export type Application = {

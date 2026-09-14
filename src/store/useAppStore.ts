@@ -181,6 +181,19 @@ function makeBlankSlot(): TimetableSlot {
   };
 }
 
+function makeAutoBreakSlot(label: string, durationMinutes: number): TimetableSlot {
+  return {
+    id: crypto.randomUUID(),
+    bandId: null,
+    customLabel: label,
+    customDurationMinutes: durationMinutes,
+    startTimeOverride: null,
+    delayMinutes: 0,
+    startTime: "",
+    endTime: "",
+  };
+}
+
 // Live preview of the start time a dragged band would get if dropped at
 // targetSlotId right now. Walks the day's slots the same way recomputeTimes
 // does, but treats the dragged band's OWN current slot (if it has one in
@@ -250,6 +263,92 @@ function sortSlotsByStartTime(
       alignTimeToReference(a.startTime, reference) -
       alignTimeToReference(b.startTime, reference),
   );
+}
+
+const AUTO_BREAK_LABEL = "休憩";
+const AUTO_BREAK_DURATION_MINUTES = 40;
+const AUTO_BREAK_WINDOW_START = "14:00";
+const AUTO_BREAK_WINDOW_END = "15:00";
+
+// recomputeTimes only ever adds a transition-after gap for a slot that
+// already holds a real band (see its own doc) — a still-blank slot (no
+// bandId, no customLabel yet) gets none, since there's no band there yet
+// to strike/set up around. That's correct for what a blank slot IS right
+// now, but wrong for predicting where it will land once auto-schedule
+// actually fills it: this walks the same cumulative arithmetic
+// recomputeTimes uses, except a still-blank slot is assumed to pick up the
+// day's default transition too, since it's about to become a real band
+// slot. Without this, a day of N blank slots looks N × transitionMinutes
+// shorter than the schedule it's about to become, which silently pushes
+// every boundary estimate — and therefore the break window below — far
+// earlier than where the break will actually end up once real bands (and
+// their transitions) are in place.
+function estimateSlotBoundaryMinutes(
+  slots: TimetableSlot[],
+  settings: TimetableSettings,
+  bands: Band[],
+): number[] {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const boundaries: number[] = [];
+  let cursor = timeToMinutes(settings.startTime);
+  for (const slot of slots) {
+    boundaries.push(cursor);
+    let duration = settings.performanceMinutes;
+    let transitionAfter = settings.transitionMinutes;
+    if (slot.bandId) {
+      const band = bandMap.get(slot.bandId);
+      duration = band?.durationMinutes ?? settings.performanceMinutes;
+      transitionAfter = band?.customTransitionMinutes ?? settings.transitionMinutes;
+    } else if (slot.customLabel !== null) {
+      duration = slot.customDurationMinutes ?? settings.performanceMinutes;
+      transitionAfter = 0;
+    }
+    cursor += duration + transitionAfter;
+  }
+  return boundaries;
+}
+
+// A day with zero custom-labeled slots is exactly one scheduling "block"
+// (see computeScheduleBlocks in autoScheduleSolver.ts) — the
+// BLOCK_CONCENTRATION hard constraint then forbids any repeat performer
+// anywhere in the whole day, which makes an ordinary joint event (several
+// people each in 2+ bands) impossible for auto-schedule to satisfy until a
+// human manually adds a break first. This finds, among this day's
+// estimated slot boundaries (see estimateSlotBoundaryMinutes — NOT the
+// slots' own current startTime fields, which understate a still-blank
+// slot's real position), the one whose estimated time falls inside
+// [14:00, 15:00] and comes closest to splitting the day's slot count into
+// even halves — ties broken by whichever boundary sits closer to the
+// window's midpoint. Returns null when no boundary lands in the window at
+// all (day too short, or its times just don't pass through 14:00–15:00),
+// in which case no break is inserted rather than forcing one outside the
+// requested window.
+function findAutoBreakInsertIndex(
+  slots: TimetableSlot[],
+  settings: TimetableSettings,
+  bands: Band[],
+): number | null {
+  if (slots.length < 2) return null;
+  const boundaries = estimateSlotBoundaryMinutes(slots, settings, bands);
+  const reference = timeToMinutes(settings.startTime);
+  const windowStart = alignTimeToReference(AUTO_BREAK_WINDOW_START, reference);
+  const windowEnd = alignTimeToReference(AUTO_BREAK_WINDOW_END, reference);
+  const windowMid = (windowStart + windowEnd) / 2;
+  let best: { index: number; imbalance: number; centerDistance: number } | null = null;
+  for (let index = 1; index < slots.length; index++) {
+    const boundary = boundaries[index];
+    if (boundary < windowStart || boundary > windowEnd) continue;
+    const imbalance = Math.abs(index - (slots.length - index));
+    const centerDistance = Math.abs(boundary - windowMid);
+    if (
+      best === null ||
+      imbalance < best.imbalance ||
+      (imbalance === best.imbalance && centerDistance < best.centerDistance)
+    ) {
+      best = { index, imbalance, centerDistance };
+    }
+  }
+  return best?.index ?? null;
 }
 
 // Resolves a band's desiredTime/ngTime day-of-month hints ("13日") into
@@ -851,7 +950,22 @@ export const useAppStore = create<AppState>()(
         ]),
       );
 
-      for (const band of pool) {
+      // A band restricted to fewer eligible days has to land there
+      // regardless of load; giving it first pick (rather than processing
+      // in arbitrary pool order) keeps the least-loaded-day greedy choice
+      // below from being skewed by unrestricted bands claiming a day's
+      // capacity before a same-day-only band was even considered — the
+      // classic bin-packing "place the constrained items first" fix, which
+      // is what actually keeps the two days' band counts close to equal.
+      // Ties (same eligible-day count, most commonly every unrestricted
+      // band) keep their original pool order.
+      const poolByConstraint = [...pool].sort(
+        (a, b) =>
+          (a.allowedDayIds.length > 0 ? a.allowedDayIds.length : dayIds.length) -
+          (b.allowedDayIds.length > 0 ? b.allowedDayIds.length : dayIds.length),
+      );
+
+      for (const band of poolByConstraint) {
         const eligibleDayIds =
           band.allowedDayIds.length > 0
             ? dayIds.filter((id) => band.allowedDayIds.includes(id))
@@ -891,6 +1005,23 @@ export const useAppStore = create<AppState>()(
             }),
           );
         }
+      }
+
+      // See findAutoBreakInsertIndex's own doc: a day with no break yet is
+      // one giant scheduling block, which the BLOCK_CONCENTRATION hard
+      // constraint then applies across the WHOLE day rather than half of
+      // it. Only days that don't already have a break/custom slot get one
+      // auto-inserted — an organizer's own break, or one a previous
+      // auto-schedule run already added, is left alone.
+      for (const day of days) {
+        if (day.slots.some((s) => s.customLabel !== null)) continue;
+        const insertIndex = findAutoBreakInsertIndex(day.slots, day.settings, state.bands);
+        if (insertIndex === null) continue;
+        days = updateDaySlots(days, day.id, state.bands, (slots) => [
+          ...slots.slice(0, insertIndex),
+          makeAutoBreakSlot(AUTO_BREAK_LABEL, AUTO_BREAK_DURATION_MINUTES),
+          ...slots.slice(insertIndex),
+        ]);
       }
 
       for (const dayId of dayIds) {

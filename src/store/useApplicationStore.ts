@@ -301,6 +301,9 @@ export type MemberFrameDetail = {
   name: string;
   part: string;
   grade: string;
+  /** This member's own "N枠目" ordinal as the submitter wrote it on this
+   * band's line (see ApplicationMember.frameOrdinal) — null when absent. */
+  frameOrdinal: number | null;
   /** Every band (this one included) this member's name matches across all
    * applications, in first-seen order and deduped by band name. */
   bandNames: string[];
@@ -328,6 +331,12 @@ export function listMemberFrameDetails(
       seen.add(a.bandName);
       bandNames.push(a.bandName);
     }
-    return { name: member.name, part: member.part, grade: member.grade, bandNames };
+    return {
+      name: member.name,
+      part: member.part,
+      grade: member.grade,
+      frameOrdinal: member.frameOrdinal ?? null,
+      bandNames,
+    };
   });
 }
