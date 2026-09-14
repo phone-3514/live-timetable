@@ -8,7 +8,6 @@ import type { Band } from "../types";
 
 const POPOVER_WIDTH = 256;
 const POPOVER_EST_HEIGHT = 260;
-const CLOSE_DELAY_MS = 150;
 
 export function BandListPanel() {
   const bands = useAppStore((s) => s.bands) ?? [];
@@ -20,26 +19,25 @@ export function BandListPanel() {
 
   const { setNodeRef, isOver } = useDroppable({ id: "unplaced" });
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const closeTimer = useRef<number | null>(null);
-  const [hover, setHover] = useState<{ band: Band; top: number; left: number } | null>(
+  const [openBand, setOpenBand] = useState<{ band: Band; top: number; left: number } | null>(
     null,
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Same always-attached, no-op-when-closed pattern as BackupControls'
   // pendingRestore listener — this panel itself is never unmounted, only
-  // the popover's `hover` state toggles.
+  // the popover's `openBand` state toggles.
   useEscapeKey(() => {
-    if (hover) setHover(null);
+    if (openBand) setOpenBand(null);
   });
 
-  // If the hovered band gets placed into a slot (or deleted) while its
-  // popover is open, its chip disappears from the DOM without ever firing
-  // mouseleave, so the popover would otherwise be stuck open indefinitely.
+  // If the open band gets placed into a slot (or deleted) while its popover
+  // is open, its chip disappears from the DOM — nothing would otherwise
+  // close the popover, since it isn't tied to hover anymore.
   useEffect(() => {
-    if (hover && !unplaced.some((b) => b.id === hover.band.id)) {
-      setHover(null);
+    if (openBand && !unplaced.some((b) => b.id === openBand.band.id)) {
+      setOpenBand(null);
     }
-  }, [unplaced, hover]);
+  }, [unplaced, openBand]);
 
   // Selected bands that get placed or deleted elsewhere (e.g. a drag while
   // some OTHER chip is also checked) should drop out of the selection
@@ -75,27 +73,22 @@ export function BandListPanel() {
     }
   }
 
-  function cancelHide() {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }
-  function scheduleHide() {
-    cancelHide();
-    closeTimer.current = window.setTimeout(() => setHover(null), CLOSE_DELAY_MS);
-  }
-
   // The flyout is anchored outside the whole grid (not below the individual
-  // chip) so it never sits on top of neighboring chips — a popover pinned
-  // under the hovered chip would otherwise block the mouse's path to the
-  // next one, since it renders above the grid. On mobile the sidebar is
-  // full-width (stacked layout, see App.tsx), so "outside the panel to the
-  // right" doesn't exist — the horizontal clamp below keeps it fully
-  // on-screen either way, sliding it left over the panel itself once
+  // chip) so it never sits on top of neighboring chips. On mobile the
+  // sidebar is full-width (stacked layout, see App.tsx), so "outside the
+  // panel to the right" doesn't exist — the horizontal clamp below keeps it
+  // fully on-screen either way, sliding it left over the panel itself once
   // there's no room beside it.
-  function showHover(band: Band, chipEl: HTMLElement) {
-    cancelHide();
+  //
+  // Click-only, not hover: a hover-opened flyout needs the cursor to travel
+  // from the chip to the flyout without leaving either's hit area, which
+  // real mouse movement doesn't reliably manage — clicking the same chip
+  // again toggles it closed instead, same as the backdrop below.
+  function toggleDetails(band: Band, chipEl: HTMLElement) {
+    if (openBand?.band.id === band.id) {
+      setOpenBand(null);
+      return;
+    }
     const panelRect = containerRef.current?.getBoundingClientRect();
     if (!panelRect) return;
     const chipRect = chipEl.getBoundingClientRect();
@@ -107,7 +100,7 @@ export function BandListPanel() {
       8,
       Math.min(chipRect.top, window.innerHeight - POPOVER_EST_HEIGHT - 8),
     );
-    setHover({ band, top, left });
+    setOpenBand({ band, top, left });
   }
 
   return (
@@ -167,39 +160,41 @@ export function BandListPanel() {
           全てのバンドが配置済みです
         </p>
       )}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:items-stretch lg:gap-1 lg:overflow-x-visible lg:overflow-y-auto lg:pb-1">
+        {/* relative z-50: matches the popover's own z-50, and — this is the
+            part that matters — beats the backdrop's z-40. Without it, the
+            backdrop (declared after this list in the JSX, and so already
+            painted on top by source order alone even before z-index enters
+            it) intercepts a click meant for a DIFFERENT chip while a
+            popover is already open: the click closes the popover instead
+            of ever reaching that chip's own onClick, so switching between
+            two bands took two clicks (close, then open) instead of one. */}
+        <div className="relative z-50 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:items-stretch lg:gap-1 lg:overflow-x-visible lg:overflow-y-auto lg:pb-1">
           {unplaced.map((band) => (
             <BandChip
               key={band.id}
               band={band}
-              onHoverStart={showHover}
-              onHoverEnd={scheduleHide}
+              onOpen={toggleDetails}
               selected={selectedIds.has(band.id)}
               onToggleSelect={toggleSelect}
             />
           ))}
         </div>
 
-        {hover && (
+        {openBand && (
           <>
-            {/* Touch has no hover/mouseleave to trigger scheduleHide, so a
-                tap-opened flyout would otherwise be stuck open until another
-                chip is tapped — this invisible backdrop gives touch users an
-                explicit "tap anywhere else to close". Harmless on desktop:
-                the popover's own onMouseEnter still cancels it immediately if
-                the mouse happens to be over it. */}
+            {/* Click-outside-to-close — the flyout only ever opens/closes on
+                a click now (see toggleDetails), so this is every platform's
+                primary way to dismiss it, not just a touch fallback. */}
             <div
               className="fixed inset-0 z-40"
-              onClick={() => setHover(null)}
+              onClick={() => setOpenBand(null)}
               aria-hidden="true"
             />
             <div
-              onMouseEnter={cancelHide}
-              onMouseLeave={scheduleHide}
-              style={{ top: hover.top, left: hover.left, width: POPOVER_WIDTH }}
+              style={{ top: openBand.top, left: openBand.left, width: POPOVER_WIDTH }}
               className="fixed z-50 rounded-lg border border-slate-700 bg-slate-800 p-3 shadow-lg shadow-black/40"
             >
-              <BandDetailsForm band={hover.band} />
+              <BandDetailsForm band={openBand.band} />
             </div>
           </>
         )}

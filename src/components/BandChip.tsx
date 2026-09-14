@@ -5,16 +5,19 @@ import { useAppStore } from "../store/useAppStore";
 
 type Props = {
   band: Band;
-  onHoverStart: (band: Band, el: HTMLElement) => void;
-  onHoverEnd: () => void;
+  onOpen: (band: Band, el: HTMLElement) => void;
   selected: boolean;
   onToggleSelect: (bandId: string) => void;
 };
 
 // Compact draggable tile for the unplaced-band grid. Full details render in
 // a single shared flyout owned by BandListPanel (see there for why) — this
-// component only reports hover in/out plus its own DOM node.
-export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSelect }: Props) {
+// component only reports a click plus its own DOM node. Click-only (not
+// hover) deliberately: a hover-opened flyout needs the cursor to travel
+// from the chip to the flyout without ever leaving either's hit area, which
+// real mouse movement doesn't reliably manage even with a close-delay
+// grace period — click sidesteps that whole class of bug.
+export function BandChip({ band, onOpen, selected, onToggleSelect }: Props) {
   const deleteBand = useAppStore((s) => s.deleteBand);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `band:${band.id}`,
@@ -36,16 +39,12 @@ export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSel
       }}
       {...listeners}
       {...attributes}
-      onMouseEnter={() => elRef.current && onHoverStart(band, elRef.current)}
-      onMouseLeave={onHoverEnd}
-      // Touch has no hover, so the details flyout (which onHoverStart opens)
-      // would otherwise be unreachable on mobile — a tap fires this too.
       // No touch-action: none here — App.tsx's TouchSensor uses a
       // delay-based (long-press) activation constraint, so a normal touch
       // that moves before the delay elapses is handed back to the browser
       // as an ordinary scroll instead of being claimed by dnd-kit; only a
       // held long-press activates the drag. See App.tsx's sensors comment.
-      onClick={() => elRef.current && onHoverStart(band, elRef.current)}
+      onClick={() => elRef.current && onOpen(band, elRef.current)}
       // Fixed width + shrink-0 below lg (a horizontal-scroll strip needs
       // each chip to keep its own width instead of collapsing to fit);
       // lg+ switches to a full-width row in the narrow vertical sidebar.
