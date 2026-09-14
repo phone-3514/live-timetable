@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDndContext } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -71,6 +71,24 @@ export function SlotCard({
   const hasConcentrationWarning = concentrationEntries.length > 0;
   const hasFullConcentration = concentrationEntries.some((c) => c.level === "full");
   const [showSetlist, setShowSetlist] = useState(false);
+  // A same-tick mouseleave→mouseenter (crossing the small mt-1 gap between
+  // the 🎵 button and the popup below it — real mouse movement isn't
+  // pixel-perfect, so this gap is very easy to clip even while the popup
+  // is a hoverable descendant of the same wrapping span) still closed the
+  // popup instantly despite that wrapping-span fix. A short close delay —
+  // cancelled if the pointer re-enters before it fires — is the same
+  // pattern BandListPanel's flyout already uses for its own hover popover.
+  const setlistCloseTimer = useRef<number | null>(null);
+  function cancelSetlistHide() {
+    if (setlistCloseTimer.current !== null) {
+      window.clearTimeout(setlistCloseTimer.current);
+      setlistCloseTimer.current = null;
+    }
+  }
+  function scheduleSetlistHide() {
+    cancelSetlistHide();
+    setlistCloseTimer.current = window.setTimeout(() => setShowSetlist(false), 150);
+  }
   const [showDetails, setShowDetails] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
   // Custom-slot (休憩/リハーサル/etc.) label editing — a click-to-edit
@@ -458,8 +476,11 @@ export function SlotCard({
                   // truly leaves that whole subtree.
                   <span
                     className="relative ml-1 inline-block"
-                    onMouseEnter={() => setShowSetlist(true)}
-                    onMouseLeave={() => setShowSetlist(false)}
+                    onMouseEnter={() => {
+                      cancelSetlistHide();
+                      setShowSetlist(true);
+                    }}
+                    onMouseLeave={scheduleSetlistHide}
                   >
                     <button
                       onPointerDown={(e) => e.stopPropagation()}
