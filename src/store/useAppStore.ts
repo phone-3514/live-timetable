@@ -21,6 +21,7 @@ import {
   buildScheduleContext,
   buildSchedulingDebugResult,
   improveDayByLiveComposition,
+  placeRemainingBandsRelaxed,
   solveDayAssignment,
 } from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
@@ -933,6 +934,7 @@ export const useAppStore = create<AppState>()(
   // below as a toast rather than silently dropped.
   autoScheduleAllDays: () => {
     const failureMessages: string[] = [];
+    const relaxedPlacementMessages: string[] = [];
     const ratingOneWarningMessages: string[] = [];
     const debugEntries: AutoScheduleDebugEntry[] = [];
     set((state) => {
@@ -1055,17 +1057,43 @@ export const useAppStore = create<AppState>()(
           state.venueHours,
           { unplacedBandIds },
         );
-        days = days.map((d) => (d.id === dayId ? { ...d, slots: improvedSlots } : d));
 
-        // Only bands still unplaced AFTER Step 3's repair pass are a real
-        // problem worth surfacing — Step 1's own `failures` can describe
-        // bands Step 3 went on to successfully place via PLACE.
+        // Step 4 — last resort only, engaged solely when Step 1+3 still
+        // leave bands unplaced (see placeRemainingBandsRelaxed's own doc).
+        // Never runs otherwise, so a day that already places everything
+        // is completely unaffected by this step's existence.
+        let finalSlots = improvedSlots;
+        let stillUnplacedBandIds = summary.unassignedBandIds;
         if (summary.unassignedBandCountAfter > 0) {
-          const stillUnplacedNames = summary.unassignedBandIds
+          const relaxed = placeRemainingBandsRelaxed(
+            improvedSlots,
+            summary.unassignedBandIds,
+            { ...currentDay, slots: improvedSlots },
+            state.bands,
+            state.venueHours,
+          );
+          finalSlots = relaxed.slots;
+          stillUnplacedBandIds = relaxed.stillUnplacedBandIds;
+          if (relaxed.placedBandIds.length > 0) {
+            const relaxedNames = relaxed.placedBandIds
+              .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
+              .join("、");
+            relaxedPlacementMessages.push(
+              `${currentDay.label}: ${relaxedNames}（連続出演・ブロック集中の制約を緩和して配置）`,
+            );
+          }
+        }
+        days = days.map((d) => (d.id === dayId ? { ...d, slots: finalSlots } : d));
+
+        // Only bands still unplaced after Step 4's last-resort pass are a
+        // real problem worth surfacing — Step 1's own `failures` can
+        // describe bands Step 3/4 went on to successfully place.
+        if (stillUnplacedBandIds.length > 0) {
+          const stillUnplacedNames = stillUnplacedBandIds
             .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
             .join("、");
           const relevantFailureMessages = failures
-            .filter((f) => f.affectedBandIds?.some((id) => summary.unassignedBandIds.includes(id)))
+            .filter((f) => f.affectedBandIds?.some((id) => stillUnplacedBandIds.includes(id)))
             .map((f) => f.message);
           failureMessages.push(
             `${currentDay.label}: ${relevantFailureMessages[0] ?? `${stillUnplacedNames} を未配置のままにしました`}`,
@@ -1094,7 +1122,7 @@ export const useAppStore = create<AppState>()(
           dayId,
           dayLabel: currentDay.label,
           result: buildSchedulingDebugResult(
-            improvedSlots,
+            finalSlots,
             buildScheduleContext(step1Day, state.bands, state.venueHours),
             failures,
             summary,
@@ -1109,6 +1137,14 @@ export const useAppStore = create<AppState>()(
       useToastStore
         .getState()
         .show(`自動配置が一部の制約を満たせず、該当バンドを未配置のままにしました（${failureMessages.join(" / ")}）`, "error");
+    } else if (relaxedPlacementMessages.length > 0) {
+      // トーストは1件しか表示できないため優先度をつける。未配置(上記)が
+      // なければこちらを表示 — 連続出演/ブロック集中というハード制約を
+      // 破って配置した最終手段なので、評価1終盤配置(下)より優先度が高い。
+      // 詳細はスコア詳細(管理者専用)でも確認できる。
+      useToastStore
+        .getState()
+        .show(`一部のバンドは制約を満たす配置が見つからず、時間指定以外の制約を緩和して配置しました（${relaxedPlacementMessages.join(" / ")}）`, "info");
     } else if (ratingOneWarningMessages.length > 0) {
       // トーストは1件しか表示できないため、ハード制約の未配置(上記)がある
       // 場合はそちらを優先する — 評価1終盤配置は既存のハード制約と全バンド

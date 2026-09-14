@@ -415,7 +415,7 @@ export function SlotCard({
                   : "cursor-grab active:cursor-grabbing"
               }`}
             >
-              <p className="text-sm font-semibold text-slate-100">
+              <div className="text-sm font-semibold text-slate-100">
                 {band.name}
                 {lockedByNickname && (
                   <span
@@ -447,24 +447,38 @@ export function SlotCard({
                   </span>
                 )}
                 {band.setlist.length > 0 && (
-                  <span className="relative ml-1 inline-block">
+                  // Hover is tracked on this wrapping span, not the button
+                  // alone: the popup below is a sibling positioned outside
+                  // the button's own box, so moving the mouse from the
+                  // button down into the popup to actually read it used to
+                  // leave the button immediately (mouseleave) and hide it
+                  // before it could be read — the "vanishes instantly" bug.
+                  // Since the span is an ancestor of both the button and
+                  // the popup, mouseleave only fires once the pointer
+                  // truly leaves that whole subtree.
+                  <span
+                    className="relative ml-1 inline-block"
+                    onMouseEnter={() => setShowSetlist(true)}
+                    onMouseLeave={() => setShowSetlist(false)}
+                  >
                     <button
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => setShowSetlist((v) => !v)}
-                      onMouseEnter={() => setShowSetlist(true)}
-                      onMouseLeave={() => setShowSetlist(false)}
                       className="rounded border border-emerald-500 bg-emerald-950/50 px-1 text-xs font-normal text-emerald-300"
                       title="演奏予定曲（クリックまたはホバーで表示）"
                     >
                       🎵
                     </button>
                     {showSetlist && (
-                      // pointer-events-none so this read-only popup can
-                      // never intercept clicks/hover on neighboring slots
-                      // or drag targets underneath it — it's purely a
-                      // glance-and-go tooltip, nothing inside needs to be
-                      // clickable.
-                      <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-slate-700 bg-slate-800 p-2 text-left shadow-lg shadow-black/50">
+                      // Needs real pointer-events (not pointer-events-none
+                      // like before) so the browser's hit-test actually
+                      // lands on this element — and therefore still counts
+                      // as "inside the span above" — while the mouse is
+                      // over it; otherwise the hover keeping it open would
+                      // never register in the first place. It only exists
+                      // in the DOM at all while shown, so it can't block a
+                      // drag target underneath when hidden.
+                      <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-slate-700 bg-slate-800 p-2 text-left shadow-lg shadow-black/50">
                         <p className="mb-0.5 text-xs font-semibold text-slate-400">
                           🎵 セットリスト
                         </p>
@@ -487,7 +501,7 @@ export function SlotCard({
                     ⏱+{band.customTransitionMinutes}分
                   </span>
                 )}
-              </p>
+              </div>
               <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>

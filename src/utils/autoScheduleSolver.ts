@@ -2340,3 +2340,83 @@ export function improveDayByLiveComposition(
 
   return { slots, summary };
 }
+
+export type RelaxedPlacementResult = {
+  slots: TimetableSlot[];
+  /** Bands this pass placed by relaxing CONSECUTIVE_APPEARANCE/
+   * BLOCK_CONCENTRATION — always worth telling the organizer about, since
+   * those two rules exist to prevent exactly the arrangement this pass
+   * just allowed. */
+  placedBandIds: string[];
+  /** Bands that still couldn't be placed even here — no empty slot
+   * satisfied their own TIME_CONSTRAINT (day/time-window eligibility),
+   * the one constraint this pass never breaks. */
+  stillUnplacedBandIds: string[];
+};
+
+// Step 4 — last resort only, called from useAppStore.ts's autoScheduleAllDays
+// after Step 1 (solveDayAssignment) and Step 3 (improveDayByLiveComposition)
+// still leave bands unplaced. Normal auto-schedule never breaks a hard
+// constraint; this is the one deliberate exception, and only for bands
+// that would otherwise go unplaced entirely. For each still-unplaced band,
+// in order, this searches the day's remaining empty performance slots for
+// the one whose OWN TIME_CONSTRAINT the band satisfies (day restriction +
+// desiredTime/ngTime — never relaxed, since forcing a band into a day/time
+// it explicitly can't do would defeat the point of that field) that
+// introduces the fewest CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION
+// violations among the day's other already-placed bands, ties broken by
+// whichever slot comes first in the day. A band with no TIME_CONSTRAINT-
+// satisfying empty slot at all is left in stillUnplacedBandIds — this pass
+// can only shrink the "impossible to place" set, never force a band
+// somewhere its own time constraint rules out.
+export function placeRemainingBandsRelaxed(
+  slots: TimetableSlot[],
+  unplacedBandIds: string[],
+  day: TimetableDay,
+  allBands: Band[],
+  venueHours: VenueHours,
+): RelaxedPlacementResult {
+  const bandMap = new Map(allBands.map((b) => [b.id, b]));
+  let currentSlots = slots;
+  const placedBandIds: string[] = [];
+  const stillUnplacedBandIds: string[] = [];
+
+  for (const bandId of unplacedBandIds) {
+    const band = bandMap.get(bandId);
+    if (!band) {
+      stillUnplacedBandIds.push(bandId);
+      continue;
+    }
+
+    const candidateSlotIds = currentSlots
+      .filter((s) => s.bandId === null && canPlaceBandInSlot(band, day, s, venueHours))
+      .map((s) => s.id);
+
+    let best: { slots: TimetableSlot[]; violationCount: number } | null = null;
+    for (const targetSlotId of candidateSlotIds) {
+      const candidateSlots = applyOptimizationMove(
+        currentSlots,
+        { type: "PLACE", bandId, targetSlotId },
+        day,
+        allBands,
+      );
+      const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
+      const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
+        (v) => v.type !== "TIME_CONSTRAINT",
+      ).length;
+      if (best === null || violationCount < best.violationCount) {
+        best = { slots: candidateSlots, violationCount };
+      }
+      if (violationCount === 0) break;
+    }
+
+    if (best === null) {
+      stillUnplacedBandIds.push(bandId);
+      continue;
+    }
+    currentSlots = best.slots;
+    placedBandIds.push(bandId);
+  }
+
+  return { slots: currentSlots, placedBandIds, stillUnplacedBandIds };
+}
