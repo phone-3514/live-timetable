@@ -2,11 +2,18 @@ import { useState } from "react";
 import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
-import { EditBandButton, HighParticipationBadge, MemberBadgeList, SetlistLines } from "./ApplicationTable";
+import {
+  EditBandButton,
+  HighParticipationBadge,
+  MemberBadgeList,
+  MemberFrameDetailButton,
+  SetlistLines,
+} from "./ApplicationTable";
 import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 
 type Props = {
   app: Application;
+  applications: Application[];
   highParticipationInfo: HighParticipationInfo;
   onApprove: (id: string) => void;
   onUnapprove: (id: string) => void;
@@ -25,6 +32,7 @@ type Props = {
 // would risk.
 export function ApplicationMobileCard({
   app,
+  applications,
   highParticipationInfo,
   onApprove,
   onUnapprove,
@@ -128,6 +136,11 @@ export function ApplicationMobileCard({
             className="min-h-11 flex-1 rounded-md border-2 border-slate-600 text-sm font-semibold text-slate-300 hover:bg-slate-700"
           />
         )}
+        <MemberFrameDetailButton
+          app={app}
+          applications={applications}
+          className="min-h-11 flex-1 rounded-md border-2 border-slate-600 text-sm font-semibold text-slate-300 hover:bg-slate-700"
+        />
       </div>
     </div>
   );

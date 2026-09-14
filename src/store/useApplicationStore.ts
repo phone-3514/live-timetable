@@ -235,7 +235,7 @@ export function computeMemberFrameCounts(
   return result;
 }
 
-const HIGH_PARTICIPATION_THRESHOLD = 3;
+export const HIGH_PARTICIPATION_THRESHOLD = 3;
 
 export type HighParticipationInfo = {
   /** Number of this band's members whose total frame count across all
@@ -294,5 +294,40 @@ export function remainingCountsIfRemoved(
         a.members.some((m) => normalizeMemberName(m.name) === normalizedTarget),
     ).length;
     return { name: member.name, part: member.part, remaining };
+  });
+}
+
+export type MemberFrameDetail = {
+  name: string;
+  part: string;
+  grade: string;
+  /** Every band (this one included) this member's name matches across all
+   * applications, in first-seen order and deduped by band name. */
+  bandNames: string[];
+};
+
+/**
+ * For each member listed on `app`, the concrete list of bands (across ALL
+ * applications, this one included) their name also appears on — the
+ * band-by-band detail behind computeMemberFrameCounts' bare number. Powers
+ * the Application Manager's per-band "メンバー枠数" popup, where an
+ * organizer wants to see exactly which bands a member is spread across,
+ * not just how many.
+ */
+export function listMemberFrameDetails(
+  applications: Application[],
+  app: Application,
+): MemberFrameDetail[] {
+  return app.members.map((member) => {
+    const normalizedTarget = normalizeMemberName(member.name);
+    const bandNames: string[] = [];
+    const seen = new Set<string>();
+    for (const a of applications) {
+      if (seen.has(a.bandName)) continue;
+      if (!a.members.some((m) => normalizeMemberName(m.name) === normalizedTarget)) continue;
+      seen.add(a.bandName);
+      bandNames.push(a.bandName);
+    }
+    return { name: member.name, part: member.part, grade: member.grade, bandNames };
   });
 }

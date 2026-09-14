@@ -12,6 +12,7 @@ import { Badge } from "./Badge";
 import { ApplicationMobileCard } from "./ApplicationMobileCard";
 import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
+import { MemberFrameDetailModal } from "./MemberFrameDetailModal";
 
 type SortKey =
   | "applicantName"
@@ -116,6 +117,36 @@ export function EditBandButton({ bandId, className }: { bandId: string; classNam
         編集
       </button>
       {showEdit && <PlacedBandDetailModal band={band} onClose={() => setShowEdit(false)} />}
+    </>
+  );
+}
+
+// Opens MemberFrameDetailModal for one band — the concrete band-by-band
+// breakdown behind this row's own HighParticipationBadge count. Needs the
+// full applications list (not just this row's app) since a member's other
+// bands live in other rows entirely.
+export function MemberFrameDetailButton({
+  app,
+  applications,
+  className,
+}: {
+  app: Application;
+  applications: Application[];
+  className: string;
+}) {
+  const [showDetail, setShowDetail] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setShowDetail(true)} className={className}>
+        👥 枠数
+      </button>
+      {showDetail && (
+        <MemberFrameDetailModal
+          app={app}
+          applications={applications}
+          onClose={() => setShowDetail(false)}
+        />
+      )}
     </>
   );
 }
@@ -274,6 +305,7 @@ export function ApplicationTable({
             <ApplicationMobileCard
               key={app.id}
               app={app}
+              applications={applications}
               highParticipationInfo={highParticipationByAppId.get(app.id)!}
               onApprove={onApprove}
               onUnapprove={onUnapprove}
@@ -405,6 +437,11 @@ export function ApplicationTable({
                           className="rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
                         />
                       )}
+                      <MemberFrameDetailButton
+                        app={app}
+                        applications={applications}
+                        className="rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+                      />
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
