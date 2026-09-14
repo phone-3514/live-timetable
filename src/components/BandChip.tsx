@@ -55,8 +55,16 @@ export function BandChip({ band, onHoverStart, onHoverEnd, selected, onToggleSel
       // why one declaration here covers every child. touch-pan-x matches
       // this strip's actual scroll axis below lg (horizontal); lg+
       // switches to touch-pan-y once the layout itself switches to a
-      // vertical sidebar list.
-      className={`flex min-h-11 w-32 shrink-0 touch-pan-x select-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:w-full lg:shrink lg:touch-pan-y [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
+      // vertical sidebar list. md:min-h-0 drops the mobile/tablet minimum
+      // so the horizontal strip stays a compact fixed-height band (it
+      // competes with the timetable canvas for vertical space there — see
+      // BandListPanel's own comment); lg:min-h-9 restores a comfortable
+      // hover/click target once the layout is a dedicated vertical
+      // sidebar column with no such competition — the whole visible row
+      // (border box, same element this hover/click handler is on) is
+      // already the hit area, but at 0 minimum height it shrank to ~26px,
+      // uncomfortably small to reliably hover/click.
+      className={`flex min-h-11 w-32 shrink-0 touch-pan-x select-none cursor-grab items-center gap-1 rounded border px-1.5 py-1 text-xs transition-transform active:cursor-grabbing md:min-h-0 lg:min-h-9 lg:w-full lg:shrink lg:touch-pan-y [-webkit-touch-callout:none] [-webkit-user-drag:none] ${
         isDragging ? "relative z-50 scale-105 opacity-60" : ""
       } ${
         selected
