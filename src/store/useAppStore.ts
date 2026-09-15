@@ -353,9 +353,19 @@ function findAutoBreakInsertIndex(
   return best?.index ?? null;
 }
 
+// Sentinel allowedDayIds entry meaning "the band's day-of-month hint
+// doesn't match any day currently in the timetable" (e.g. a band wants
+// "27日" but only day 26 has been added so far). It's never a real day id
+// (those are crypto.randomUUID()), so canPlaceBandInSlot's `.includes(day.id)`
+// never matches it and the band is correctly excluded from every existing
+// day — as opposed to [], which means "unrestricted" everywhere else in
+// this codebase and would wrongly let the band land on any day.
+export const UNRESOLVED_DAY_ID = "__unresolved_day__";
+
 // Resolves a band's desiredTime/ngTime day-of-month hints ("13日") into
 // actual day ids by matching against each TimetableDay's calendar date.
-// Returns [] (unrestricted) when hints or day dates aren't available.
+// Returns [] (unrestricted) when hints or day dates aren't available, or
+// [UNRESOLVED_DAY_ID] when a hint is present but matches no existing day.
 export function resolveAllowedDayIds(band: Band, days: TimetableDay[]): string[] {
   const dayNumberToIds = new Map<number, string[]>();
   for (const day of days) {
@@ -390,6 +400,7 @@ export function resolveAllowedDayIds(band: Band, days: TimetableDay[]): string[]
     }
   }
   if (!allowed) return [];
+  if (allowed.size === 0) return [UNRESOLVED_DAY_ID];
   return [...allowed];
 }
 
@@ -535,7 +546,14 @@ export const useAppStore = create<AppState>()(
       const allDayIds = state.days.map((d) => d.id);
       const bands = state.bands.map((b) => {
         if (b.id !== bandId) return b;
-        const current = b.allowedDayIds.length > 0 ? b.allowedDayIds : allDayIds;
+        // [] reads in the UI as "every day checked" (unrestricted), so toggling
+        // starts from the full day list; UNRESOLVED_DAY_ID reads as "every real
+        // day unchecked" (matches no day), so it's dropped rather than treated
+        // as a day to start from.
+        const current =
+          b.allowedDayIds.length === 0
+            ? allDayIds
+            : b.allowedDayIds.filter((id) => id !== UNRESOLVED_DAY_ID);
         const next = current.includes(dayId)
           ? current.filter((id) => id !== dayId)
           : [...current, dayId];
