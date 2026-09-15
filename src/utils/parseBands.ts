@@ -144,6 +144,34 @@ export function extractDayOfMonthHints(text: string): number[] {
   return [...hits];
 }
 
+// A loose signal that `text` is probably trying to state a day-of-month,
+// broader than the exact shapes above (DAY_SUFFIX_RE/SLASH_DATE_RE/
+// WEEKDAY_PAREN_RE) — mirrors BARE_TIME_TOKEN_RE/hasUnparsedTimeExpression
+// below: a 1-2 digit number sitting right next to a date-ish marker (日,
+// a slash pair, or a parenthesized weekday) is enough to flag even when
+// the exact recognized punctuation/spacing doesn't line up (e.g. "26,27
+//日", an out-of-range "9/32", unexpected spacing/punctuation before 日).
+const BARE_DAY_TOKEN_RE = new RegExp(
+  String.raw`\d{1,2}[^\d]{0,2}日` +
+    String.raw`|\d{1,2}\s*[/／]\s*\d{1,2}` +
+    String.raw`|\d{1,2}\s*[(（][月火水木金土日][)）]`,
+);
+
+// True when `text` mentions something that looks like a day-of-month but
+// extractDayOfMonthHints still couldn't extract anything at all — same
+// reasoning as hasUnparsedTimeExpression: that combination means the
+// band's own stated day intent got silently discarded (treated as "any
+// day is fine") rather than genuinely being unrestricted, so it's worth
+// surfacing to the organizer rather than acting on it silently. Built by
+// composing a loose "does this look like a date" check against the real
+// extractor's own failure, rather than hand-maintaining a list of known
+// bad phrasings — any phrasing extractDayOfMonthHints later learns to
+// parse automatically stops triggering this warning too.
+export function hasUnparsedDayHint(text: string): boolean {
+  if (!text || !BARE_DAY_TOKEN_RE.test(text)) return false;
+  return extractDayOfMonthHints(text).length === 0;
+}
+
 // ---------- Time-of-day hints (e.g. "18:00-19:00", "10時〜14時", -----------
 // ---------- "14時以降", "〜14:00", "14時まで") -----------------------------
 //

@@ -1,6 +1,6 @@
 import type { Band } from "../types";
 import { useAppStore } from "../store/useAppStore";
-import { hasUnparsedTimeExpression } from "../utils/parseBands";
+import { hasUnparsedDayHint, hasUnparsedTimeExpression } from "../utils/parseBands";
 
 type Props = { band: Band };
 
@@ -20,6 +20,10 @@ export function BandDetailsForm({ band }: Props) {
   // it as unrestricted.
   const desiredTimeUnparsed = hasUnparsedTimeExpression(band.desiredTime);
   const ngTimeUnparsed = hasUnparsedTimeExpression(band.ngTime);
+  // Same reasoning, for day-of-month hints ("27日"/"9/27"/"27(日)") instead
+  // of clock times — see hasUnparsedDayHint's own doc.
+  const desiredDayUnparsed = hasUnparsedDayHint(band.desiredTime);
+  const ngDayUnparsed = hasUnparsedDayHint(band.ngTime);
 
   return (
     <div className="space-y-1.5">
@@ -53,27 +57,31 @@ export function BandDetailsForm({ band }: Props) {
       <div className="flex gap-2 text-xs">
         <input
           className={`flex-1 border-b bg-transparent text-slate-400 outline-none focus:border-slate-500 ${
-            desiredTimeUnparsed ? "border-amber-500" : "border-transparent"
+            desiredTimeUnparsed || desiredDayUnparsed ? "border-amber-500" : "border-transparent"
           }`}
           value={band.desiredTime}
           placeholder="希望時間帯"
           title={
             desiredTimeUnparsed
               ? "この書き方は自動配置に認識されていない可能性があります（例:「16:00以降」「〜16:00」のように書き直してください）"
-              : undefined
+              : desiredDayUnparsed
+                ? "この書き方は自動配置に認識されていない可能性があります（例:「27日」「9/27」のように書き直してください）"
+                : undefined
           }
           onChange={(e) => updateBand(band.id, { desiredTime: e.target.value })}
         />
         <input
           className={`flex-1 border-b bg-transparent text-rose-400 outline-none focus:border-slate-500 ${
-            ngTimeUnparsed ? "border-amber-500" : "border-transparent"
+            ngTimeUnparsed || ngDayUnparsed ? "border-amber-500" : "border-transparent"
           }`}
           value={band.ngTime}
           placeholder="NG時間帯"
           title={
             ngTimeUnparsed
               ? "この書き方は自動配置に認識されていない可能性があります（例:「16:00以降」「〜16:00」のように書き直してください）"
-              : undefined
+              : ngDayUnparsed
+                ? "この書き方は自動配置に認識されていない可能性があります（例:「27日」「9/27」のように書き直してください）"
+                : undefined
           }
           onChange={(e) => updateBand(band.id, { ngTime: e.target.value })}
         />
@@ -81,6 +89,11 @@ export function BandDetailsForm({ band }: Props) {
       {(desiredTimeUnparsed || ngTimeUnparsed) && (
         <p className="text-xs text-amber-400">
           ⚠ 希望時間・NG時間の書き方が自動配置に認識されていない可能性があります（時間指定なしとして扱われます）。「16:00以降」「〜16:00」のような書き方に直してください。
+        </p>
+      )}
+      {(desiredDayUnparsed || ngDayUnparsed) && (
+        <p className="text-xs text-amber-400">
+          ⚠ 希望日・NG日の書き方が自動配置に認識されていない可能性があります（日程指定なしとして扱われます）。「27日」「9/27」のような書き方に直してください。
         </p>
       )}
       <div className="flex gap-2 text-xs">
