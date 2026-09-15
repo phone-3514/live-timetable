@@ -127,12 +127,20 @@ const DAY_NUM_SRC = String.raw`(?:3[01]|[12]\d|[1-9])`;
 // for short multi-day events.
 const DAY_SUFFIX_RE = new RegExp(`(${DAY_NUM_SRC})\\s*日`, "g");
 const SLASH_DATE_RE = new RegExp(`\\d{1,2}\\/(${DAY_NUM_SRC})`, "g");
+// "27(日)"/"27（日）" — a day-of-month followed by its parenthesized weekday
+// kanji, not the ordinal "日" suffix DAY_SUFFIX_RE matches (the "(" sits
+// between the digits and "日", so that regex never fires on this form).
+const WEEKDAY_PAREN_RE = new RegExp(
+  `(${DAY_NUM_SRC})\\s*[(（][月火水木金土日][)）]`,
+  "g",
+);
 
 export function extractDayOfMonthHints(text: string): number[] {
   if (!text) return [];
   const hits = new Set<number>();
   for (const m of text.matchAll(DAY_SUFFIX_RE)) hits.add(Number(m[1]));
   for (const m of text.matchAll(SLASH_DATE_RE)) hits.add(Number(m[1]));
+  for (const m of text.matchAll(WEEKDAY_PAREN_RE)) hits.add(Number(m[1]));
   return [...hits];
 }
 
