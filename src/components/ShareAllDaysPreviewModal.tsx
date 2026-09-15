@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { ShareTimetableTemplate } from "./ShareTimetableTemplate";
+import { ShareAllDaysTemplate } from "./ShareAllDaysTemplate";
 import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
@@ -12,11 +12,11 @@ type Props = { onClose: () => void };
 
 // Same capture/scaling approach as SharePreviewModal (see its comments for
 // why the measurement/off-screen-capture dance is shaped the way it is) —
-// duplicated rather than shared because the two differ only in what they
-// render into that shape: one ShareTimetableTemplate here becomes several,
-// laid out in a single flex row so every day lands in one image exactly as
-// wide as the per-day images placed edge to edge, with no other layout or
-// theming changes.
+// duplicated rather than shared because the two differ in what they render
+// into that shape: SharePreviewModal captures one ShareTimetableTemplate,
+// this captures one ShareAllDaysTemplate (see that file for the combined
+// layout itself — one shared header/background across every day instead of
+// each day carrying its own).
 export function ShareAllDaysPreviewModal({ onClose }: Props) {
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
@@ -157,19 +157,13 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
                 transformOrigin: "top left",
               }}
             >
-              <div style={{ display: "flex" }}>
-                {days.map((day) => (
-                  <ShareTimetableTemplate
-                    key={day.id}
-                    day={day}
-                    bands={bands}
-                    themeId={themeId}
-                    layoutId={layoutId}
-                    eventInfo={eventInfo}
-                    isSingleDay={false}
-                  />
-                ))}
-              </div>
+              <ShareAllDaysTemplate
+                days={days}
+                bands={bands}
+                themeId={themeId}
+                layoutId={layoutId}
+                eventInfo={eventInfo}
+              />
             </div>
           </div>
         </div>
@@ -198,18 +192,14 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
         style={{ position: "fixed", top: 0, left: -10000, pointerEvents: "none" }}
         aria-hidden="true"
       >
-        <div ref={captureRef} style={{ display: "flex" }}>
-          {days.map((day) => (
-            <ShareTimetableTemplate
-              key={day.id}
-              day={day}
-              bands={bands}
-              themeId={themeId}
-              layoutId={layoutId}
-              eventInfo={eventInfo}
-              isSingleDay={false}
-            />
-          ))}
+        <div ref={captureRef}>
+          <ShareAllDaysTemplate
+            days={days}
+            bands={bands}
+            themeId={themeId}
+            layoutId={layoutId}
+            eventInfo={eventInfo}
+          />
         </div>
       </div>
     </div>
