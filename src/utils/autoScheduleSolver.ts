@@ -2342,45 +2342,70 @@ export function improveDayByLiveComposition(
 }
 
 export type RelaxedPlacementResult = {
-  /** Updated slots for every day this pass touched — only days that
-   * actually received a placement appear here, so a caller can patch just
-   * those days rather than rewriting every day's slots unconditionally. */
+  /** Every day's final slots (recomputed), one entry per day this pass
+   * was given — a caller can always just overwrite each day with its
+   * entry here, whether or not that particular day actually changed. */
   slotsByDayId: Map<string, TimetableSlot[]>;
-  /** Bands this pass placed by relaxing CONSECUTIVE_APPEARANCE/
-   * BLOCK_CONCENTRATION — always worth telling the organizer about, since
-   * those two rules exist to prevent exactly the arrangement this pass
-   * just allowed. */
+  /** Every band whose seat changed from where Step 1+3 left it — a newly-
+   * seated band, or an already-seated one this pass displaced to make
+   * room for another. Always worth telling the organizer about, since
+   * CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION exist to prevent exactly
+   * the arrangements this pass allows itself to reach for. */
   placedBandIds: string[];
-  /** Bands that still couldn't be placed even here — no empty slot on any
-   * day satisfied their own TIME_CONSTRAINT (day/time-window eligibility),
-   * the one constraint this pass never breaks. */
+  /** Bands that still couldn't be seated even here — no rearrangement,
+   * however disruptive, could find them a TIME_CONSTRAINT-eligible seat
+   * (day/time-window eligibility), the one constraint this pass never
+   * breaks. */
   stillUnplacedBandIds: string[];
 };
+
+type RelaxedSlotKey = string; // `${dayId}::${slotId}`
+function relaxedSlotKey(dayId: string, slotId: string): RelaxedSlotKey {
+  return `${dayId}::${slotId}`;
+}
 
 // Step 4 — last resort only, called from useAppStore.ts's autoScheduleAllDays
 // after Step 1 (solveDayAssignment) and Step 3 (improveDayByLiveComposition)
 // still leave bands unplaced on one or more days. Normal auto-schedule
-// never breaks a hard constraint; this is the one deliberate exception,
-// and only for bands that would otherwise go unplaced entirely.
+// never breaks a hard constraint; this is the one deliberate exception, and
+// only for bands that would otherwise go unplaced entirely — getting
+// everyone seated is the explicit priority here, ahead of
+// CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION (both allowed to break) and
+// ahead of Step 1's per-day band-count balance (a still-unplaced band may
+// land on a different day than it was originally assigned to, or bump an
+// already-seated band to a different slot/day, if that's what it takes).
+// TIME_CONSTRAINT (day restriction + desiredTime/ngTime) is the one
+// exception that's never relaxed — forcing a band into a day/time it
+// explicitly can't do would defeat the point of that field, so a band
+// left in stillUnplacedBandIds has no TIME_CONSTRAINT-eligible seat
+// anywhere, full stop, no rearrangement can fix that.
 //
-// Searches ACROSS every day, not just the one Step 1's balancing pass
-// originally assigned the band to — a band that has no room on its own
-// day but does on another (and is eligible there, per its own
-// TIME_CONSTRAINT) should still get placed, even at the cost of the two
-// days ending up with uneven band counts; an organizer would always
-// rather have every band scheduled than have Step 1's balance preserved
-// at the cost of leaving one unplaced. For each still-unplaced band, in
-// order, this searches every day's remaining empty performance slots for
-// the one whose OWN TIME_CONSTRAINT the band satisfies (day restriction +
-// desiredTime/ngTime — never relaxed, since forcing a band into a day/time
-// it explicitly can't do would defeat the point of that field) that
-// introduces the fewest CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION
-// violations among that day's other already-placed bands, ties broken by
-// whichever day/slot comes first in iteration order. A band with no
-// TIME_CONSTRAINT-satisfying empty slot on ANY day is left in
-// stillUnplacedBandIds — this pass can only shrink the "impossible to
-// place" set, never force a band somewhere its own time constraint rules
-// out.
+// This is bipartite-matching territory (bands ↔ slots, edges = TIME_
+// CONSTRAINT eligibility, existing occupants may need to move), not just
+// "place into an empty slot" — a band can be unseatable directly while
+// still being seatable by first moving someone ELSE out of a slot that
+// suits both of them. So this runs Kuhn's algorithm (DFS augmenting-path
+// search): to seat band X, try every TIME_CONSTRAINT-eligible slot; an
+// empty one seats X immediately, an occupied one seats X only if its
+// current occupant can itself be (recursively) moved somewhere else
+// first. Standard graph theory guarantees this finds every band a seat
+// that CAN be given one via some rearrangement, regardless of the order
+// bands are processed in — this pass places the maximum number of bands
+// achievable while holding TIME_CONSTRAINT fixed, not just whatever a
+// single greedy left-to-right pass happens to find.
+//
+// Among the (possibly several) TIME_CONSTRAINT-eligible candidates at
+// each step, candidates are tried in order of least disruptive first —
+// an empty slot before an occupied one, and among same-tier candidates,
+// the one leaving fewest CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION
+// violations and (as a tiebreak) the higher evaluateSchedule score for
+// that day's resulting arrangement. That ordering doesn't change WHETHER
+// a band can be seated (the recursive fallback still tries every
+// candidate if the preferred one doesn't pan out), only which valid
+// seating gets found — so within "seat everyone possible" as the
+// non-negotiable top priority, this also favors the least-relaxed,
+// best-scoring arrangement per the same "score" the rest of auto-schedule
+// already optimizes for.
 export function placeRemainingBandsRelaxed(
   slotsByDayId: Map<string, TimetableSlot[]>,
   unplacedBandIds: string[],
@@ -2390,51 +2415,129 @@ export function placeRemainingBandsRelaxed(
 ): RelaxedPlacementResult {
   const bandMap = new Map(allBands.map((b) => [b.id, b]));
   const dayMap = new Map(days.map((d) => [d.id, d]));
-  const currentSlotsByDayId = new Map(slotsByDayId);
-  const placedBandIds: string[] = [];
-  const stillUnplacedBandIds: string[] = [];
 
-  for (const bandId of unplacedBandIds) {
-    const band = bandMap.get(bandId);
-    if (!band) {
-      stillUnplacedBandIds.push(bandId);
-      continue;
+  // The working assignment this whole search reads/mutates — slotsByDayId
+  // itself is only rebuilt from this at the very end. Only performance
+  // slots participate; a customLabel row is never a placement target.
+  const assignment = new Map<RelaxedSlotKey, string | null>();
+  const slotDayId = new Map<RelaxedSlotKey, string>();
+  for (const [dayId, slots] of slotsByDayId) {
+    for (const slot of slots) {
+      if (slot.customLabel !== null) continue;
+      const key = relaxedSlotKey(dayId, slot.id);
+      assignment.set(key, slot.bandId);
+      slotDayId.set(key, dayId);
     }
-
-    let best: { dayId: string; slots: TimetableSlot[]; violationCount: number } | null = null;
-    for (const [dayId, slots] of currentSlotsByDayId) {
-      const day = dayMap.get(dayId);
-      if (!day) continue;
-      const candidateSlotIds = slots
-        .filter((s) => s.bandId === null && canPlaceBandInSlot(band, day, s, venueHours))
-        .map((s) => s.id);
-
-      for (const targetSlotId of candidateSlotIds) {
-        const candidateSlots = applyOptimizationMove(
-          slots,
-          { type: "PLACE", bandId, targetSlotId },
-          day,
-          allBands,
-        );
-        const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
-        const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
-          (v) => v.type !== "TIME_CONSTRAINT",
-        ).length;
-        if (best === null || violationCount < best.violationCount) {
-          best = { dayId, slots: candidateSlots, violationCount };
-        }
-        if (violationCount === 0) break;
-      }
-      if (best !== null && best.violationCount === 0) break;
-    }
-
-    if (best === null) {
-      stillUnplacedBandIds.push(bandId);
-      continue;
-    }
-    currentSlotsByDayId.set(best.dayId, best.slots);
-    placedBandIds.push(bandId);
   }
 
-  return { slotsByDayId: currentSlotsByDayId, placedBandIds, stillUnplacedBandIds };
+  function slotById(dayId: string, slotId: string): TimetableSlot {
+    return slotsByDayId.get(dayId)!.find((s) => s.id === slotId)!;
+  }
+
+  // TIME_CONSTRAINT-eligible slots for `band` — the fixed feasibility graph
+  // this whole search operates over. Independent of `assignment` (day/time
+  // eligibility never depends on who else is currently seated), so it's
+  // safe and cheap to recompute on every call rather than cache.
+  function eligibleSlotKeys(band: Band): RelaxedSlotKey[] {
+    const keys: RelaxedSlotKey[] = [];
+    for (const key of assignment.keys()) {
+      const dayId = slotDayId.get(key)!;
+      const [, slotId] = key.split("::");
+      const day = dayMap.get(dayId);
+      if (day && canPlaceBandInSlot(band, day, slotById(dayId, slotId), venueHours)) {
+        keys.push(key);
+      }
+    }
+    return keys;
+  }
+
+  // How much seating `bandId` at `key` (on top of the CURRENT `assignment`,
+  // as-is elsewhere) would cost — used only to order candidates, never to
+  // decide feasibility. CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION are
+  // day-local, so only the one day `key` belongs to needs checking.
+  function candidateCost(
+    key: RelaxedSlotKey,
+    bandId: string,
+  ): { violationCount: number; score: number } {
+    const dayId = slotDayId.get(key)!;
+    const day = dayMap.get(dayId)!;
+    const baseSlots = slotsByDayId.get(dayId)!;
+    const candidateSlots = baseSlots.map((s) => {
+      if (s.customLabel !== null) return s;
+      const k = relaxedSlotKey(dayId, s.id);
+      const bid = k === key ? bandId : (assignment.get(k) ?? null);
+      return bid === s.bandId ? s : { ...s, bandId: bid };
+    });
+    const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
+    const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
+      (v) => v.type !== "TIME_CONSTRAINT",
+    ).length;
+    const { totalScore } = evaluateSchedule(candidateSlots, context);
+    return { violationCount, score: totalScore };
+  }
+
+  // Kuhn's algorithm: DFS for an augmenting path seating `bandId`, only
+  // ever mutating `assignment` once a full path (empty seat at the far
+  // end) is confirmed — a failed attempt leaves `assignment` untouched, so
+  // callers can safely try the next band regardless of this one's outcome.
+  function tryAugment(bandId: string, visited: Set<RelaxedSlotKey>): boolean {
+    const band = bandMap.get(bandId);
+    if (!band) return false;
+    const candidates = eligibleSlotKeys(band)
+      .filter((key) => !visited.has(key))
+      .map((key) => {
+        const occupant = assignment.get(key) ?? null;
+        const cost = candidateCost(key, bandId);
+        return { key, occupant, ...cost };
+      })
+      .sort((a, b) => {
+        const aEmpty = a.occupant === null ? 0 : 1;
+        const bEmpty = b.occupant === null ? 0 : 1;
+        if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+        if (a.violationCount !== b.violationCount) return a.violationCount - b.violationCount;
+        return b.score - a.score;
+      });
+
+    for (const { key, occupant } of candidates) {
+      visited.add(key);
+      if (occupant === null || tryAugment(occupant, visited)) {
+        assignment.set(key, bandId);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const stillUnplacedBandIds: string[] = [];
+  for (const bandId of unplacedBandIds) {
+    if (!tryAugment(bandId, new Set())) {
+      stillUnplacedBandIds.push(bandId);
+    }
+  }
+
+  // Rebuild every day's slots from the final `assignment`, and collect
+  // every band whose seat actually changed from where Step 1+3 left it —
+  // a displaced incumbent counts just as much as a newly-seated band, both
+  // worth telling the organizer about.
+  const movedBandIds = new Set<string>();
+  const resultSlotsByDayId = new Map<string, TimetableSlot[]>();
+  for (const [dayId, slots] of slotsByDayId) {
+    const day = dayMap.get(dayId)!;
+    const nextSlots = slots.map((slot) => {
+      if (slot.customLabel !== null) return slot;
+      const key = relaxedSlotKey(dayId, slot.id);
+      const newBandId = assignment.get(key) ?? null;
+      if (newBandId === slot.bandId) return slot;
+      if (newBandId !== null) movedBandIds.add(newBandId);
+      if (slot.bandId !== null) movedBandIds.add(slot.bandId);
+      return { ...slot, bandId: newBandId };
+    });
+    resultSlotsByDayId.set(dayId, recomputeTimes(nextSlots, day.settings, allBands));
+  }
+
+  return {
+    slotsByDayId: resultSlotsByDayId,
+    placedBandIds: [...movedBandIds],
+    stillUnplacedBandIds,
+  };
 }
