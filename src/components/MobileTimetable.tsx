@@ -14,6 +14,7 @@ import { useHistoryStore } from "../store/useHistoryStore";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { MobileSlotCard } from "./MobileSlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
+import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
 import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
@@ -151,6 +152,7 @@ export function MobileTimetable() {
   // picker first (below) instead of guessing which day the user meant.
   const [exportDayId, setExportDayId] = useState<string | null>(null);
   const [showDayPicker, setShowDayPicker] = useState(false);
+  const [showShareAllDays, setShowShareAllDays] = useState(false);
   const exportDay = days.find((d) => d.id === exportDayId) ?? null;
 
   const reviewIssueCount = useMemo(() => {
@@ -402,6 +404,15 @@ export function MobileTimetable() {
           >
             <p className="mb-2 px-1 text-xs font-semibold text-slate-400">書き出す日を選択</p>
             <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => {
+                  setShowShareAllDays(true);
+                  setShowDayPicker(false);
+                }}
+                className="min-h-11 rounded-lg border border-indigo-600 bg-indigo-950/40 px-3 text-left text-sm font-medium text-indigo-300"
+              >
+                🖼 全日程まとめて
+              </button>
               {days.map((d) => (
                 <button
                   key={d.id}
@@ -422,6 +433,9 @@ export function MobileTimetable() {
       )}
 
       {exportDay && <SharePreviewModal day={exportDay} onClose={() => setExportDayId(null)} />}
+      {showShareAllDays && (
+        <ShareAllDaysPreviewModal onClose={() => setShowShareAllDays(false)} />
+      )}
     </div>
   );
 }

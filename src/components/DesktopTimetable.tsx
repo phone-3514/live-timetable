@@ -11,6 +11,7 @@ import { useFuriganaStore } from "../store/useFuriganaStore";
 import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { DayPanel } from "./DayPanel";
+import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
@@ -59,6 +60,7 @@ export function DesktopTimetable() {
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
+  const [showShareAllDays, setShowShareAllDays] = useState(false);
   const autoScheduleDebugEntryCount = useAutoScheduleDebugStore((s) => s.entries.length);
   const [exportingRoster, setExportingRoster] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -284,6 +286,9 @@ export function DesktopTimetable() {
               {exportingRoster ? "生成中…" : "📇 参加者名簿を出力"}
             </button>
             <button onClick={() => setShowFuriganaImport(true)} className="rounded px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700">📥 ふりがな取込</button>
+            {days.length >= 2 && (
+              <button onClick={() => setShowShareAllDays(true)} className="rounded px-3 py-2 text-left text-xs text-indigo-300 hover:bg-slate-700">🖼 全日程まとめて共有用画像</button>
+            )}
             <button onClick={autoDetectDayRestrictions} className="rounded px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-700">🔄 日程制限を再判定</button>
             <div className="my-0.5 border-t border-slate-700" />
             <button onClick={handleReset} className="rounded px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/40">↩️ 配置をリセット</button>
@@ -334,6 +339,9 @@ export function DesktopTimetable() {
       )}
       {showAutoScheduleDebug && (
         <AutoScheduleDebugModal onClose={() => setShowAutoScheduleDebug(false)} />
+      )}
+      {showShareAllDays && (
+        <ShareAllDaysPreviewModal onClose={() => setShowShareAllDays(false)} />
       )}
     </div>
   );
