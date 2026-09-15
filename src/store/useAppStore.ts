@@ -1247,11 +1247,26 @@ export const useAppStore = create<AppState>()(
       // browser right now, not just newly-created bands going forward.
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppState>) ?? {};
+        const days = persisted.days ?? currentState.days;
         const bands = persisted.bands ?? currentState.bands;
         return {
           ...currentState,
           ...persisted,
-          bands: bands.map((b) => ({ ...b, gearTags: b.gearTags ?? [] })),
+          bands: bands.map((b) => {
+            // Data saved before UNRESOLVED_DAY_ID existed can still carry a
+            // stale [] produced by the old bug, where a day-of-month hint
+            // matching no currently-existing day was indistinguishable from
+            // "no restriction" — silently making the band placeable on any
+            // day. Re-resolving here only replaces [] when that's still
+            // exactly what would happen (hint present, still unmatched), so
+            // a deliberate manual "unrestricted" choice via the day
+            // checkboxes is left untouched.
+            const allowedDayIds =
+              b.allowedDayIds.length === 0 && resolveAllowedDayIds(b, days)[0] === UNRESOLVED_DAY_ID
+                ? [UNRESOLVED_DAY_ID]
+                : b.allowedDayIds;
+            return { ...b, gearTags: b.gearTags ?? [], allowedDayIds };
+          }),
         };
       },
     },
