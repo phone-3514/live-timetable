@@ -22,20 +22,77 @@ export const COLUMN_WIDTH = 580;
 export const COLUMN_GAP = 28;
 const MAX_SETLIST_SONGS = 5;
 
-// Fixed two-column split, same as the live UI: first half of the day's
-// slots on the left, second half on the right — see ShareTimetableTemplate's
-// own doc comment for why. Pulled out so both the single-day template and
-// ShareAllDaysTemplate (which needs each day's column count up front, to
-// size a shared canvas before rendering) compute the exact same columns
-// from the exact same rule.
-export function getDayColumns(day: TimetableDay): TimetableSlot[][] {
+// A day's slots, split evenly into `columnCount` columns (chronological
+// order continues top-to-bottom within a column, then left-to-right across
+// columns) — same rule the live UI's default two-column share image has
+// always used, just generalized to any column count so the 16:9 widescreen
+// mode (see chooseWidescreenColumnCount) can widen out past two when there
+// are enough bands to make that worthwhile. `columnCount = 2` (the default)
+// reproduces the original fixed-two-column split exactly. Pulled out so
+// both the single-day template and ShareAllDaysTemplate (which needs each
+// day's column count up front, to size a shared canvas before rendering)
+// compute the exact same columns from the exact same rule.
+export function getDayColumns(day: TimetableDay, columnCount = 2): TimetableSlot[][] {
   const visibleSlots = day.slots.filter(
     (s) => s.bandId !== null || s.customLabel !== null,
   );
-  const half = Math.ceil(visibleSlots.length / 2);
-  return [visibleSlots.slice(0, half), visibleSlots.slice(half)].filter(
-    (c) => c.length > 0,
-  );
+  if (visibleSlots.length === 0) return [];
+  const perColumn = Math.ceil(visibleSlots.length / Math.max(1, columnCount));
+  const columns: TimetableSlot[][] = [];
+  for (let i = 0; i < visibleSlots.length; i += perColumn) {
+    columns.push(visibleSlots.slice(i, i + perColumn));
+  }
+  return columns;
+}
+
+// Rough per-row height estimate used only to pick a column count that
+// makes a widescreen export actually read as widescreen — real card height
+// varies with setlist length/sync-key badges, so this doesn't need to be
+// exact, just close enough that the guess lands in a sane range rather
+// than leaving a packed day tall-and-narrow on a 16:9 screen.
+export const ESTIMATED_ROW_HEIGHT = 150;
+// Measured from an actual rendered header/footer (kicker+title+badge/date+
+// venue+rule, and the org-name+credit footer) — unlike ESTIMATED_ROW_HEIGHT
+// these barely vary with content, so there's little reason to guess loosely.
+export const ESTIMATED_HEADER_HEIGHT = 260;
+export const ESTIMATED_FOOTER_HEIGHT = 56;
+// The outer `gap: 36` gap between header/columns/footer, and again between
+// columns/footer — easy to forget since it's on the flex container, not any
+// one section, but it's ~15% of a typical canvas's height and skewed every
+// estimate toward too many columns before this was accounted for.
+export const ESTIMATED_SECTION_GAP = 36;
+export const WIDESCREEN_TARGET_ASPECT = 16 / 9;
+
+// Picks the column count (1..maxColumns) whose estimated resulting canvas
+// is closest to 16:9 for a single day with `rowCount` visible slots. Used
+// by ShareTimetableTemplate's widescreen mode; ShareAllDaysTemplate has its
+// own joint version across every day (see chooseWidescreenRowTarget there)
+// since a combined canvas's aspect ratio depends on all days at once, not
+// each independently. Diffs are compared in log space (not raw ratio
+// difference) so "twice as wide as the target" and "half as wide" count as
+// equally bad — plain subtraction is skewed since aspect ratios only go up
+// to +∞ but down to 0.
+export function chooseWidescreenColumnCount(rowCount: number, cardGap: number, maxColumns = 6): number {
+  if (rowCount <= 1) return 1;
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let cols = 1; cols <= Math.min(maxColumns, rowCount); cols++) {
+    const rows = Math.ceil(rowCount / cols);
+    const width = CANVAS_PADDING * 2 + COLUMN_WIDTH * cols + COLUMN_GAP * (cols - 1);
+    const height =
+      CANVAS_PADDING * 2 +
+      ESTIMATED_HEADER_HEIGHT +
+      ESTIMATED_SECTION_GAP * 2 +
+      ESTIMATED_FOOTER_HEIGHT +
+      rows * ESTIMATED_ROW_HEIGHT +
+      Math.max(rows - 1, 0) * cardGap;
+    const diff = Math.abs(Math.log(width / height) - Math.log(WIDESCREEN_TARGET_ASPECT));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = cols;
+    }
+  }
+  return best;
 }
 
 export function formatDate(iso: string | null): string | null {
@@ -60,14 +117,16 @@ export function ShareTimetableColumns({
   bands,
   theme,
   layout,
+  columnCount = 2,
 }: {
   day: TimetableDay;
   bands: Band[];
   theme: ShareTheme;
   layout: LayoutStyle;
+  columnCount?: number;
 }) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
-  const columns = getDayColumns(day);
+  const columns = getDayColumns(day, columnCount);
   const orderById = new Map<string, number>();
   let order = 0;
   for (const column of columns) {
@@ -313,6 +372,12 @@ type Props = {
    * pre-existing rendering exactly (every callsite that existed before
    * this prop was added keeps working with zero visual change). */
   layoutId?: LayoutId;
+  /** Widens the column count (see chooseWidescreenColumnCount) to fill a
+   * roughly 16:9 canvas instead of the fixed two columns, for exporting a
+   * high-resolution image meant for a large screen/projector rather than
+   * a phone-shaped share image. Defaults to false — zero change to every
+   * existing callsite. */
+  widescreen?: boolean;
 };
 
 export function ShareTimetableTemplate({
@@ -322,6 +387,7 @@ export function ShareTimetableTemplate({
   eventInfo,
   isSingleDay,
   layoutId = "classic",
+  widescreen = false,
 }: Props) {
   const theme = THEMES[themeId];
   const layout = LAYOUTS[layoutId];
@@ -342,7 +408,9 @@ export function ShareTimetableTemplate({
   // Column count only, for sizing the canvas — the actual column/card
   // rendering lives in ShareTimetableColumns (shared with
   // ShareAllDaysTemplate) and recomputes the same split from `day` itself.
-  const columns = getDayColumns(day);
+  const rowCount = getDayColumns(day, 1)[0]?.length ?? 0;
+  const columnCount = widescreen ? chooseWidescreenColumnCount(rowCount, layout.cardGap) : 2;
+  const columns = getDayColumns(day, columnCount);
   const canvasWidth =
     CANVAS_PADDING * 2 +
     COLUMN_WIDTH * Math.max(columns.length, 1) +
@@ -477,7 +545,7 @@ export function ShareTimetableTemplate({
           )}
         </header>
 
-        <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} />
+        <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} />
 
         <footer className="text-center">
           {eventInfo.organizationName && (

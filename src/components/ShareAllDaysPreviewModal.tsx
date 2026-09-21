@@ -27,6 +27,10 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
   const captureRef = useRef<HTMLDivElement>(null);
   const [themeId, setThemeId] = useState<ThemeId>("standard");
   const [layoutId, setLayoutId] = useState<LayoutId>("classic");
+  // See SharePreviewModal's own widescreen state for the full reasoning —
+  // same toggle, applied to ShareAllDaysTemplate's joint per-day column
+  // count (chooseWidescreenRowTarget) instead of the single-day one.
+  const [widescreen, setWidescreen] = useState(false);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -38,7 +42,7 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [days, bands, themeId, layoutId, eventInfo]);
+  }, [days, bands, themeId, layoutId, widescreen, eventInfo]);
 
   useLayoutEffect(() => {
     const el = previewAreaRef.current;
@@ -60,8 +64,8 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
     if (!el) return;
     setDownloading(true);
     try {
-      const dataUrl = await toPng(el, { pixelRatio: 2 });
-      const filename = `share-timetable-all-days-${themeId}.png`;
+      const dataUrl = await toPng(el, { pixelRatio: widescreen ? 3 : 2 });
+      const filename = `share-timetable-all-days-${themeId}${widescreen ? "-16x9" : ""}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);
     } finally {
@@ -141,6 +145,34 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
           </div>
         </div>
 
+        {/* Output size — see SharePreviewModal's own equivalent block. */}
+        <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold text-slate-500">出力サイズ</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setWidescreen(false)}
+              className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                !widescreen
+                  ? "border-indigo-400 bg-indigo-950/40 text-indigo-200"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+              }`}
+            >
+              通常
+            </button>
+            <button
+              onClick={() => setWidescreen(true)}
+              title="大画面・プロジェクターでの表示向けに、横長（16:9相当）・高解像度で出力します"
+              className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                widescreen
+                  ? "border-indigo-400 bg-indigo-950/40 text-indigo-200"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+              }`}
+            >
+              🖥 16:9 高解像度
+            </button>
+          </div>
+        </div>
+
         <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
           <div
             style={{
@@ -163,6 +195,7 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
                 themeId={themeId}
                 layoutId={layoutId}
                 eventInfo={eventInfo}
+                widescreen={widescreen}
               />
             </div>
           </div>
@@ -199,6 +232,7 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
             themeId={themeId}
             layoutId={layoutId}
             eventInfo={eventInfo}
+            widescreen={widescreen}
           />
         </div>
       </div>

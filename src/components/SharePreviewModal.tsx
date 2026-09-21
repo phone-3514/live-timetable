@@ -25,6 +25,11 @@ export function SharePreviewModal({ day, onClose }: Props) {
   // exactly as it always has unless a user explicitly opts into a new
   // structural layout.
   const [layoutId, setLayoutId] = useState<LayoutId>("classic");
+  // A separate axis from theme/layout: widens the column count to fill a
+  // roughly 16:9 canvas and captures at a higher pixelRatio, for a
+  // projector/big-screen display rather than a phone-shaped share image —
+  // see chooseWidescreenColumnCount in ShareTimetableTemplate.tsx.
+  const [widescreen, setWidescreen] = useState(false);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -40,7 +45,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, themeId, layoutId, eventInfo]);
+  }, [day, bands, themeId, layoutId, widescreen, eventInfo]);
 
   // The scrollable area's own size (not the modal's, which also holds a
   // header/theme-picker/footer) — scaling by width alone left a tall image
@@ -66,8 +71,11 @@ export function SharePreviewModal({ day, onClose }: Props) {
     if (!el) return;
     setDownloading(true);
     try {
-      const dataUrl = await toPng(el, { pixelRatio: 2 });
-      const filename = `share-timetable-${day.label}-${themeId}.png`;
+      // Widescreen exports are meant to be blown up on a big screen/
+      // projector, so a higher pixelRatio than the normal share image
+      // keeps text crisp at that larger physical size.
+      const dataUrl = await toPng(el, { pixelRatio: widescreen ? 3 : 2 });
+      const filename = `share-timetable-${day.label}-${themeId}${widescreen ? "-16x9" : ""}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);
     } finally {
@@ -152,6 +160,37 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </div>
         </div>
 
+        {/* Output size — independent from theme/layout. 16:9 widens the
+            column count to fill a landscape canvas and captures at a
+            higher resolution, for display on a projector/large screen
+            rather than sharing on a phone. */}
+        <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold text-slate-500">出力サイズ</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setWidescreen(false)}
+              className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                !widescreen
+                  ? "border-indigo-400 bg-indigo-950/40 text-indigo-200"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+              }`}
+            >
+              通常
+            </button>
+            <button
+              onClick={() => setWidescreen(true)}
+              title="大画面・プロジェクターでの表示向けに、横長（16:9相当）・高解像度で出力します"
+              className={`min-h-11 rounded-lg border px-3 text-xs font-semibold transition-colors md:min-h-0 md:py-1.5 ${
+                widescreen
+                  ? "border-indigo-400 bg-indigo-950/40 text-indigo-200"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500"
+              }`}
+            >
+              🖥 16:9 高解像度
+            </button>
+          </div>
+        </div>
+
         <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
           <div
             style={{
@@ -191,6 +230,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
                 layoutId={layoutId}
                 eventInfo={eventInfo}
                 isSingleDay={isSingleDay}
+                widescreen={widescreen}
               />
             </div>
           </div>
@@ -227,6 +267,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
             layoutId={layoutId}
             eventInfo={eventInfo}
             isSingleDay={isSingleDay}
+            widescreen={widescreen}
           />
         </div>
       </div>

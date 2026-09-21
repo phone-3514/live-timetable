@@ -7,7 +7,12 @@ import {
   CANVAS_PADDING,
   COLUMN_GAP,
   COLUMN_WIDTH,
+  ESTIMATED_FOOTER_HEIGHT,
+  ESTIMATED_HEADER_HEIGHT,
+  ESTIMATED_ROW_HEIGHT,
+  ESTIMATED_SECTION_GAP,
   ShareTimetableColumns,
+  WIDESCREEN_TARGET_ASPECT,
   formatDate,
   getDayColumns,
 } from "./ShareTimetableTemplate";
@@ -25,6 +30,10 @@ const DAY_SECTION_GAP = 56;
 // the combined image, standing alone above that day's own columns, so it
 // needs to read clearly on its own.
 const DAY_HEADING_FONT_SIZE = 30;
+// Rough height of the pill + date line above each day's columns, for the
+// same widescreen aspect-ratio estimate ShareTimetableTemplate's
+// chooseWidescreenColumnCount uses — see there for why an estimate is fine.
+const DAY_HEADING_HEIGHT = 90;
 
 type Props = {
   days: TimetableDay[];
@@ -32,7 +41,42 @@ type Props = {
   themeId: ThemeId;
   eventInfo: EventInfo;
   layoutId?: LayoutId;
+  /** Same idea as ShareTimetableTemplate's own `widescreen` prop, but
+   * solved jointly across every day: every day is widened to roughly the
+   * same row-height (chooseWidescreenRowTarget below), which makes the
+   * *combined* canvas land close to 16:9 — widening each day on its own
+   * to 16:9 individually would make the combined image far wider than
+   * that once they're placed side by side. Defaults to false. */
+  widescreen?: boolean;
 };
+
+// Solves for a single "rows per column" target shared by every day, so all
+// day-blocks come out roughly the same height (rather than each picking
+// its own column count independently, which is what makes this different
+// from just calling chooseWidescreenColumnCount per day) — then derives
+// each day's column count from it. Search space is just 1..maxRows, so a
+// full sweep is cheap even with several days.
+function chooseWidescreenRowTarget(rowCounts: number[], cardGap: number): number {
+  const maxRows = Math.max(...rowCounts, 1);
+  let bestR = maxRows;
+  let bestDiff = Infinity;
+  for (let r = 1; r <= maxRows; r++) {
+    const blockHeight = DAY_HEADING_HEIGHT + r * ESTIMATED_ROW_HEIGHT + Math.max(r - 1, 0) * cardGap;
+    const totalHeight =
+      CANVAS_PADDING * 2 + ESTIMATED_HEADER_HEIGHT + ESTIMATED_SECTION_GAP * 2 + ESTIMATED_FOOTER_HEIGHT + blockHeight;
+    let totalWidth = CANVAS_PADDING * 2 + DAY_SECTION_GAP * Math.max(rowCounts.length - 1, 0);
+    for (const rows of rowCounts) {
+      const cols = Math.max(1, Math.ceil(rows / r));
+      totalWidth += COLUMN_WIDTH * cols + COLUMN_GAP * (cols - 1);
+    }
+    const diff = Math.abs(Math.log(totalWidth / totalHeight) - Math.log(WIDESCREEN_TARGET_ASPECT));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestR = r;
+    }
+  }
+  return bestR;
+}
 
 // All days combined into a single shareable PNG: one shared header/footer
 // and one continuous background, with each day's own two-column slot list
@@ -41,7 +85,14 @@ type Props = {
 // ShareTimetableTemplate.tsx for the per-day column rendering this reuses
 // verbatim, and DAY_SECTION_GAP above for why this isn't just several
 // single-day templates placed edge to edge.
-export function ShareAllDaysTemplate({ days, bands, themeId, eventInfo, layoutId = "classic" }: Props) {
+export function ShareAllDaysTemplate({
+  days,
+  bands,
+  themeId,
+  eventInfo,
+  layoutId = "classic",
+  widescreen = false,
+}: Props) {
   const theme = THEMES[themeId];
   const layout = LAYOUTS[layoutId];
   const headerAlignClass = layout.titleAlign === "left" ? "items-start text-left" : "items-center text-center";
@@ -56,9 +107,13 @@ export function ShareAllDaysTemplate({ days, bands, themeId, eventInfo, layoutId
         }
       : { color: theme.dayTitleColor };
 
-  const daySections = days.map((day) => ({
+  const dayRowCounts = days.map((day) => getDayColumns(day, 1)[0]?.length ?? 0);
+  const widescreenRowTarget = widescreen ? chooseWidescreenRowTarget(dayRowCounts, layout.cardGap) : null;
+  const daySections = days.map((day, i) => ({
     day,
-    columnCount: Math.max(getDayColumns(day).length, 1),
+    columnCount: widescreenRowTarget
+      ? Math.max(1, Math.ceil(dayRowCounts[i] / widescreenRowTarget))
+      : Math.max(getDayColumns(day).length, 1),
     dateLabel: formatDate(day.date),
   }));
 
@@ -151,7 +206,7 @@ export function ShareAllDaysTemplate({ days, bands, themeId, eventInfo, layoutId
         </header>
 
         <div className="flex items-start" style={{ gap: DAY_SECTION_GAP }}>
-          {daySections.map(({ day, dateLabel }) => (
+          {daySections.map(({ day, dateLabel, columnCount }) => (
             <div key={day.id} className="flex shrink-0 flex-col items-center" style={{ gap: 20 }}>
               <div className="flex flex-col items-center">
                 <span
@@ -171,7 +226,7 @@ export function ShareAllDaysTemplate({ days, bands, themeId, eventInfo, layoutId
                   </span>
                 )}
               </div>
-              <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} />
+              <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} />
             </div>
           ))}
         </div>
