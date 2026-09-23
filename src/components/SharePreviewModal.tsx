@@ -5,7 +5,7 @@ import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
+import { computeSafePixelRatio, dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
 import { ModalPortal } from "./ModalPortal";
 import type { TimetableDay } from "../types";
 
@@ -73,8 +73,14 @@ export function SharePreviewModal({ day, onClose }: Props) {
     try {
       // Widescreen exports are meant to be blown up on a big screen/
       // projector, so a higher pixelRatio than the normal share image
-      // keeps text crisp at that larger physical size.
-      const dataUrl = await toPng(el, { pixelRatio: widescreen ? 3 : 2 });
+      // keeps text crisp at that larger physical size — but a busy day's
+      // canvas is already wide, and multiplying that by pixelRatio can
+      // quietly cross a browser's max-canvas-size limit (see
+      // computeSafePixelRatio's own doc), which is what "sometimes the
+      // downloaded image comes out blurry/low-res" turned out to be.
+      const rect = el.getBoundingClientRect();
+      const pixelRatio = computeSafePixelRatio(rect.width, rect.height, widescreen ? 3 : 2);
+      const dataUrl = await toPng(el, { pixelRatio });
       const filename = `share-timetable-${day.label}-${themeId}${widescreen ? "-16x9" : ""}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);

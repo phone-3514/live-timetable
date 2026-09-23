@@ -5,7 +5,7 @@ import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
+import { computeSafePixelRatio, dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
 import { ModalPortal } from "./ModalPortal";
 
 type Props = { onClose: () => void };
@@ -64,7 +64,13 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
     if (!el) return;
     setDownloading(true);
     try {
-      const dataUrl = await toPng(el, { pixelRatio: widescreen ? 3 : 2 });
+      // See SharePreviewModal's own handleDownload for why this is capped
+      // rather than a flat 2/3 — a combined multi-day widescreen canvas is
+      // exactly the case most likely to cross a browser's max-canvas-size
+      // limit and silently come out blurry/low-res.
+      const rect = el.getBoundingClientRect();
+      const pixelRatio = computeSafePixelRatio(rect.width, rect.height, widescreen ? 3 : 2);
+      const dataUrl = await toPng(el, { pixelRatio });
       const filename = `share-timetable-all-days-${themeId}${widescreen ? "-16x9" : ""}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);

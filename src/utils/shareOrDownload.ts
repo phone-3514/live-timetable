@@ -32,3 +32,28 @@ export function dataUrlToFile(dataUrl: string, filename: string, mimeType: strin
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new File([bytes], filename, { type: mimeType });
 }
+
+// Browsers cap how big a single <canvas> can be — commonly ~16384px on a
+// side (Chrome/Safari/Firefox all draw the line somewhere in that
+// neighborhood) and a total area around 268 million pixels (Chrome).
+// html-to-image draws onto a canvas sized `naturalSize * pixelRatio`, so a
+// busy day (wide from many share-image columns, especially in 16:9/
+// widescreen mode) multiplied by a high pixelRatio can quietly cross that
+// limit — the browser then either clips the canvas or falls back to a
+// blurry/blank render with no visible error, which reads as "sometimes the
+// downloaded image is low-res/rough" with no obvious cause. Capping the
+// *effective* pixelRatio to whatever actually fits keeps every export
+// under those limits instead of silently degrading past them.
+const MAX_CANVAS_DIMENSION = 14000;
+const MAX_CANVAS_AREA = 220_000_000;
+
+export function computeSafePixelRatio(
+  naturalWidth: number,
+  naturalHeight: number,
+  desiredPixelRatio: number,
+): number {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return desiredPixelRatio;
+  const byDimension = Math.min(MAX_CANVAS_DIMENSION / naturalWidth, MAX_CANVAS_DIMENSION / naturalHeight);
+  const byArea = Math.sqrt(MAX_CANVAS_AREA / (naturalWidth * naturalHeight));
+  return Math.max(1, Math.min(desiredPixelRatio, byDimension, byArea));
+}
