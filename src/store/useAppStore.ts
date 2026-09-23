@@ -86,6 +86,12 @@ type AppState = {
   addSlot: (dayId: string) => void;
   addSlots: (dayId: string, count: number) => void;
   addCustomSlot: (dayId: string, label: string, durationMinutes: number) => void;
+  // Inserts the club's standard pre-show/post-show custom slots around
+  // whatever's already there: 幹部集合/出演者集合/リハーサル/諸注意 right
+  // before the day's first performance slot, and 写真撮影/完全撤収 right
+  // after its last — see the implementation for why "performance slot"
+  // (not array index 0/末尾) is the actual anchor.
+  addStandardShowFlowEvents: (dayId: string) => void;
   updateSlotContent: (
     dayId: string,
     slotId: string,
@@ -183,7 +189,7 @@ function makeBlankSlot(): TimetableSlot {
   };
 }
 
-function makeAutoBreakSlot(label: string, durationMinutes: number): TimetableSlot {
+function makeCustomEventSlot(label: string, durationMinutes: number): TimetableSlot {
   return {
     id: crypto.randomUUID(),
     bandId: null,
@@ -195,6 +201,18 @@ function makeAutoBreakSlot(label: string, durationMinutes: number): TimetableSlo
     endTime: "",
   };
 }
+
+// The club's standard show-flow bookends — see addStandardShowFlowEvents.
+const PRE_SHOW_EVENTS = [
+  { label: "幹部集合", minutes: 10 },
+  { label: "出演者集合", minutes: 5 },
+  { label: "リハーサル", minutes: 10 },
+  { label: "諸注意", minutes: 5 },
+];
+const POST_SHOW_EVENTS = [
+  { label: "写真撮影", minutes: 5 },
+  { label: "完全撤収", minutes: 60 },
+];
 
 // Live preview of the start time a dragged band would get if dropped at
 // targetSlotId right now. Walks the day's slots the same way recomputeTimes
@@ -638,17 +656,38 @@ export const useAppStore = create<AppState>()(
     set((state) => ({
       days: updateDaySlots(state.days, dayId, state.bands, (slots) => [
         ...slots,
-        {
-          id: crypto.randomUUID(),
-          bandId: null,
-          customLabel: label,
-          customDurationMinutes: durationMinutes,
-          startTimeOverride: null,
-          delayMinutes: 0,
-          startTime: "",
-          endTime: "",
-        },
+        makeCustomEventSlot(label, durationMinutes),
       ]),
+    })),
+
+  addStandardShowFlowEvents: (dayId) =>
+    set((state) => ({
+      days: updateDaySlots(state.days, dayId, state.bands, (slots) => {
+        // A "performance slot" is anything without a customLabel, whether
+        // or not a band has actually been assigned to it yet — the pre/
+        // post sequences bookend the show itself, not whichever bands
+        // happen to be placed already. Slots that already sit before the
+        // first / after the last performance slot (a manually-added
+        // custom slot, say) are left exactly where they are — the new
+        // ones are inserted right at that boundary, not at the array's
+        // absolute start/end.
+        const firstPerfIndex = slots.findIndex((s) => s.customLabel === null);
+        const lastPerfIndex = slots.length - 1 - [...slots].reverse().findIndex((s) => s.customLabel === null);
+        const preEvents = PRE_SHOW_EVENTS.map((e) => makeCustomEventSlot(e.label, e.minutes));
+        const postEvents = POST_SHOW_EVENTS.map((e) => makeCustomEventSlot(e.label, e.minutes));
+        if (firstPerfIndex === -1) {
+          // No performance slots at all yet — nothing to bookend, so just
+          // lay out the whole standard flow in order.
+          return [...slots, ...preEvents, ...postEvents];
+        }
+        return [
+          ...slots.slice(0, firstPerfIndex),
+          ...preEvents,
+          ...slots.slice(firstPerfIndex, lastPerfIndex + 1),
+          ...postEvents,
+          ...slots.slice(lastPerfIndex + 1),
+        ];
+      }),
     })),
 
   updateSlotContent: (dayId, slotId, partial) =>
@@ -1040,7 +1079,7 @@ export const useAppStore = create<AppState>()(
         if (insertIndex === null) continue;
         days = updateDaySlots(days, day.id, state.bands, (slots) => [
           ...slots.slice(0, insertIndex),
-          makeAutoBreakSlot(AUTO_BREAK_LABEL, AUTO_BREAK_DURATION_MINUTES),
+          makeCustomEventSlot(AUTO_BREAK_LABEL, AUTO_BREAK_DURATION_MINUTES),
           ...slots.slice(insertIndex),
         ]);
       }

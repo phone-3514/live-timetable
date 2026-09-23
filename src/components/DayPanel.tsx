@@ -53,6 +53,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const addSlot = useAppStore((s) => s.addSlot);
   const addSlots = useAppStore((s) => s.addSlots);
   const addCustomSlot = useAppStore((s) => s.addCustomSlot);
+  const addStandardShowFlowEvents = useAppStore((s) => s.addStandardShowFlowEvents);
   const reorderDayBandsByNames = useAppStore((s) => s.reorderDayBandsByNames);
   const showToast = useToastStore((s) => s.show);
   const [bulkCount, setBulkCount] = useState(5);
@@ -242,6 +243,15 @@ export function DayPanel({ day, daysCount }: Props) {
               <button onClick={handlePasteReorder} className="rounded border border-slate-600 px-2 py-2 text-slate-200 hover:bg-slate-700">↕️ 貼付で並び替え</button>
               <button onClick={() => setShowSharePreview(true)} className="rounded border border-indigo-600 bg-indigo-950/40 px-2 py-2 text-indigo-300 hover:bg-indigo-900/50">🎨 共有用画像</button>
               <button onClick={() => setShowSetlistExport(true)} className="rounded border border-emerald-600 bg-emerald-950/40 px-2 py-2 text-emerald-300 hover:bg-emerald-900/50">📋 セットリスト</button>
+            </div>
+            <div className="border-t border-slate-700 pt-2">
+              <button
+                onClick={() => addStandardShowFlowEvents(day.id)}
+                title="開演前：幹部集合(10分)→出演者集合(5分)→リハーサル(10分)→諸注意(5分)、終演後：写真撮影(5分)→完全撤収(60分) を自動で追加します"
+                className="min-h-11 w-full rounded border border-violet-600 bg-violet-950/40 px-2 py-2 text-violet-300 hover:bg-violet-900/50 md:min-h-0 md:py-1.5"
+              >
+                🎬 開演前後の定型イベントを自動追加
+              </button>
             </div>
             <div className="border-t border-slate-700 pt-2">
               <p className="mb-1 text-[10px] font-semibold text-slate-400">任意イベントを追加</p>
