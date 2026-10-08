@@ -18,7 +18,9 @@ export function alignTimeToReference(time: string, referenceMinutes: number): nu
 // empty performance slot waiting for a band — a transition exists to cover
 // equipment strike/setup between bands, and an empty slot is a band-to-be, so
 // leaving it out would show a row of empty slots packed back to back and then
-// jump later once they're filled. A break/gathering/rehearsal row adds none.
+// jump later once they're filled. It only separates two performances: a
+// break/gathering/rehearsal/撤収 row needs no changeover before it or after it,
+// so a performance followed by one of those adds none either.
 // A band's transition falls back to the day's default unless it has its own
 // customTransitionMinutes (e.g. a keyboard or sync-track band that needs
 // longer to strike/set up gear).
@@ -34,7 +36,7 @@ export function recomputeTimes(
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   let cursor = timeToMinutes(settings.startTime);
   let baselineCursor = cursor;
-  return slots.map((slot) => {
+  return slots.map((slot, index) => {
     let duration = settings.performanceMinutes;
     let transitionAfter = settings.transitionMinutes;
     if (slot.bandId) {
@@ -45,6 +47,7 @@ export function recomputeTimes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
+    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
     const baselineStart = baselineCursor;
     const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
     const start = hasOverride

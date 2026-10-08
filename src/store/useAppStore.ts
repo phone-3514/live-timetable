@@ -227,7 +227,7 @@ export function computeDropPreviewStartTime(
 ): string {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   let cursor = timeToMinutes(day.settings.startTime);
-  for (const slot of day.slots) {
+  for (const [index, slot] of day.slots.entries()) {
     if (slot.id === targetSlotId) {
       return slot.startTimeOverride || minutesToTime(cursor);
     }
@@ -244,6 +244,7 @@ export function computeDropPreviewStartTime(
       duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
       transitionAfter = 0;
     }
+    if (day.slots[index + 1]?.customLabel != null) transitionAfter = 0;
     const start = slot.startTimeOverride
       ? alignTimeToReference(slot.startTimeOverride, cursor)
       : cursor;
@@ -310,7 +311,7 @@ function estimateSlotBoundaryMinutes(
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const boundaries: number[] = [];
   let cursor = timeToMinutes(settings.startTime);
-  for (const slot of slots) {
+  for (const [index, slot] of slots.entries()) {
     boundaries.push(cursor);
     let duration = settings.performanceMinutes;
     let transitionAfter = settings.transitionMinutes;
@@ -322,6 +323,7 @@ function estimateSlotBoundaryMinutes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
+    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
     cursor += duration + transitionAfter;
   }
   return boundaries;
