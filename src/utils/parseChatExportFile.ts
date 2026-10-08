@@ -68,6 +68,59 @@ function containsBandNameLine(text: string): boolean {
     .some((line) => matchBandNameLine(line.trim()) !== null);
 }
 
+// A line that stands alone to introduce a sample submission — "例)", "【例】",
+// "(記入例)", "例：", "サンプル↓" … Pinned announcements in the application
+// channel typically paste a filled-in お手本 right after one of these so
+// people copy the format; that sample is a perfectly well-formed application
+// (real band name, members, setlist), so nothing about its *content* gives it
+// away — only the marker introducing it does.
+const EXAMPLE_MARKER_LINE_RE =
+  /^[(（【\[「『]?\s*(?:記入例|入力例|申請例|例|サンプル|見本|お手本|テンプレート?)\s*[)）】\]」』]?\s*[:：↓▼⬇]?\s*$/;
+
+// A message opening with a Markdown heading ("# 【10月ライブのお知らせ】") or a
+// bracketed announcement title is a notice, not a submission. Checked on the
+// first few non-empty lines (not just the first) because a plain-text export
+// puts the sender/timestamp header lines ahead of the body.
+const ANNOUNCEMENT_HEADING_RE =
+  /^(?:#+\s|【[^】]*(?:お知らせ|ご案内|案内|連絡|周知|注意|ルール|募集|締切|〆切|テンプレ)[^】]*】)/;
+
+function looksLikeAnnouncement(text: string): boolean {
+  return normalizeApplicationText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .some((line) => ANNOUNCEMENT_HEADING_RE.test(line));
+}
+
+// If the first バンド名 line in a message is introduced by an example marker
+// (ignoring blank lines in between), everything from that marker on is a
+// sample, not a submission — cut it off. For a pinned notice that leaves only
+// instructions with no バンド名 line, which containsBandNameLine then drops.
+function stripExampleSection(text: string): string {
+  const lines = normalizeApplicationText(text).split("\n");
+  const firstBandNameIndex = lines.findIndex((line) => matchBandNameLine(line.trim()) !== null);
+  if (firstBandNameIndex < 0) return text;
+  let i = firstBandNameIndex - 1;
+  while (i >= 0 && lines[i].trim() === "") i--;
+  if (i >= 0 && EXAMPLE_MARKER_LINE_RE.test(lines[i].trim())) {
+    return lines.slice(0, i).join("\n");
+  }
+  return text;
+}
+
+// Per-message gate, applied before anything is parsed: drops announcements,
+// cuts off お手本 sections, and only then requires a バンド名 line. Doing this
+// per message (rather than on parsed Applications) matters for the same
+// reason as containsBandNameLine above — once a notice's lines are merged
+// into the surrounding text they can't be told apart from real fields.
+// Returns the (possibly truncated) message text, or null to drop it.
+function prepareMessageBody(text: string): string | null {
+  if (looksLikeAnnouncement(text)) return null;
+  const stripped = stripExampleSection(text);
+  return containsBandNameLine(stripped) ? stripped : null;
+}
+
 // Placeholder/example data this app itself suggests in the textarea's
 // placeholder text — if an admin's pinned template (or a user who copied it
 // without editing) ends up in the export, its band name will match this
@@ -139,12 +192,18 @@ export function parseChatExportFile(fileText: string, fileName: string): ChatExp
     }
     const messages = extractDiscordJsonMessages(data);
     messageCount = messages.length;
-    const relevant = messages.filter((m) => containsBandNameLine(m.content));
+    const relevant = messages.flatMap((m) => {
+      const body = prepareMessageBody(m.content);
+      return body === null ? [] : [{ ...m, content: body }];
+    });
     candidates = parseApplications(buildPseudoChatText(relevant));
   } else {
     const segments = splitIntoMessageSegments(fileText);
     messageCount = segments.length;
-    const relevant = segments.filter(containsBandNameLine);
+    const relevant = segments.flatMap((segment) => {
+      const body = prepareMessageBody(segment);
+      return body === null ? [] : [body];
+    });
     candidates = parseApplications(relevant.join("\n\n"));
   }
 

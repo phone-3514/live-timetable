@@ -51,6 +51,13 @@ type ApplicationState = {
    * via useAppStore.renameBandMember, so a band approved before the merge
    * doesn't keep showing the pre-merge spelling. */
   mergeMemberName: (fromName: string, toName: string) => void;
+  /** Edits an application's 出演希望日 after import (the parser can misread
+   * or miss it, and the organizer often needs to correct it by hand). If the
+   * application has already been approved, the linked Band's desiredTime is
+   * updated too — through useAppStore.updateBand, which also re-resolves the
+   * band's allowed days and un-places it from any day it no longer fits —
+   * so the timetable never keeps acting on the old text. */
+  updateApplicationDesiredDateTime: (id: string, desiredDateTime: string) => void;
   /** Called whenever a linked Band is edited in the Timetable Editor
    * (PlacedBandDetailModal) — replaces the application's own bandName/
    * members/setlist/hasSync to match, so the Application Manager (list,
@@ -209,6 +216,19 @@ export const useApplicationStore = create<ApplicationState>()(
           })),
         }));
         useAppStore.getState().renameBandMember(fromName, toName);
+      },
+
+      updateApplicationDesiredDateTime: (id, desiredDateTime) => {
+        const app = get().applications.find((a) => a.id === id);
+        if (!app || app.desiredDateTime === desiredDateTime) return;
+        set((state) => ({
+          applications: state.applications.map((a) =>
+            a.id === id ? { ...a, desiredDateTime } : a,
+          ),
+        }));
+        if (app.linkedBandId) {
+          useAppStore.getState().updateBand(app.linkedBandId, { desiredTime: desiredDateTime });
+        }
       },
 
       syncApplicationFromBand: (applicationId, patch) =>

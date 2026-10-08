@@ -214,7 +214,7 @@ export function parseApplications(rawText: string): Application[] {
 
   const headers = anchors.map((start) => findHeaderBefore(lines, start));
 
-  return anchors.map((start, idx) => {
+  return anchors.flatMap((start, idx) => {
     const end = idx + 1 < anchors.length ? anchors[idx + 1] : lines.length;
     const header = headers[idx];
     const nextHeader = idx + 1 < anchors.length ? headers[idx + 1] : null;
@@ -302,6 +302,20 @@ export function parseApplications(rawText: string): Application[] {
       members.push(extractMemberDetails(line));
     }
 
+    // A block with no バンド名 heading came from findBandNameAnchors' implicit
+    // rule (a line right after a terminal field line, kept for LINE-note
+    // style submissions that really do have no heading). Those are only
+    // credible as bands if they actually list members — without any, the
+    // "band" is nearly always just an announcement/instruction sentence
+    // that happened to follow a line mentioning 同期/演奏時間/日程 (e.g.
+    // "演奏時間(10分or20分)を明記してください。" from a pinned notice),
+    // which used to turn each such sentence into its own bogus application.
+    // An explicit バンド名 block with no members is deliberately kept: a
+    // real submission can leave members unconfirmed, and the parseWarning
+    // below flags it for manual review instead of silently dropping it.
+    const hasExplicitBandNameHeading = matchBandNameLine(blockLines[0]) !== null;
+    if (!hasExplicitBandNameHeading && members.length === 0) return [];
+
     let parseWarning: string | undefined;
     if (!bandName) {
       parseWarning = "バンド名を検出できませんでした。手動で確認・修正してください";
@@ -311,7 +325,7 @@ export function parseApplications(rawText: string): Application[] {
 
     const blockText = blockLines.join(" / ");
 
-    return {
+    return [{
       id: crypto.randomUUID(),
       applicantName: header?.applicantName ?? "",
       applicationDateTime: header?.applicationDateTime ?? "",
@@ -326,6 +340,6 @@ export function parseApplications(rawText: string): Application[] {
       approved: false,
       linkedBandId: null,
       parseWarning,
-    };
+    }];
   });
 }

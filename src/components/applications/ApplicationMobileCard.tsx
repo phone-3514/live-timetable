@@ -3,6 +3,7 @@ import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 import {
+  EditableDesiredDateTime,
   EditBandButton,
   HighParticipationBadge,
   MemberBadgeList,
@@ -78,7 +79,10 @@ export function ApplicationMobileCard({
         {app.durationMinutes != null && (
           <span className="text-xs text-slate-300">{app.durationMinutes}分</span>
         )}
-        {app.desiredDateTime && <span className="text-xs text-slate-300">・{app.desiredDateTime}</span>}
+      </div>
+      <div className="mt-1.5">
+        <span className="text-[11px] font-semibold text-slate-500">出演希望日</span>
+        <EditableDesiredDateTime app={app} variant="inline" />
       </div>
 
       {highParticipationInfo.highCount > 0 && (

@@ -1,9 +1,14 @@
-import { useMemo, useState } from "react";
+import { useRef, useMemo, useState } from "react";
 import type { Application } from "../../types";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
-import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
+import {
+  hasUnparsedDayHint,
+  hasUnparsedTimeExpression,
+  stripAffiliationNoteForDisplay,
+} from "../../utils/parseBands";
 import {
   computeHighParticipation,
+  useApplicationStore,
   type HighParticipationInfo,
   type MemberFrameCount,
 } from "../../store/useApplicationStore";
@@ -93,6 +98,110 @@ export function HighParticipationBadge({ info }: { info: HighParticipationInfo }
           {breakdownText}
         </p>
       )}
+    </div>
+  );
+}
+
+// Click-to-edit 出演希望日 — the parser can misread or miss this field, and
+// the organizer often has to fix it by hand after import (or normalize a
+// free-form answer into a phrasing the auto-scheduler understands). Saving
+// goes through updateApplicationDesiredDateTime, which also updates the
+// linked Band once approved. While editing, the draft is checked with the
+// same "this looks like a day/time but wasn't recognized" detectors the
+// Timetable Editor's band form uses, so a phrasing the scheduler would
+// silently treat as "no restriction" is flagged right where it's typed.
+//
+// "cell" variant: the table column is far too narrow to type into, so the
+// input floats over the cell (anchored right, growing left, since this
+// column sits near the table's right edge) while the plain text keeps the
+// cell's own height stable underneath. "inline" variant (mobile card): a
+// normal full-width input in the flow.
+export function EditableDesiredDateTime({
+  app,
+  variant,
+}: {
+  app: Application;
+  variant: "cell" | "inline";
+}) {
+  const update = useApplicationStore((s) => s.updateApplicationDesiredDateTime);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  // Escape must cancel without the blur that follows the input unmounting
+  // committing the draft anyway.
+  const skipCommitRef = useRef(false);
+
+  const shown = editing ? draft : app.desiredDateTime;
+  const unparsed = hasUnparsedTimeExpression(shown) || hasUnparsedDayHint(shown);
+
+  function startEditing() {
+    skipCommitRef.current = false;
+    setDraft(app.desiredDateTime);
+    setEditing(true);
+  }
+
+  function commit() {
+    if (skipCommitRef.current) return;
+    update(app.id, draft.trim());
+    setEditing(false);
+  }
+
+  const input = (
+    <input
+      autoFocus
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          skipCommitRef.current = true;
+          setEditing(false);
+        }
+      }}
+      aria-label={`${app.bandName}の出演希望日`}
+      placeholder="例：17日 16:00以降 / 両日可能"
+      className={`rounded border bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none placeholder:text-slate-500 ${
+        unparsed ? "border-amber-500" : "border-indigo-500"
+      } ${variant === "cell" ? "absolute right-0 top-0 z-20 w-60 shadow-lg shadow-black/40" : "min-h-11 w-full"}`}
+    />
+  );
+
+  const display = (
+    <button
+      type="button"
+      onClick={startEditing}
+      title="クリックして出演希望日を編集"
+      className="group inline-flex max-w-full items-start gap-1 rounded text-left text-slate-300 hover:text-slate-100"
+    >
+      <span className="break-words">{app.desiredDateTime || (variant === "cell" ? "-" : "希望日を入力")}</span>
+      <span aria-hidden="true" className="text-[10px] text-slate-500 group-hover:text-indigo-300">
+        ✎
+      </span>
+    </button>
+  );
+
+  const warning = unparsed && (
+    <p className="mt-0.5 text-[10px] leading-snug text-amber-400">
+      ⚠ 認識されない書き方です（「17日」「16:00以降」など）
+    </p>
+  );
+
+  if (variant === "inline") {
+    return (
+      <div className="min-w-0 text-xs">
+        {editing ? input : display}
+        {warning}
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      {display}
+      {editing && input}
+      {warning}
     </div>
   );
 }
@@ -536,7 +645,7 @@ export function ApplicationTable({
                     {app.durationMinutes != null ? `${app.durationMinutes}分` : "-"}
                   </td>
                   <td className="break-words px-2 py-1.5 text-slate-300">
-                    {app.desiredDateTime || "-"}
+                    <EditableDesiredDateTime app={app} variant="cell" />
                   </td>
                   <td className="px-2 py-1.5">
                     <div className="flex flex-col gap-1">
