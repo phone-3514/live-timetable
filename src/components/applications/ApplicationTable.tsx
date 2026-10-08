@@ -151,6 +151,38 @@ export function MemberFrameDetailButton({
   );
 }
 
+function hasSingleSlotMember(a: Application, frameCounts: Map<string, MemberFrameCount>): boolean {
+  return a.members.some((m) => frameCounts.get(normalizeMemberName(m.name))?.count === 1);
+}
+
+function FilterChip({
+  active,
+  onToggle,
+  title,
+  children,
+}: {
+  active: boolean;
+  onToggle: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      title={title}
+      className={`min-h-11 rounded border px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
+        active
+          ? "border-indigo-400 bg-indigo-950/50 text-indigo-200"
+          : "border-slate-600 text-slate-300 hover:bg-slate-700"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ApplicationTable({
   applications,
   frameCounts,
@@ -171,32 +203,81 @@ export function ApplicationTable({
     return map;
   }, [applications, frameCounts]);
 
+  // Structured filters, AND-combined with each other and with the text query
+  // below. `singleSlotOnly` is "this band has at least one member who is in
+  // exactly one band across ALL applications" (frameCounts counts every
+  // application, approved or not) — the people with only a single frame,
+  // which is what an organizer scans for when deciding who still has room.
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved">("all");
+  const [syncOnly, setSyncOnly] = useState(false);
+  const [singleSlotOnly, setSingleSlotOnly] = useState(false);
+  const [highSlotOnly, setHighSlotOnly] = useState(false);
+
+  const singleSlotBandCount = useMemo(
+    () => applications.filter((a) => hasSingleSlotMember(a, frameCounts)).length,
+    [applications, frameCounts],
+  );
+  const highSlotBandCount = useMemo(
+    () => applications.filter((a) => (highParticipationByAppId.get(a.id)?.highCount ?? 0) > 0).length,
+    [applications, highParticipationByAppId],
+  );
+
   const filtered = useMemo(() => {
-    const q = filterText.trim().toLowerCase();
-    if (!q) return applications;
+    const query = filterText.trim().toLowerCase();
+    // Whitespace (incl. full-width) separates conditions, ALL of which must
+    // match: "1年 Vo" = a band with something matching 1年 AND something
+    // matching Vo. Each term is matched against band name, applicant,
+    // member name/grade/part and desired date. A multi-word query is also
+    // tried whole, so a spaced name ("鈴木 啓大郎", e.g. from clicking a
+    // member chip) still finds its exact member and not only bands that
+    // happen to match both halves separately.
+    const terms = query.split(/[\s\u3000]+/).filter(Boolean);
+
     // Member names are matched name-normalized (see normalizeMemberName) so
     // clicking a member chip — or just typing their name with different
     // spacing than a particular application recorded — still finds every
     // band they're in, not only the ones spelled exactly like the query.
-    const normalizedQuery = normalizeMemberName(q);
-    return applications.filter((a) => {
-      const memberTextMatch = a.members
-        .map((m) => m.name)
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-      const memberNormalizedMatch = a.members.some((m) =>
-        normalizeMemberName(m.name).toLowerCase().includes(normalizedQuery),
-      );
+    const matchesTerm = (a: Application, term: string) => {
+      const normalizedTerm = normalizeMemberName(term);
       return (
-        a.bandName.toLowerCase().includes(q) ||
-        a.applicantName.toLowerCase().includes(q) ||
-        memberTextMatch ||
-        memberNormalizedMatch ||
-        a.desiredDateTime.toLowerCase().includes(q)
+        a.bandName.toLowerCase().includes(term) ||
+        a.applicantName.toLowerCase().includes(term) ||
+        a.desiredDateTime.toLowerCase().includes(term) ||
+        a.members.some(
+          (m) =>
+            m.name.toLowerCase().includes(term) ||
+            normalizeMemberName(m.name).toLowerCase().includes(normalizedTerm) ||
+            m.grade.toLowerCase().includes(term) ||
+            m.part.toLowerCase().includes(term),
+        )
       );
+    };
+
+    return applications.filter((a) => {
+      if (statusFilter === "pending" && a.approved) return false;
+      if (statusFilter === "approved" && !a.approved) return false;
+      if (syncOnly && !a.hasSync) return false;
+      if (singleSlotOnly && !hasSingleSlotMember(a, frameCounts)) return false;
+      if (highSlotOnly && (highParticipationByAppId.get(a.id)?.highCount ?? 0) === 0) return false;
+      if (terms.length === 0) return true;
+      return terms.every((t) => matchesTerm(a, t)) || (terms.length > 1 && matchesTerm(a, query));
     });
-  }, [applications, filterText]);
+  }, [applications, filterText, statusFilter, syncOnly, singleSlotOnly, highSlotOnly, frameCounts, highParticipationByAppId]);
+
+  const isFiltered =
+    filterText.trim() !== "" ||
+    statusFilter !== "all" ||
+    syncOnly ||
+    singleSlotOnly ||
+    highSlotOnly;
+
+  function clearAllFilters() {
+    onFilterTextChange("");
+    setStatusFilter("all");
+    setSyncOnly(false);
+    setSingleSlotOnly(false);
+    setHighSlotOnly(false);
+  }
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -261,19 +342,22 @@ export function ApplicationTable({
           type="text"
           value={filterText}
           onChange={(e) => onFilterTextChange(e.target.value)}
-          placeholder="バンド名・申請者・メンバー名・希望日時で絞り込み"
-          className="min-h-11 w-full max-w-sm rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 md:min-h-0"
+          placeholder="スペース区切りで複数条件（AND）: バンド名・申請者・メンバー・学年・パート・希望日"
+          title="スペース区切りの語がすべて一致するバンドを表示（語ごとの一致は別のメンバーでも可）。例：「ヨルシカ 9/27」「1年 Vo」"
+          className="min-h-11 w-full max-w-md rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 md:min-h-0"
         />
-        {filterText && (
+        {isFiltered && (
           <button
             type="button"
-            onClick={() => onFilterTextChange("")}
+            onClick={clearAllFilters}
             className="min-h-11 rounded border border-slate-600 px-3 text-[11px] text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1"
           >
             絞り込みを解除
           </button>
         )}
-        <span className="text-xs text-slate-500">{sorted.length}件</span>
+        <span className="text-xs text-slate-500">
+          {sorted.length}件{isFiltered ? `（全${applications.length}件中）` : ""}
+        </span>
         <button
           type="button"
           onClick={() => toggleSort("highParticipationCount")}
@@ -285,6 +369,51 @@ export function ApplicationTable({
         >
           3枠以上の人数で並び替え{sortIndicator("highParticipationCount")}
         </button>
+      </div>
+
+      {/* Structured filters — AND-combined with each other and with the text
+          query above. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5" role="group" aria-label="絞り込み条件">
+        <div className="inline-flex overflow-hidden rounded border border-slate-600" role="group" aria-label="承認状態">
+          {(
+            [
+              ["all", "すべて"],
+              ["pending", "未承認"],
+              ["approved", "承認済み"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStatusFilter(value)}
+              aria-pressed={statusFilter === value}
+              className={`min-h-11 px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
+                statusFilter === value
+                  ? "bg-indigo-600 text-white"
+                  : "text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <FilterChip active={syncOnly} onToggle={() => setSyncOnly((v) => !v)}>
+          同期あり
+        </FilterChip>
+        <FilterChip
+          active={singleSlotOnly}
+          onToggle={() => setSingleSlotOnly((v) => !v)}
+          title="全申し込みを通じて1バンドにしか参加していないメンバーがいるバンド"
+        >
+          1枠のみの参加者がいる（{singleSlotBandCount}）
+        </FilterChip>
+        <FilterChip
+          active={highSlotOnly}
+          onToggle={() => setHighSlotOnly((v) => !v)}
+          title="全申し込みを通じて3バンド以上に参加しているメンバーがいるバンド"
+        >
+          3枠以上の参加者がいる（{highSlotBandCount}）
+        </FilterChip>
       </div>
 
       {sorted.length === 0 && (
