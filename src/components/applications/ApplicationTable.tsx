@@ -264,32 +264,61 @@ function hasSingleSlotMember(a: Application, frameCounts: Map<string, MemberFram
   return a.members.some((m) => frameCounts.get(normalizeMemberName(m.name))?.count === 1);
 }
 
-function FilterChip({
-  active,
-  onToggle,
+type TriState = "any" | "has" | "not";
+
+// One yes/no condition with a third "don't care" state: 指定なし (ignored),
+// 〇〇いる (must have it) or 〇〇いない (must NOT have it). Lets the same
+// condition be used to include or exclude bands, and two of them combine
+// into things like "has a 3枠以上 member AND has no 1枠のみ member". The
+// counts shown are how many bands each side would match on their own.
+function TriStateFilter({
+  label,
+  value,
+  onChange,
+  hasLabel,
+  notLabel,
+  hasCount,
+  notCount,
   title,
-  children,
 }: {
-  active: boolean;
-  onToggle: () => void;
+  label: string;
+  value: TriState;
+  onChange: (next: TriState) => void;
+  hasLabel: string;
+  notLabel: string;
+  hasCount: number;
+  notCount: number;
   title?: string;
-  children: React.ReactNode;
 }) {
+  const options: [TriState, string, string][] = [
+    ["any", "指定なし", "bg-slate-600 text-white"],
+    ["has", `${hasLabel}（${hasCount}）`, "bg-indigo-600 text-white"],
+    ["not", `${notLabel}（${notCount}）`, "bg-rose-700 text-white"],
+  ];
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      title={title}
-      className={`min-h-11 rounded border px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
-        active
-          ? "border-indigo-400 bg-indigo-950/50 text-indigo-200"
-          : "border-slate-600 text-slate-300 hover:bg-slate-700"
-      }`}
-    >
-      {children}
-    </button>
+    <div className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label={label} title={title}>
+      <span className="text-[11px] text-slate-400">{label}</span>
+      <div className="inline-flex overflow-hidden rounded border border-slate-600">
+        {options.map(([option, text, activeClass]) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            aria-pressed={value === option}
+            className={`min-h-11 px-2.5 text-[11px] font-medium md:min-h-0 md:py-1 ${
+              value === option ? activeClass : "text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
+}
+
+function passesTriState(state: TriState, has: boolean): boolean {
+  return state === "any" || (state === "has" ? has : !has);
 }
 
 export function ApplicationTable({
@@ -313,22 +342,29 @@ export function ApplicationTable({
   }, [applications, frameCounts]);
 
   // Structured filters, AND-combined with each other and with the text query
-  // below. `singleSlotOnly` is "this band has at least one member who is in
-  // exactly one band across ALL applications" (frameCounts counts every
-  // application, approved or not) — the people with only a single frame,
-  // which is what an organizer scans for when deciding who still has room.
+  // below. Each yes/no condition is tri-state (指定なし / いる / いない), so it
+  // can include or exclude. "1枠のみ" means the band has at least one member
+  // who is in exactly one band across ALL applications (frameCounts counts
+  // every application, approved or not) — the people with only a single
+  // frame, which is what an organizer scans for when deciding who still has
+  // room; "3枠以上" is the band-level high-participation signal the table
+  // already shows as a badge.
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved">("all");
-  const [syncOnly, setSyncOnly] = useState(false);
-  const [singleSlotOnly, setSingleSlotOnly] = useState(false);
-  const [highSlotOnly, setHighSlotOnly] = useState(false);
+  const [syncFilter, setSyncFilter] = useState<TriState>("any");
+  const [singleSlotFilter, setSingleSlotFilter] = useState<TriState>("any");
+  const [highSlotFilter, setHighSlotFilter] = useState<TriState>("any");
 
-  const singleSlotBandCount = useMemo(
-    () => applications.filter((a) => hasSingleSlotMember(a, frameCounts)).length,
-    [applications, frameCounts],
-  );
-  const highSlotBandCount = useMemo(
-    () => applications.filter((a) => (highParticipationByAppId.get(a.id)?.highCount ?? 0) > 0).length,
-    [applications, highParticipationByAppId],
+  const hasHighSlotMember = (a: Application) =>
+    (highParticipationByAppId.get(a.id)?.highCount ?? 0) > 0;
+
+  // How many bands have each property — the "いる" count; "いない" is the rest.
+  const triCounts = useMemo(
+    () => ({
+      sync: applications.filter((a) => a.hasSync).length,
+      single: applications.filter((a) => hasSingleSlotMember(a, frameCounts)).length,
+      high: applications.filter((a) => (highParticipationByAppId.get(a.id)?.highCount ?? 0) > 0).length,
+    }),
+    [applications, frameCounts, highParticipationByAppId],
   );
 
   const filtered = useMemo(() => {
@@ -336,11 +372,17 @@ export function ApplicationTable({
     // Whitespace (incl. full-width) separates conditions, ALL of which must
     // match: "1年 Vo" = a band with something matching 1年 AND something
     // matching Vo. Each term is matched against band name, applicant,
-    // member name/grade/part and desired date. A multi-word query is also
-    // tried whole, so a spaced name ("鈴木 啓大郎", e.g. from clicking a
-    // member chip) still finds its exact member and not only bands that
-    // happen to match both halves separately.
-    const terms = query.split(/[\s\u3000]+/).filter(Boolean);
+    // member name/grade/part and desired date. A term with a leading "-"
+    // excludes instead: "1年 -Vo" = matches 1年 and nothing matches Vo. (A
+    // lone "-" is just a literal character, not an empty exclusion.) A
+    // multi-word query with no exclusions is also tried whole, so a spaced
+    // name ("鈴木 啓大郎", e.g. from clicking a member chip) still finds its
+    // exact member and not only bands that happen to match both halves
+    // separately.
+    const tokens = query.split(/[\s\u3000]+/).filter(Boolean);
+    const isExclusion = (token: string) => token.length > 1 && /^[-−－]/.test(token);
+    const excludeTerms = tokens.filter(isExclusion).map((token) => token.slice(1));
+    const terms = tokens.filter((token) => !isExclusion(token));
 
     // Member names are matched name-normalized (see normalizeMemberName) so
     // clicking a member chip — or just typing their name with different
@@ -365,27 +407,32 @@ export function ApplicationTable({
     return applications.filter((a) => {
       if (statusFilter === "pending" && a.approved) return false;
       if (statusFilter === "approved" && !a.approved) return false;
-      if (syncOnly && !a.hasSync) return false;
-      if (singleSlotOnly && !hasSingleSlotMember(a, frameCounts)) return false;
-      if (highSlotOnly && (highParticipationByAppId.get(a.id)?.highCount ?? 0) === 0) return false;
+      if (!passesTriState(syncFilter, a.hasSync)) return false;
+      if (!passesTriState(singleSlotFilter, hasSingleSlotMember(a, frameCounts))) return false;
+      if (!passesTriState(highSlotFilter, hasHighSlotMember(a))) return false;
+      if (excludeTerms.some((t) => matchesTerm(a, t))) return false;
       if (terms.length === 0) return true;
-      return terms.every((t) => matchesTerm(a, t)) || (terms.length > 1 && matchesTerm(a, query));
+      return (
+        terms.every((t) => matchesTerm(a, t)) ||
+        (terms.length > 1 && excludeTerms.length === 0 && matchesTerm(a, query))
+      );
     });
-  }, [applications, filterText, statusFilter, syncOnly, singleSlotOnly, highSlotOnly, frameCounts, highParticipationByAppId]);
+    // hasHighSlotMember only reads highParticipationByAppId, which is listed.
+  }, [applications, filterText, statusFilter, syncFilter, singleSlotFilter, highSlotFilter, frameCounts, highParticipationByAppId]);
 
   const isFiltered =
     filterText.trim() !== "" ||
     statusFilter !== "all" ||
-    syncOnly ||
-    singleSlotOnly ||
-    highSlotOnly;
+    syncFilter !== "any" ||
+    singleSlotFilter !== "any" ||
+    highSlotFilter !== "any";
 
   function clearAllFilters() {
     onFilterTextChange("");
     setStatusFilter("all");
-    setSyncOnly(false);
-    setSingleSlotOnly(false);
-    setHighSlotOnly(false);
+    setSyncFilter("any");
+    setSingleSlotFilter("any");
+    setHighSlotFilter("any");
   }
 
   const sorted = useMemo(() => {
@@ -451,8 +498,8 @@ export function ApplicationTable({
           type="text"
           value={filterText}
           onChange={(e) => onFilterTextChange(e.target.value)}
-          placeholder="スペース区切りで複数条件（AND）: バンド名・申請者・メンバー・学年・パート・希望日"
-          title="スペース区切りの語がすべて一致するバンドを表示（語ごとの一致は別のメンバーでも可）。例：「ヨルシカ 9/27」「1年 Vo」"
+          placeholder="スペース区切りで複数条件（AND）／除外は -語（例: 1年 -Vo）"
+          title="バンド名・申請者・メンバー・学年・パート・希望日を検索。スペース区切りの語がすべて一致するバンドを表示（語ごとの一致は別のメンバーでも可）。「-語」を付けるとその語に一致するバンドを除外します。例：「ヨルシカ 9/27」「1年 Vo」「1年 -Vo」"
           className="min-h-11 w-full max-w-md rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 md:min-h-0"
         />
         {isFiltered && (
@@ -481,7 +528,8 @@ export function ApplicationTable({
       </div>
 
       {/* Structured filters — AND-combined with each other and with the text
-          query above. */}
+          query above; each yes/no one can include (いる/あり) or exclude
+          (いない/なし). */}
       <div className="flex shrink-0 flex-wrap items-center gap-1.5" role="group" aria-label="絞り込み条件">
         <div className="inline-flex overflow-hidden rounded border border-slate-600" role="group" aria-label="承認状態">
           {(
@@ -506,23 +554,35 @@ export function ApplicationTable({
             </button>
           ))}
         </div>
-        <FilterChip active={syncOnly} onToggle={() => setSyncOnly((v) => !v)}>
-          同期あり
-        </FilterChip>
-        <FilterChip
-          active={singleSlotOnly}
-          onToggle={() => setSingleSlotOnly((v) => !v)}
-          title="全申し込みを通じて1バンドにしか参加していないメンバーがいるバンド"
-        >
-          1枠のみの参加者がいる（{singleSlotBandCount}）
-        </FilterChip>
-        <FilterChip
-          active={highSlotOnly}
-          onToggle={() => setHighSlotOnly((v) => !v)}
-          title="全申し込みを通じて3バンド以上に参加しているメンバーがいるバンド"
-        >
-          3枠以上の参加者がいる（{highSlotBandCount}）
-        </FilterChip>
+        <TriStateFilter
+          label="同期演奏"
+          value={syncFilter}
+          onChange={setSyncFilter}
+          hasLabel="あり"
+          notLabel="なし"
+          hasCount={triCounts.sync}
+          notCount={applications.length - triCounts.sync}
+        />
+        <TriStateFilter
+          label="1枠のみの参加者"
+          value={singleSlotFilter}
+          onChange={setSingleSlotFilter}
+          hasLabel="いる"
+          notLabel="いない"
+          hasCount={triCounts.single}
+          notCount={applications.length - triCounts.single}
+          title="全申し込みを通じて1バンドにしか参加していないメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）"
+        />
+        <TriStateFilter
+          label="3枠以上の参加者"
+          value={highSlotFilter}
+          onChange={setHighSlotFilter}
+          hasLabel="いる"
+          notLabel="いない"
+          hasCount={triCounts.high}
+          notCount={applications.length - triCounts.high}
+          title="全申し込みを通じて3バンド以上に参加しているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）"
+        />
       </div>
 
       {sorted.length === 0 && (
