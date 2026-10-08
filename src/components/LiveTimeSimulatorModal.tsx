@@ -294,14 +294,34 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
     const fallbackMinutes = first?.performanceMinutes ?? 10;
     const fallbackTransition = first?.transitionMinutes ?? 10;
 
-    // 申込から自動: spread the bands over the days by load, seeding each day
-    // with the extras that day carries.
+    // 申込から自動: spread the bands over the days. A day with a 締切 takes only
+    // as many as fit before it (how the days' own finishing times compare
+    // doesn't matter); days without one share the rest by load, seeded with
+    // the extras each day carries.
     let assignment: number[] = [];
     if (source === "applications") {
+      const dayLimits = days.map((day) => {
+        const input = inputFor(day);
+        if (!input.deadline) return null;
+        const settings = {
+          startTime: input.startTime || day.settings.startTime,
+          performanceMinutes: input.performanceMinutes,
+          transitionMinutes: input.transitionMinutes,
+        };
+        const extras = extrasFor(day);
+        const start = simulateDay([], extras, settings).startMinutes;
+        return maxBandsBeforeDeadline(extras, settings, resolveDeadline(input.deadline, start), basis);
+      });
       assignment = distributeAcrossDays(
         sourceApplications.map((a) => a.durationMinutes ?? fallbackMinutes),
         days.map((d) => extrasFor(d).reduce((sum, e) => sum + e.minutes, 0)),
         fallbackTransition,
+        {
+          bandUnits: sourceApplications.map((a) =>
+            slotEquivalent(a.durationMinutes ?? fallbackMinutes, fallbackMinutes),
+          ),
+          dayLimits,
+        },
       );
     }
 

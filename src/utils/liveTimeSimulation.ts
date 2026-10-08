@@ -217,19 +217,41 @@ export function slotEquivalent(minutes: number, slotMinutes: number): number {
  * the least load, mirroring the auto-scheduler's even-split goal without its
  * date/time restrictions. `initialLoads` seeds each day with its fixed
  * extras so a day already carrying 撤収 etc. gets proportionally fewer
- * bands. Returns the chosen day index per band. */
+ * bands.
+ *
+ * `limits` (optional) is each day's room for bands in slot units — what fits
+ * before that day's 締切, null = no deadline, unlimited — alongside `bandUnits`,
+ * how many units each band takes. A band only goes to a day it still fits in
+ * (balanced among those); once every day is full the rest spill onto the day
+ * they overflow least. So with deadlines set, the split follows what fits
+ * rather than evening out the days' finishing times.
+ * Returns the chosen day index per band. */
 export function distributeAcrossDays(
   bandMinutes: number[],
   initialLoads: number[],
   transitionMinutes: number,
+  limits?: { bandUnits: number[]; dayLimits: (number | null)[] },
 ): number[] {
   const loads = [...initialLoads];
-  return bandMinutes.map((minutes) => {
-    let target = 0;
-    for (let d = 1; d < loads.length; d++) {
-      if (loads[d] < loads[target]) target = d;
+  const used = initialLoads.map(() => 0);
+  return bandMinutes.map((minutes, i) => {
+    const units = limits?.bandUnits[i] ?? 1;
+    const overflow = (d: number) => {
+      const limit = limits?.dayLimits[d] ?? null;
+      return limit === null ? 0 : Math.max(0, used[d] + units - limit);
+    };
+    const fits = loads.map((_, d) => d).filter((d) => overflow(d) === 0);
+    const pool = fits.length > 0 ? fits : loads.map((_, d) => d);
+    let target = pool[0];
+    for (const d of pool) {
+      const better =
+        fits.length > 0
+          ? loads[d] < loads[target]
+          : overflow(d) < overflow(target) || (overflow(d) === overflow(target) && loads[d] < loads[target]);
+      if (better) target = d;
     }
     loads[target] += minutes + transitionMinutes;
+    used[target] += units;
     return target;
   });
 }
