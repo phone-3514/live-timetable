@@ -28,7 +28,6 @@ type DayInput = {
   manualCount: number;
   /** "" = no deadline set for this day. */
   deadline: string;
-  useExtras: boolean;
 };
 
 function defaultsFor(day: TimetableDay): DayInput {
@@ -39,7 +38,6 @@ function defaultsFor(day: TimetableDay): DayInput {
     transitionMinutes: day.settings.transitionMinutes,
     manualCount: placed > 0 ? placed : 10,
     deadline: "",
-    useExtras: true,
   };
 }
 
@@ -56,6 +54,141 @@ const fieldClass =
   "min-h-11 rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100 outline-none focus:border-indigo-500 md:min-h-0 md:py-1.5";
 const inputClass = `${fieldClass} w-full`;
 
+const EMPTY_EXTRAS: SimExtra[] = [];
+
+function newStandardExtras(): SimExtra[] {
+  return STANDARD_SIM_EXTRAS.map((e) => ({ ...e, id: crypto.randomUUID() }));
+}
+
+// One day's 休憩・準備などの追加項目. Each day owns its own list — the
+// breaks/prep around a Saturday and a Sunday rarely match — so this renders
+// inside that day's card rather than once for the whole simulator.
+function ExtrasEditor({
+  dayLabel,
+  extras,
+  canCopyToOtherDays,
+  onAdd,
+  onAddStandard,
+  onClear,
+  onPatch,
+  onRemove,
+  onCopyToOtherDays,
+}: {
+  dayLabel: string;
+  extras: SimExtra[];
+  canCopyToOtherDays: boolean;
+  onAdd: () => void;
+  onAddStandard: () => void;
+  onClear: () => void;
+  onPatch: (id: string, patch: Partial<SimExtra>) => void;
+  onRemove: (id: string) => void;
+  onCopyToOtherDays: () => void;
+}) {
+  const smallButton =
+    "min-h-11 rounded border px-2 text-xs md:min-h-0 md:py-1";
+  return (
+    <div className="space-y-1.5 rounded border border-slate-700 bg-slate-900/40 p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-semibold text-slate-400">追加項目（休憩・準備など）</span>
+        <button
+          type="button"
+          onClick={onAdd}
+          className={`${smallButton} border-slate-600 text-slate-200 hover:bg-slate-700`}
+        >
+          + 追加
+        </button>
+        <button
+          type="button"
+          onClick={onAddStandard}
+          title="幹部集合10分→出演者集合5分→リハーサル10分→諸注意5分／写真撮影5分→完全撤収60分"
+          className={`${smallButton} border-violet-600 bg-violet-950/40 text-violet-300 hover:bg-violet-900/50`}
+        >
+          🎬 定型
+        </button>
+        {extras.length > 0 && canCopyToOtherDays && (
+          <button
+            type="button"
+            onClick={onCopyToOtherDays}
+            title="この日の追加項目で、他の日の追加項目を置き換えます"
+            className={`${smallButton} border-slate-600 text-slate-300 hover:bg-slate-700`}
+          >
+            他の日へコピー
+          </button>
+        )}
+        {extras.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            className={`${smallButton} border-slate-700 text-slate-400 hover:bg-slate-700`}
+          >
+            すべて削除
+          </button>
+        )}
+      </div>
+      {extras.length === 0 ? (
+        <p className="text-[11px] text-slate-500">
+          追加項目なし。「定型」で開演前後のいつもの流れを一括追加できます。
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {extras.map((extra) => (
+            <li key={extra.id} className="flex flex-wrap items-center gap-1.5">
+              <input
+                value={extra.label}
+                onChange={(e) => onPatch(extra.id, { label: e.target.value })}
+                aria-label={`${dayLabel}の項目名`}
+                className={`${fieldClass} min-w-0 flex-1 basis-28`}
+              />
+              <input
+                type="number"
+                min={0}
+                value={extra.minutes}
+                onChange={(e) => onPatch(extra.id, { minutes: toNumber(e.target.value) })}
+                aria-label={`${dayLabel}の${extra.label}の所要時間（分）`}
+                className={`${fieldClass} w-16`}
+              />
+              <span className="text-xs text-slate-500">分</span>
+              <select
+                value={extra.position}
+                onChange={(e) => onPatch(extra.id, { position: e.target.value as SimExtra["position"] })}
+                aria-label={`${dayLabel}の${extra.label}の位置`}
+                className={`${fieldClass} w-24`}
+              >
+                <option value="before">開演前</option>
+                <option value="middle">途中</option>
+                <option value="after">終演後</option>
+              </select>
+              {extra.position === "middle" && (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    value={extra.afterBandCount}
+                    onChange={(e) =>
+                      onPatch(extra.id, { afterBandCount: Math.max(1, toNumber(e.target.value)) })
+                    }
+                    aria-label={`${dayLabel}の${extra.label}を入れるバンド数`}
+                    className={`${fieldClass} w-16`}
+                  />
+                  <span className="text-xs text-slate-500">組目の後</span>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemove(extra.id)}
+                className="flex h-11 w-11 items-center justify-center rounded text-slate-500 hover:text-rose-400 md:h-8 md:w-8"
+                title="削除"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // 全日程まとめてシミュレーション: for every day at once, "this start time +
 // this many bands (typed, taken from the timetable as placed, or counted from
 // the applications) + these extras ends at …", and the reverse — "to finish
@@ -71,7 +204,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
   const [source, setSource] = useState<Source>("manual");
   const [includePending, setIncludePending] = useState(false);
   const [basis, setBasis] = useState<DeadlineBasis>("lastBand");
-  const [extras, setExtras] = useState<SimExtra[]>([]);
+  const [extrasByDay, setExtrasByDay] = useState<Record<string, SimExtra[]>>({});
   const [dayInputs, setDayInputs] = useState<Record<string, DayInput>>(() =>
     Object.fromEntries(days.map((d) => [d.id, defaultsFor(d)])),
   );
@@ -84,8 +217,19 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       return current ? { ...prev, [dayId]: { ...current, ...patch } } : prev;
     });
 
-  const patchExtra = (id: string, patch: Partial<SimExtra>) =>
-    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  const extrasFor = (day: TimetableDay): SimExtra[] => extrasByDay[day.id] ?? EMPTY_EXTRAS;
+  const updateExtras = (dayId: string, update: (prev: SimExtra[]) => SimExtra[]) =>
+    setExtrasByDay((prev) => ({ ...prev, [dayId]: update(prev[dayId] ?? []) }));
+  const copyExtrasToOtherDays = (fromDayId: string) =>
+    setExtrasByDay((prev) => {
+      const source = prev[fromDayId] ?? [];
+      return Object.fromEntries(
+        days.map((d) => [
+          d.id,
+          d.id === fromDayId ? source : source.map((e) => ({ ...e, id: crypto.randomUUID() })),
+        ]),
+      );
+    });
 
   const bandMap = useMemo(() => new Map(bands.map((b) => [b.id, b])), [bands]);
 
@@ -100,15 +244,14 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
     const first = days[0] ? inputFor(days[0]) : undefined;
     const fallbackMinutes = first?.performanceMinutes ?? 10;
     const fallbackTransition = first?.transitionMinutes ?? 10;
-    const extrasMinutes = extras.reduce((sum, e) => sum + e.minutes, 0);
 
     // 申込から自動: spread the bands over the days by load, seeding each day
-    // with the extras it will carry (when it uses them).
+    // with the extras that day carries.
     let assignment: number[] = [];
     if (source === "applications") {
       assignment = distributeAcrossDays(
         sourceApplications.map((a) => a.durationMinutes ?? fallbackMinutes),
-        days.map((d) => (inputFor(d).useExtras ? extrasMinutes : 0)),
+        days.map((d) => extrasFor(d).reduce((sum, e) => sum + e.minutes, 0)),
         fallbackTransition,
       );
     }
@@ -120,7 +263,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
         performanceMinutes: input.performanceMinutes,
         transitionMinutes: input.transitionMinutes,
       };
-      const effectiveExtras = input.useExtras ? extras : [];
+      const effectiveExtras = extrasFor(day);
 
       let core: SimItem[] = [];
       if (source === "manual") {
@@ -180,9 +323,9 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
           maxSlots: maxBandsBeforeDeadline(effectiveExtras, settings, absolute, basis),
         };
       }
-      return { day, input, result, slotCount, deadline };
+      return { day, input, extras: effectiveExtras, result, slotCount, deadline };
     });
-  }, [days, dayInputs, extras, source, sourceApplications, bandMap, basis]);
+  }, [days, dayInputs, extrasByDay, source, sourceApplications, bandMap, basis]);
 
   const totals = useMemo(() => {
     const withDeadline = plans.filter((p) => p.deadline !== null);
@@ -309,105 +452,33 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
             </section>
 
             <section className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-xs font-semibold text-slate-400">休憩・準備などの追加項目（手入力）</h3>
+              <h3 className="text-xs font-semibold text-slate-400">休憩・準備などの追加項目（手入力）</h3>
+              <p className="text-xs text-slate-500">
+                追加項目は下の各日のカードで日ごとに設定します。全日程へ同じ項目を入れたいときはここから一括で操作できます。
+              </p>
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() =>
-                    setExtras((prev) => [
-                      ...prev,
-                      { id: crypto.randomUUID(), label: "休憩", minutes: 10, position: "middle", afterBandCount: 5 },
-                    ])
-                  }
-                  className="min-h-11 rounded border border-slate-600 px-2 text-xs text-slate-200 hover:bg-slate-700 md:min-h-0 md:py-1"
-                >
-                  + 項目を追加
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExtras((prev) => [
-                      ...prev,
-                      ...STANDARD_SIM_EXTRAS.map((e) => ({ ...e, id: crypto.randomUUID() })),
-                    ])
+                    setExtrasByDay((prev) =>
+                      Object.fromEntries(
+                        days.map((d) => [d.id, [...(prev[d.id] ?? []), ...newStandardExtras()]]),
+                      ),
+                    )
                   }
                   title="幹部集合10分→出演者集合5分→リハーサル10分→諸注意5分／写真撮影5分→完全撤収60分"
                   className="min-h-11 rounded border border-violet-600 bg-violet-950/40 px-2 text-xs text-violet-300 hover:bg-violet-900/50 md:min-h-0 md:py-1"
                 >
-                  🎬 定型（開演前後）を追加
+                  🎬 全日程に定型（開演前後）を追加
                 </button>
-                {extras.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setExtras([])}
-                    className="min-h-11 rounded border border-slate-700 px-2 text-xs text-slate-400 hover:bg-slate-700 md:min-h-0 md:py-1"
-                  >
-                    すべて削除
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setExtrasByDay({})}
+                  className="min-h-11 rounded border border-slate-700 px-2 text-xs text-slate-400 hover:bg-slate-700 md:min-h-0 md:py-1"
+                >
+                  全日程の追加項目をすべて削除
+                </button>
               </div>
-              {extras.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  追加項目はありません。「定型」ボタンで開演前後のいつもの流れを一括追加できます。
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {extras.map((extra) => (
-                    <li key={extra.id} className="flex flex-wrap items-center gap-1.5">
-                      <input
-                        value={extra.label}
-                        onChange={(e) => patchExtra(extra.id, { label: e.target.value })}
-                        aria-label="項目名"
-                        className={`${fieldClass} min-w-0 flex-1 basis-32`}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        value={extra.minutes}
-                        onChange={(e) => patchExtra(extra.id, { minutes: toNumber(e.target.value) })}
-                        aria-label={`${extra.label}の所要時間（分）`}
-                        className={`${fieldClass} w-16`}
-                      />
-                      <span className="text-xs text-slate-500">分</span>
-                      <select
-                        value={extra.position}
-                        onChange={(e) =>
-                          patchExtra(extra.id, { position: e.target.value as SimExtra["position"] })
-                        }
-                        aria-label={`${extra.label}の位置`}
-                        className={`${fieldClass} w-28`}
-                      >
-                        <option value="before">開演前</option>
-                        <option value="middle">途中</option>
-                        <option value="after">終演後</option>
-                      </select>
-                      {extra.position === "middle" && (
-                        <>
-                          <input
-                            type="number"
-                            min={1}
-                            value={extra.afterBandCount}
-                            onChange={(e) =>
-                              patchExtra(extra.id, { afterBandCount: Math.max(1, toNumber(e.target.value)) })
-                            }
-                            aria-label={`${extra.label}を入れるバンド数`}
-                            className={`${fieldClass} w-16`}
-                          />
-                          <span className="text-xs text-slate-500">組目の後</span>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setExtras((prev) => prev.filter((e) => e.id !== extra.id))}
-                        className="flex h-11 w-11 items-center justify-center rounded text-slate-500 hover:text-rose-400 md:h-8 md:w-8"
-                        title="削除"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </section>
 
             <section className="rounded-lg border border-indigo-700 bg-indigo-950/30 p-3">
@@ -447,7 +518,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
             </section>
 
             <div className="grid gap-3 md:grid-cols-2">
-              {plans.map(({ day, input, result, slotCount, deadline }) => (
+              {plans.map(({ day, input, extras, result, slotCount, deadline }) => (
                 <section key={day.id} className="space-y-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3">
                   <h3 className="text-sm font-semibold text-slate-100">
                     {day.label}
@@ -510,14 +581,24 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                       />
                     </label>
                   </div>
-                  <label className="flex min-h-11 items-center gap-2 text-xs text-slate-300 md:min-h-0">
-                    <input
-                      type="checkbox"
-                      checked={input.useExtras}
-                      onChange={(e) => patchDay(day.id, { useExtras: e.target.checked })}
-                    />
-                    追加項目（休憩・準備など）を含める
-                  </label>
+                  <ExtrasEditor
+                    dayLabel={day.label}
+                    extras={extras}
+                    canCopyToOtherDays={days.length > 1}
+                    onAdd={() =>
+                      updateExtras(day.id, (prev) => [
+                        ...prev,
+                        { id: crypto.randomUUID(), label: "休憩", minutes: 10, position: "middle", afterBandCount: 5 },
+                      ])
+                    }
+                    onAddStandard={() => updateExtras(day.id, (prev) => [...prev, ...newStandardExtras()])}
+                    onClear={() => updateExtras(day.id, () => [])}
+                    onPatch={(id, patch) =>
+                      updateExtras(day.id, (prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+                    }
+                    onRemove={(id) => updateExtras(day.id, (prev) => prev.filter((e) => e.id !== id))}
+                    onCopyToOtherDays={() => copyExtrasToOtherDays(day.id)}
+                  />
 
                   <dl className="space-y-1 rounded border border-slate-700 bg-slate-900/60 p-2 text-xs">
                     <div className="flex justify-between gap-2">
