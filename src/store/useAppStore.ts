@@ -233,7 +233,8 @@ export function computeDropPreviewStartTime(
     }
     const effectiveBandId = slot.bandId === draggedBandId ? null : slot.bandId;
     let duration = day.settings.performanceMinutes;
-    let transitionAfter = 0;
+    // Same rule as recomputeTimes: only a break/custom row adds no changeover.
+    let transitionAfter = day.settings.transitionMinutes;
     if (effectiveBandId) {
       const band = bandMap.get(effectiveBandId);
       duration = band?.durationMinutes ?? day.settings.performanceMinutes;
@@ -241,6 +242,7 @@ export function computeDropPreviewStartTime(
         band?.customTransitionMinutes ?? day.settings.transitionMinutes;
     } else if (slot.customLabel !== null) {
       duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
+      transitionAfter = 0;
     }
     const start = slot.startTimeOverride
       ? alignTimeToReference(slot.startTimeOverride, cursor)

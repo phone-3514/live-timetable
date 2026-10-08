@@ -14,12 +14,14 @@ export function alignTimeToReference(time: string, referenceMinutes: number): nu
 // A band's own durationMinutes (parsed from e.g. "演奏時間：10分") overrides
 // the timetable's default performance duration for its slot. Custom rows
 // (休憩・集合・リハーサル) use their own customDurationMinutes instead. The
-// transition AFTER a slot only applies when that slot is an actual band
-// performance — a transition exists to cover equipment strike/setup between
-// bands, so a break/gathering/rehearsal row (or an empty unplaced slot)
-// shouldn't add one after it. A band's transition falls back to the day's
-// default unless it has its own customTransitionMinutes (e.g. a keyboard or
-// sync-track band that needs longer to strike/set up gear).
+// transition AFTER a slot applies when that slot is a band performance or an
+// empty performance slot waiting for a band — a transition exists to cover
+// equipment strike/setup between bands, and an empty slot is a band-to-be, so
+// leaving it out would show a row of empty slots packed back to back and then
+// jump later once they're filled. A break/gathering/rehearsal row adds none.
+// A band's transition falls back to the day's default unless it has its own
+// customTransitionMinutes (e.g. a keyboard or sync-track band that needs
+// longer to strike/set up gear).
 //
 // Pulled out of useAppStore so the auto-schedule CSP solver (a pure
 // algorithm with no store dependencies) can recompute real start/end times
@@ -34,13 +36,14 @@ export function recomputeTimes(
   let baselineCursor = cursor;
   return slots.map((slot) => {
     let duration = settings.performanceMinutes;
-    let transitionAfter = 0;
+    let transitionAfter = settings.transitionMinutes;
     if (slot.bandId) {
       const band = bandMap.get(slot.bandId);
       duration = band?.durationMinutes ?? settings.performanceMinutes;
       transitionAfter = band?.customTransitionMinutes ?? settings.transitionMinutes;
     } else if (slot.customLabel !== null) {
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
+      transitionAfter = 0;
     }
     const baselineStart = baselineCursor;
     const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
