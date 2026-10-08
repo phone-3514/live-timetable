@@ -2,6 +2,16 @@ import { useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useToastStore } from "../store/useToastStore";
+import { clearNextHistoryAction, setNextHistoryAction } from "../store/useHistoryStore";
+import { planDaySlots, type PlannedDay, type SimulationPlan } from "../utils/applySimulationPlan";
+import { collectScheduleCandidates, parseScheduleAvailability } from "../utils/scheduleAvailability";
+import {
+  normalizeScheduleKey,
+  planRejections,
+  type PlannerBand,
+  type PlannerSlot,
+} from "../utils/rejectionPlanner";
 import { ModalPortal } from "./ModalPortal";
 import type { TimetableDay } from "../types";
 import {
@@ -200,11 +210,22 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
   const applications = useApplicationStore((s) => s.applications);
+  const applySimulationPlans = useAppStore((s) => s.applySimulationPlans);
+  const showToast = useToastStore((s) => s.show);
 
   const [source, setSource] = useState<Source>("manual");
   const [includePending, setIncludePending] = useState(false);
   const [basis, setBasis] = useState<DeadlineBasis>("lastBand");
   const [extrasByDay, setExtrasByDay] = useState<Record<string, SimExtra[]>>({});
+  // "タイムテーブルへ反映" panel state.
+  const [excludedApplyDays, setExcludedApplyDays] = useState<Set<string>>(() => new Set());
+  const [applySettings, setApplySettings] = useState(true);
+  const [applyExtras, setApplyExtras] = useState(true);
+  const [slotMode, setSlotMode] = useState<"sim" | "max" | "none">("sim");
+  const [replaceOverride, setReplaceOverride] = useState<boolean | null>(null);
+  // 日時指定を考慮した収容チェック: at the selection stage most applications
+  // are still pending, so unlike the 申込から自動 count this includes them.
+  const [plannerIncludePending, setPlannerIncludePending] = useState(true);
   const [dayInputs, setDayInputs] = useState<Record<string, DayInput>>(() =>
     Object.fromEntries(days.map((d) => [d.id, defaultsFor(d)])),
   );
@@ -323,7 +344,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
           maxSlots: maxBandsBeforeDeadline(effectiveExtras, settings, absolute, basis),
         };
       }
-      return { day, input, extras: effectiveExtras, result, slotCount, deadline };
+      return { day, input, settings, extras: effectiveExtras, result, slotCount, deadline };
     });
   }, [days, dayInputs, extrasByDay, source, sourceApplications, bandMap, basis]);
 
@@ -350,6 +371,135 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
   }, [sourceApplications, baseSlotMinutes]);
 
   const basisLabel = basis === "lastBand" ? "最後の演奏の終了" : "撤収など最後の項目まで含めた終了";
+
+  // 反映: with the timetable as the source, the simulated rows already include
+  // the day's existing breaks, so replacing them would drop rows the result was
+  // computed with — default to keeping them there, replacing in the typed/
+  // application modes where the extras list is the whole intended set.
+  const replaceCustom = replaceOverride ?? source !== "timetable";
+  const anyDeadline = plans.some((p) => p.deadline !== null);
+  const applyPreview = useMemo(
+    () =>
+      plans
+        .filter((p) => !excludedApplyDays.has(p.day.id))
+        .map((p) => {
+          const slotCount =
+            slotMode === "none"
+              ? null
+              : slotMode === "max" && p.deadline
+                ? p.deadline.maxSlots
+                : p.result.bandCount;
+          const plan: SimulationPlan = {
+            dayId: p.day.id,
+            settings: applySettings ? p.settings : null,
+            slotCount,
+            extras: applyExtras ? p.extras : null,
+            replaceCustomSlots: replaceCustom,
+          };
+          return { plan, label: p.day.label, planned: planDaySlots(p.day, plan) };
+        }),
+    [plans, excludedApplyDays, slotMode, applySettings, applyExtras, replaceCustom],
+  );
+  const nothingToApply = !applySettings && !applyExtras && slotMode === "none";
+
+  // 日時指定を考慮した収容チェック. Slots are what each day with a deadline can
+  // actually hold (the simulator's own uniform-slot timeline, so every slot has
+  // a real start/end), bands are the applications with what their 出演希望日
+  // allows; planRejections then finds the most that can be seated and which
+  // schedule groups the rest come from.
+  const rejectionAnalysis = useMemo(() => {
+    const dayPlans = plans
+      .map((p, dayIndex) => ({ p, dayIndex }))
+      .filter(({ p }) => p.deadline !== null);
+    if (dayPlans.length === 0) return null;
+
+    const pool = applications
+      .filter((a) => plannerIncludePending || a.approved)
+      .sort(
+        (a, b) =>
+          a.applicationDateTime.localeCompare(b.applicationDateTime) || a.createdAt - b.createdAt,
+      );
+    const availabilities = pool.map((a) => parseScheduleAvailability(a.desiredDateTime));
+    const writtenDays = collectScheduleCandidates(availabilities).days;
+
+    let guessedDates = false;
+    const slots: PlannerSlot[] = [];
+    for (const { p, dayIndex } of dayPlans) {
+      let dayOfMonth: number | null = null;
+      if (p.day.date) {
+        dayOfMonth = Number(p.day.date.slice(8, 10)) || null;
+      } else {
+        // No calendar date on this day: line the day up with the dates the
+        // applications mention, in order (1日目 = the smallest date …).
+        dayOfMonth = writtenDays[dayIndex] ?? null;
+        guessedDates = true;
+      }
+      const n = p.deadline?.maxSlots ?? 0;
+      const core: SimItem[] = Array.from({ length: n }, (_, i) => ({
+        kind: "band",
+        label: `枠${i + 1}`,
+        minutes: null,
+      }));
+      for (const row of simulateDay(core, p.extras, p.settings).rows) {
+        if (row.kind === "band") slots.push({ dayIndex, dayOfMonth, start: row.start, end: row.end });
+      }
+    }
+
+    const bands: PlannerBand[] = pool.map((a, i) => ({
+      id: a.id,
+      name: a.bandName,
+      units: slotEquivalent(a.durationMinutes ?? baseSlotMinutes, baseSlotMinutes),
+      availability: availabilities[i],
+      specKey: normalizeScheduleKey(a.desiredDateTime),
+      specLabel: a.desiredDateTime.trim() || "（日程の記載なし）",
+    }));
+
+    return {
+      plan: planRejections(bands, slots),
+      bandCount: bands.length,
+      usedDays: dayPlans.map(({ p, dayIndex }) => ({
+        dayIndex,
+        label: p.day.label,
+        slotCount: p.deadline?.maxSlots ?? 0,
+      })),
+      skippedDays: plans.filter((p) => p.deadline === null).map((p) => p.day.label),
+      guessedDates,
+    };
+  }, [plans, applications, plannerIncludePending, baseSlotMinutes]);
+
+  function describePlanned(plan: SimulationPlan, planned: PlannedDay): string {
+    const parts: string[] = [];
+    if (plan.settings) {
+      parts.push(
+        `設定 ${plan.settings.startTime}開始・演奏${plan.settings.performanceMinutes}分・転換${plan.settings.transitionMinutes}分`,
+      );
+    }
+    if (plan.slotCount !== null) {
+      const slotParts: string[] = [];
+      if (planned.addedSlots > 0) slotParts.push(`空き枠 +${planned.addedSlots}`);
+      if (planned.removedSlots > 0) slotParts.push(`空き枠 −${planned.removedSlots}`);
+      if (planned.keptSurplus > 0) slotParts.push(`バンド配置済みの${planned.keptSurplus}枠は削除しません`);
+      parts.push(`枠数 ${plan.slotCount}枠（${slotParts.length > 0 ? slotParts.join("、") : "変更なし"}）`);
+    }
+    if (plan.extras) {
+      parts.push(
+        `追加項目 ${planned.insertedExtras}行を挿入` +
+          (planned.removedCustom > 0 ? `（既存の非演奏枠${planned.removedCustom}行を置き換え）` : ""),
+      );
+    }
+    return parts.length > 0 ? parts.join(" ／ ") : "変更なし";
+  }
+
+  function handleApply() {
+    if (applyPreview.length === 0 || nothingToApply) return;
+    setNextHistoryAction("時間シミュレーションを反映");
+    const changed = applySimulationPlans(applyPreview.map((p) => p.plan));
+    if (changed === 0) {
+      clearNextHistoryAction();
+      return;
+    }
+    showToast(`${changed}日分をタイムテーブルに反映しました（⌘Z / Ctrl+Z で元に戻せます）`, "success");
+  }
 
   return (
     <ModalPortal>
@@ -516,6 +666,224 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                 )}
               </dl>
             </section>
+
+            <details className="rounded-lg border border-rose-700 bg-rose-950/20 p-3">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-rose-300">
+                🔎 日時指定を考慮した収容チェック（却下の目安）
+              </summary>
+              <div className="mt-3 space-y-3 text-xs text-slate-300">
+                <p className="text-slate-400">
+                  各日の締切までに実際に使える枠（時刻つき）と、申請の出演希望日・時間を照らし合わせ、日時指定を満たして入る最大組数と、入らない申請を日時指定ごとに出します。締切時刻を入れた日だけが対象です。
+                </p>
+                <label className="flex min-h-11 items-center gap-2 md:min-h-0">
+                  <input
+                    type="checkbox"
+                    checked={plannerIncludePending}
+                    onChange={(e) => setPlannerIncludePending(e.target.checked)}
+                  />
+                  未承認の申込も対象にする（外すと承認済みのみ）
+                </label>
+
+                {rejectionAnalysis === null ? (
+                  <p className="rounded border border-slate-700 bg-slate-900/50 p-2 text-slate-400">
+                    下の各日のカードで「締切時刻」を入力すると計算します。
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-1 rounded border border-slate-700 bg-slate-900/50 p-2">
+                      <p>
+                        対象の日：
+                        {rejectionAnalysis.usedDays
+                          .map((d) => `${d.label}（${d.slotCount}枠）`)
+                          .join("、")}
+                        {rejectionAnalysis.skippedDays.length > 0 &&
+                          ` ／ 締切なしのため対象外：${rejectionAnalysis.skippedDays.join("、")}`}
+                      </p>
+                      <p>
+                        申請 {rejectionAnalysis.bandCount}組（{rejectionAnalysis.plan.totalUnits}枠換算）に対して、
+                        収容 {rejectionAnalysis.plan.capacity}枠 → 日時指定を満たして入るのは{" "}
+                        <span className="font-semibold text-slate-100">
+                          {rejectionAnalysis.plan.seatedBandIds.size}組
+                        </span>
+                      </p>
+                      <p
+                        className={`text-sm font-semibold ${
+                          rejectionAnalysis.plan.rejected.length === 0 ? "text-emerald-300" : "text-rose-300"
+                        }`}
+                      >
+                        {rejectionAnalysis.plan.rejected.length === 0
+                          ? "✅ 全員が日時指定どおりに入ります（却下は不要）"
+                          : `⚠ 最低 ${rejectionAnalysis.plan.rejected.length}組 が入りません（却下の目安）`}
+                      </p>
+                      {rejectionAnalysis.guessedDates && (
+                        <p className="text-amber-300">
+                          日付が未設定の日は、申請に書かれた日付を小さい順に対応させて計算しています（日の設定で日付を入れると正確になります）。
+                        </p>
+                      )}
+                    </div>
+
+                    {rejectionAnalysis.plan.rejected.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="font-semibold text-slate-400">どの日時指定のバンドを何組却下するか</p>
+                        <ul className="space-y-1.5">
+                          {rejectionAnalysis.plan.groups
+                            .filter((g) => g.rejected > 0)
+                            .map((g) => (
+                              <li key={g.key} className="rounded border border-rose-800 bg-rose-950/30 p-2">
+                                <p>
+                                  <span className="font-semibold text-rose-300">{g.rejected}組を却下</span>
+                                  <span className="ml-2 text-slate-400">
+                                    （同じ日時指定の申請 {g.total}組のうち、入るのは {g.seated}組）
+                                  </span>
+                                </p>
+                                <p className="mt-0.5 break-words text-slate-100">日時指定：{g.label}</p>
+                                <p className="mt-0.5 break-words text-slate-400">対象：{g.rejectedNames.join("、")}</p>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <details className="text-slate-400">
+                      <summary className="cursor-pointer select-none py-1 hover:text-slate-200">
+                        日時指定ごとの内訳（すべて）
+                      </summary>
+                      <ul className="mt-1 space-y-0.5">
+                        {rejectionAnalysis.plan.groups.map((g) => (
+                          <li key={g.key} className="flex flex-wrap gap-x-2">
+                            <span className="min-w-0 break-words">{g.label}</span>
+                            <span className="text-slate-500">
+                              {g.total}組 → 入る{g.seated}組
+                              {g.rejected > 0 && <span className="text-rose-300">／却下{g.rejected}組</span>}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+
+                    <p className="text-slate-500">
+                      申請が早い順に優先して席を確保し、入らなかった分を「却下の目安」にしています（最大組数は数学的な最大値です。誰を残すかは申請順なので、優先したい順があれば手動で調整してください）。2枠分（20分）のバンドは枠の連続までは見ず、各枠の時間帯だけで判定します。
+                    </p>
+                  </>
+                )}
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-emerald-700 bg-emerald-950/20 p-3">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-emerald-300">
+                📥 シミュレーション結果をタイムテーブルに反映
+              </summary>
+              <div className="mt-3 space-y-3 text-xs text-slate-300">
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-400">反映する日</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {days.map((day) => (
+                      <label key={day.id} className="flex min-h-11 items-center gap-1.5 md:min-h-0">
+                        <input
+                          type="checkbox"
+                          checked={!excludedApplyDays.has(day.id)}
+                          onChange={(e) =>
+                            setExcludedApplyDays((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.delete(day.id);
+                              else next.add(day.id);
+                              return next;
+                            })
+                          }
+                        />
+                        {day.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="font-semibold text-slate-400">反映する内容</p>
+                  <label className="flex min-h-11 items-center gap-2 md:min-h-0">
+                    <input
+                      type="checkbox"
+                      checked={applySettings}
+                      onChange={(e) => setApplySettings(e.target.checked)}
+                    />
+                    開始時刻・1枠の演奏・転換時間（その日の設定）
+                  </label>
+                  <fieldset className="space-y-1">
+                    <legend className="mb-0.5">枠数（演奏枠の数）</legend>
+                    {(
+                      [
+                        ["sim", "シミュレーション上の枠数に合わせる（空き枠を増減）", false],
+                        ["max", "締切までに入る最大枠数に合わせる（締切のない日は上と同じ）", !anyDeadline],
+                        ["none", "変更しない", false],
+                      ] as const
+                    ).map(([value, label, disabled]) => (
+                      <label
+                        key={value}
+                        className={`flex min-h-11 items-center gap-2 md:min-h-0 ${disabled ? "opacity-40" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulator-slot-mode"
+                          checked={slotMode === value}
+                          disabled={disabled}
+                          onChange={() => setSlotMode(value)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <label className="flex min-h-11 items-center gap-2 md:min-h-0">
+                    <input
+                      type="checkbox"
+                      checked={applyExtras}
+                      onChange={(e) => setApplyExtras(e.target.checked)}
+                    />
+                    追加項目（休憩・準備・撤収など）を、シミュレーションと同じ位置に挿入
+                  </label>
+                  <label
+                    className={`ml-5 flex min-h-11 items-center gap-2 md:min-h-0 ${applyExtras ? "" : "opacity-40"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={replaceCustom}
+                      disabled={!applyExtras}
+                      onChange={(e) => setReplaceOverride(e.target.checked)}
+                    />
+                    既存の休憩・集合などの枠を置き換える
+                    {source === "timetable" && (
+                      <span className="text-slate-500">（配置から自動のときは既存の枠も計算に含まれるため、標準ではオフ）</span>
+                    )}
+                  </label>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-400">反映される内容</p>
+                  {applyPreview.length === 0 ? (
+                    <p className="text-slate-500">反映する日が選ばれていません。</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {applyPreview.map(({ plan, label, planned }) => (
+                        <li key={plan.dayId}>
+                          <span className="font-semibold text-slate-200">{label}</span>：
+                          {describePlanned(plan, planned)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <p className="text-slate-500">
+                  配置済みのバンドは動かしません。空き枠には転換時間が付かないため、バンドを配置するとタイムテーブルの時刻がシミュレーションどおりになります。反映は1回の操作として履歴に残り、元に戻せます。
+                </p>
+                <button
+                  type="button"
+                  onClick={handleApply}
+                  disabled={applyPreview.length === 0 || nothingToApply}
+                  className="min-h-11 rounded bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 md:min-h-0 md:py-1.5"
+                >
+                  タイムテーブルに反映する
+                </button>
+              </div>
+            </details>
 
             <div className="grid gap-3 md:grid-cols-2">
               {plans.map(({ day, input, extras, result, slotCount, deadline }) => (

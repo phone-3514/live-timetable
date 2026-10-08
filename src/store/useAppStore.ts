@@ -17,6 +17,8 @@ import { minutesToTime, timeToMinutes } from "../utils/time";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
+import { makeBlankSlot, makeCustomEventSlot } from "../utils/slotFactories";
+import { planDaySlots, type SimulationPlan } from "../utils/applySimulationPlan";
 import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
 import {
   buildScheduleContext,
@@ -153,6 +155,13 @@ type AppState = {
     targetDayId: string,
     targetIndex: number,
   ) => "moved" | "blocked" | "noop";
+  // Writes the time simulator's result into real days — start/performance/
+  // changeover settings, the number of performance slots, and the 休憩・準備・
+  // 撤収 rows in the positions the simulator used (see planDaySlots for the
+  // exact rules; a slot already holding a band is never removed). All the
+  // given days change in ONE store update so undo reverts the whole apply at
+  // once. Returns how many days were touched.
+  applySimulationPlans: (plans: SimulationPlan[]) => number;
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
   adjustScheduleFrom: (dayId: string, slotId: string, deltaMinutes: number) => void;
   resetScheduleFrom: (dayId: string, slotId: string) => void;
@@ -188,32 +197,6 @@ function nextLocalCalendarDate(date: string | null): string | null {
   const month = String(next.getMonth() + 1).padStart(2, "0");
   const day = String(next.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function makeBlankSlot(): TimetableSlot {
-  return {
-    id: crypto.randomUUID(),
-    bandId: null,
-    customLabel: null,
-    customDurationMinutes: null,
-    startTimeOverride: null,
-    delayMinutes: 0,
-    startTime: "",
-    endTime: "",
-  };
-}
-
-function makeCustomEventSlot(label: string, durationMinutes: number): TimetableSlot {
-  return {
-    id: crypto.randomUUID(),
-    bandId: null,
-    customLabel: label,
-    customDurationMinutes: durationMinutes,
-    startTimeOverride: null,
-    delayMinutes: 0,
-    startTime: "",
-    endTime: "",
-  };
 }
 
 // The club's standard show-flow bookends — see addStandardShowFlowEvents.
@@ -974,6 +957,22 @@ export const useAppStore = create<AppState>()(
       ),
     });
     return "moved";
+  },
+
+  applySimulationPlans: (plans) => {
+    const state = get();
+    const planByDay = new Map(plans.map((plan) => [plan.dayId, plan]));
+    let changed = 0;
+    const days = state.days.map((day) => {
+      const plan = planByDay.get(day.id);
+      if (!plan) return day;
+      changed++;
+      const settings = plan.settings ? { ...day.settings, ...plan.settings } : day.settings;
+      const planned = planDaySlots(day, plan);
+      return { ...day, settings, slots: recomputeTimes(planned.slots, settings, state.bands) };
+    });
+    if (changed > 0) set({ days });
+    return changed;
   },
 
   updateSettings: (dayId, partial) =>
