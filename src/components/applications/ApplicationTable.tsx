@@ -5,6 +5,7 @@ import { minutesToTime } from "../../utils/time";
 import {
   collectScheduleCandidates,
   isAvailableAtAnyDay,
+  isScheduleTextUnrecognized,
   isAvailableOn,
   parseScheduleAvailability,
 } from "../../utils/scheduleAvailability";
@@ -369,6 +370,10 @@ export function ApplicationTable({
   // no date chosen, means "can play at that time on at least one day".
   const [dateFilters, setDateFilters] = useState<Record<number, TriState>>({});
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
+  // 日時指定そのものの状態: "認識できない" = the text has something the
+  // scheduler can't read (or leftover ~~取り消し線~~), "未記入" = blank.
+  const [unrecognizedFilter, setUnrecognizedFilter] = useState<TriState>("any");
+  const [blankScheduleFilter, setBlankScheduleFilter] = useState<TriState>("any");
   const availabilityByAppId = useMemo(
     () => new Map(applications.map((a) => [a.id, parseScheduleAvailability(a.desiredDateTime)])),
     [applications],
@@ -376,6 +381,13 @@ export function ApplicationTable({
   const scheduleCandidates = useMemo(
     () => collectScheduleCandidates([...availabilityByAppId.values()]),
     [availabilityByAppId],
+  );
+  const scheduleCounts = useMemo(
+    () => ({
+      unrecognized: applications.filter((a) => isScheduleTextUnrecognized(a.desiredDateTime)).length,
+      blank: applications.filter((a) => !a.desiredDateTime.trim()).length,
+    }),
+    [applications],
   );
   const dateAvailableCounts = useMemo(
     () =>
@@ -445,6 +457,8 @@ export function ApplicationTable({
       if (!passesTriState(syncFilter, a.hasSync)) return false;
       if (!passesTriState(singleSlotFilter, hasSingleSlotMember(a, frameCounts))) return false;
       if (!passesTriState(highSlotFilter, hasHighSlotMember(a))) return false;
+      if (!passesTriState(unrecognizedFilter, isScheduleTextUnrecognized(a.desiredDateTime))) return false;
+      if (!passesTriState(blankScheduleFilter, !a.desiredDateTime.trim())) return false;
       const availability = availabilityByAppId.get(a.id)!;
       for (const day of scheduleCandidates.days) {
         const state = dateFilters[day] ?? "any";
@@ -479,6 +493,8 @@ export function ApplicationTable({
     scheduleCandidates,
     dateFilters,
     selectedTime,
+    unrecognizedFilter,
+    blankScheduleFilter,
   ]);
 
   const isFiltered =
@@ -488,7 +504,9 @@ export function ApplicationTable({
     singleSlotFilter !== "any" ||
     highSlotFilter !== "any" ||
     Object.values(dateFilters).some((state) => state !== "any") ||
-    selectedTime !== null;
+    selectedTime !== null ||
+    unrecognizedFilter !== "any" ||
+    blankScheduleFilter !== "any";
 
   function clearAllFilters() {
     onFilterTextChange("");
@@ -498,6 +516,8 @@ export function ApplicationTable({
     setHighSlotFilter("any");
     setDateFilters({});
     setSelectedTime(null);
+    setUnrecognizedFilter("any");
+    setBlankScheduleFilter("any");
   }
 
   const sorted = useMemo(() => {
@@ -650,8 +670,7 @@ export function ApplicationTable({
         />
       </div>
 
-      {(scheduleCandidates.days.length > 0 || scheduleCandidates.times.length > 0) && (
-        <div className="flex shrink-0 flex-col gap-1.5" role="group" aria-label="日程の絞り込み">
+      <div className="flex shrink-0 flex-col gap-1.5" role="group" aria-label="日程の絞り込み">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-[11px] font-semibold text-slate-400">出演希望日（申請の記載から自動）</span>
             {scheduleCandidates.days.map((day) => (
@@ -667,6 +686,26 @@ export function ApplicationTable({
                 title={`希望日に${day}日が書かれている、または日付の指定がない（両日可能など）申請を「出られる」と数えます`}
               />
             ))}
+            <TriStateFilter
+              label="日時指定の認識"
+              value={unrecognizedFilter}
+              onChange={setUnrecognizedFilter}
+              hasLabel="認識できない"
+              notLabel="認識できている"
+              hasCount={scheduleCounts.unrecognized}
+              notCount={applications.length - scheduleCounts.unrecognized}
+              title="日付や時間が読み取れない書き方、または ~~取り消し線~~ が残っている申請。日時指定の絞り込みやシミュレーターの収容チェックに正しく反映されないので、編集で直せます"
+            />
+            <TriStateFilter
+              label="日時指定の記入"
+              value={blankScheduleFilter}
+              onChange={setBlankScheduleFilter}
+              hasLabel="未記入"
+              notLabel="記入あり"
+              hasCount={scheduleCounts.blank}
+              notCount={applications.length - scheduleCounts.blank}
+              title="出演希望日が空の申請（日付の制限なし＝終日出られるものとして扱われます）"
+            />
           </div>
           {scheduleCandidates.times.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -692,7 +731,6 @@ export function ApplicationTable({
             </div>
           )}
         </div>
-      )}
 
       {sorted.length === 0 && (
         <p className="rounded-lg border border-slate-700 px-3 py-6 text-center text-sm text-slate-500">

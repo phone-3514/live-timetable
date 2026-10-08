@@ -207,19 +207,22 @@ export function hasUnparsedDayHint(text: string): boolean {
 
 // A time token must carry an explicit hour marker (":"/"："/"時") so this
 // never matches an unrelated bare number like the "1" in a setlist line.
-const TIME_TOKEN_SRC = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分)?)`;
+const TIME_TOKEN_SRC = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分|半)?)`;
+// The separators are the ASCII ones plus every look-alike people type on a
+// phone: 〜 (U+301C) and the full-width ～ (U+FF5E) tildes, the full-width
+// hyphen－, en/em dashes, and the long-vowel mark ー.
 const TIME_RANGE_RE = new RegExp(
-  `(${TIME_TOKEN_SRC})\\s*[-~〜ー]\\s*(${TIME_TOKEN_SRC})`,
+  `(${TIME_TOKEN_SRC})\\s*[-~〜～－–—ー]\\s*(${TIME_TOKEN_SRC})`,
 );
 // Checked only once a closed range has failed to match, so any remaining
 // "token then separator/以降/以後/から" is unambiguously open-ended.
 const OPEN_AFTER_RE = new RegExp(
-  `(${TIME_TOKEN_SRC})\\s*(?:[-~〜ー]|以降|以後|から)`,
+  `(${TIME_TOKEN_SRC})\\s*(?:[-~〜～－–—ー]|以降|以後|から)`,
 );
 // Same reasoning in the other direction: "separator then token" with no
 // preceding token, or an explicit "まで" (until) suffix.
 const OPEN_BEFORE_RE = new RegExp(
-  `[-~〜ー]\\s*(${TIME_TOKEN_SRC})|(${TIME_TOKEN_SRC})\\s*まで`,
+  `[-~〜～－–—ー]\\s*(${TIME_TOKEN_SRC})|(${TIME_TOKEN_SRC})\\s*まで`,
 );
 
 function parseTimeToken(token: string): number | null {
@@ -228,6 +231,8 @@ function parseTimeToken(token: string): number | null {
   if (m) return toMinutes(Number(m[1]), Number(m[2]));
   m = /^(\d{1,2})時(\d{1,2})分$/.exec(t);
   if (m) return toMinutes(Number(m[1]), Number(m[2]));
+  m = /^(\d{1,2})時半$/.exec(t);
+  if (m) return toMinutes(Number(m[1]), 30);
   m = /^(\d{1,2})時$/.exec(t);
   if (m) return toMinutes(Number(m[1]), 0);
   return null;

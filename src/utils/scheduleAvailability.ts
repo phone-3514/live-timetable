@@ -2,6 +2,8 @@ import {
   DEFAULT_VENUE_HOURS,
   extractDayClauses,
   extractTimeRange,
+  hasUnparsedDayHint,
+  hasUnparsedTimeExpression,
   type TimeRange,
   type VenueHours,
 } from "./parseBands";
@@ -29,6 +31,18 @@ export function parseScheduleAvailability(
     windows: clauses.map((c) => ({ day: c.day, range: extractTimeRange(c.clause, venue) })),
     globalRange: null,
   };
+}
+
+/**
+ * A written 出演希望日 the scheduler can't be trusted to read: it has a day or
+ * time that wasn't recognised (the same check that warns while editing), or
+ * leftover strike-through markup (`~~17日~~`, a LINE note's cancelled option)
+ * that would otherwise be read as if it still counted. Blank text is not
+ * "unrecognised" — it just means no restriction.
+ */
+export function isScheduleTextUnrecognized(text: string): boolean {
+  if (!text.trim()) return false;
+  return hasUnparsedTimeExpression(text) || hasUnparsedDayHint(text) || /~~/.test(text);
 }
 
 // start inclusive, end exclusive: "〜16:00" can't start a set at 16:00.
