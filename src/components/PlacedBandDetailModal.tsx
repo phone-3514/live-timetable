@@ -4,6 +4,7 @@ import { useApplicationStore } from "../store/useApplicationStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { splitSetlistEntry } from "../utils/parseApplications";
+import { hasUnparsedDayHint, hasUnparsedTimeExpression } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { countAssignedSlotsForMember } from "../utils/memberSlotCount";
 import { Badge } from "./applications/Badge";
@@ -43,6 +44,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const days = useAppStore((s) => s.days);
   const allBands = useAppStore((s) => s.bands);
   const syncApplicationFromBand = useApplicationStore((s) => s.syncApplicationFromBand);
+  const updateApplicationDesiredDateTime = useApplicationStore((s) => s.updateApplicationDesiredDateTime);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
   // Priority for what's actually shown/edited: the band's own
@@ -67,6 +69,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const [editMembers, setEditMembers] = useState<BandMemberDetail[]>([]);
   const [editSetlist, setEditSetlist] = useState("");
   const [editHasSync, setEditHasSync] = useState(band.hasSync);
+  const [editDesiredDateTime, setEditDesiredDateTime] = useState("");
 
   // Escape cancels an in-progress edit first (same as clicking
   // "キャンセル"), rather than immediately closing the whole modal out from
@@ -80,7 +83,10 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     }
   });
 
-  const desiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "未設定";
+  const currentDesiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "";
+  const desiredDateTime = currentDesiredDateTime || "未設定";
+  const desiredUnparsed =
+    hasUnparsedTimeExpression(editDesiredDateTime) || hasUnparsedDayHint(editDesiredDateTime);
   const setlist = linkedApp
     ? linkedApp.setlist.map((s) => (s.artist ? `${s.title} / ${s.artist}` : s.title))
     : band.setlist;
@@ -97,6 +103,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     // rather than band.memberDetails.
     setEditSetlist(setlist.join("\n"));
     setEditHasSync(band.hasSync);
+    setEditDesiredDateTime(currentDesiredDateTime);
     setIsEditing(true);
   }
 
@@ -171,6 +178,13 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
         setlist: cleanedSetlist.map(splitSetlistEntry),
         hasSync: editHasSync,
       });
+    }
+    // 出演希望日: through the application when there is one (it updates the
+    // application and this band together), else on the band alone.
+    const trimmedDesired = editDesiredDateTime.trim();
+    if (trimmedDesired !== currentDesiredDateTime.trim()) {
+      if (linkedApp) updateApplicationDesiredDateTime(linkedApp.id, trimmedDesired);
+      else updateBand(band.id, { desiredTime: trimmedDesired });
     }
     setIsEditing(false);
     return true;
@@ -294,7 +308,29 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
 
           <div>
             <dt className="font-semibold text-slate-500">出演希望日</dt>
-            <dd className="mt-0.5 text-slate-200">{desiredDateTime}</dd>
+            <dd className="mt-0.5 text-slate-200">
+              {isEditing ? (
+                <>
+                  <input
+                    type="text"
+                    value={editDesiredDateTime}
+                    onChange={(e) => setEditDesiredDateTime(e.target.value)}
+                    aria-label="出演希望日"
+                    placeholder="例：17日 16:00以降 / 両日可能"
+                    className={`min-h-11 w-full rounded border bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0 ${
+                      desiredUnparsed ? "border-amber-500" : "border-indigo-500"
+                    }`}
+                  />
+                  {desiredUnparsed && (
+                    <p className="mt-0.5 text-[11px] text-amber-400">
+                      ⚠ 認識されない書き方です（「17日」「16:00以降」など）
+                    </p>
+                  )}
+                </>
+              ) : (
+                desiredDateTime
+              )}
+            </dd>
           </div>
 
           <div>
