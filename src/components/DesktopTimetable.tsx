@@ -12,6 +12,7 @@ import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterExport";
 import { DayPanel } from "./DayPanel";
 import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
+import { LiveTimeSimulatorModal } from "./LiveTimeSimulatorModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
@@ -61,6 +62,7 @@ export function DesktopTimetable() {
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
   const [showShareAllDays, setShowShareAllDays] = useState(false);
+  const [showTimeSimulator, setShowTimeSimulator] = useState(false);
   const autoScheduleDebugEntryCount = useAutoScheduleDebugStore((s) => s.entries.length);
   const [exportingRoster, setExportingRoster] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -285,6 +287,7 @@ export function DesktopTimetable() {
             <button onClick={handleExportRoster} disabled={exportingRoster} className="rounded px-3 py-2 text-left text-xs text-teal-300 hover:bg-slate-700 disabled:opacity-50">
               {exportingRoster ? "生成中…" : "📇 参加者名簿を出力"}
             </button>
+            <button onClick={() => setShowTimeSimulator(true)} className="rounded px-3 py-2 text-left text-xs text-sky-300 hover:bg-slate-700">⏱ 時間シミュレーター</button>
             <button onClick={() => setShowFuriganaImport(true)} className="rounded px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-700">📥 ふりがな取込</button>
             {days.length >= 2 && (
               <button onClick={() => setShowShareAllDays(true)} className="rounded px-3 py-2 text-left text-xs text-indigo-300 hover:bg-slate-700">🖼 全日程まとめて共有用画像</button>
@@ -343,6 +346,7 @@ export function DesktopTimetable() {
       {showShareAllDays && (
         <ShareAllDaysPreviewModal onClose={() => setShowShareAllDays(false)} />
       )}
+      {showTimeSimulator && <LiveTimeSimulatorModal onClose={() => setShowTimeSimulator(false)} />}
     </div>
   );
 }

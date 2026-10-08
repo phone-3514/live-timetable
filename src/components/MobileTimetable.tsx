@@ -15,6 +15,7 @@ import { computeMemberRoster, downloadMemberRosterExcel } from "../utils/rosterE
 import { MobileSlotCard } from "./MobileSlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
+import { LiveTimeSimulatorModal } from "./LiveTimeSimulatorModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
 import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
@@ -139,6 +140,7 @@ export function MobileTimetable() {
   const futureCount = useHistoryStore((s) => s.future.length);
 
   const [showScheduleReview, setShowScheduleReview] = useState(false);
+  const [showTimeSimulator, setShowTimeSimulator] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
@@ -320,6 +322,12 @@ export function MobileTimetable() {
               </button>
             </div>
             <button
+              onClick={() => setShowTimeSimulator(true)}
+              className="min-h-11 rounded border border-sky-700 bg-sky-950/30 px-3 font-medium text-sky-300"
+            >
+              ⏱ 時間シミュレーター
+            </button>
+            <button
               onClick={() => setShowScheduleReview(true)}
               className={`min-h-11 rounded border px-3 font-medium ${
                 reviewIssueCount > 0
@@ -371,6 +379,7 @@ export function MobileTimetable() {
       </div>
 
       {showScheduleReview && <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />}
+      {showTimeSimulator && <LiveTimeSimulatorModal onClose={() => setShowTimeSimulator(false)} />}
       {showAutoScheduleDebug && (
         <AutoScheduleDebugModal onClose={() => setShowAutoScheduleDebug(false)} />
       )}
