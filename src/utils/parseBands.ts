@@ -178,6 +178,28 @@ const BARE_DAY_TOKEN_RE = new RegExp(
     String.raw`|\d{1,2}\s*[(（][月火水木金土日][)）]`,
 );
 
+// A bare 1-2 digit number left over once every recognised date ("17日", "9/5",
+// "27(日)") and clock time ("16:00", "14時半") is taken out of the text — most
+// often a date written without its "日", as in "17日16:00まで、18". Unit-ish
+// followers (時分歳年生枠組人曲番回月限つ, 希望) and a leading 第 mark numbers that
+// are something else ("第2希望"), and only 1–31 can be a day.
+function hasBareDayNumber(text: string): boolean {
+  const rest = text
+    .normalize("NFKC")
+    .replace(/\d{1,2}(?:[:]\d{1,2}|時(?:\d{1,2}分|半)?)/g, " ")
+    .replace(DAY_SUFFIX_RE, " ")
+    .replace(SLASH_DATE_RE, " ")
+    .replace(WEEKDAY_PAREN_RE, " ");
+  for (const m of rest.matchAll(/(?<![\d第])(\d{1,2})(?!\d)/g)) {
+    const n = Number(m[1]);
+    if (n < 1 || n > 31) continue;
+    const after = rest.slice((m.index ?? 0) + m[0].length);
+    if (/^[時分歳年生枠組人曲番回月限つ日]|^希望|^時間/.test(after)) continue;
+    return true;
+  }
+  return false;
+}
+
 // True when `text` mentions something that looks like a day-of-month but
 // extractDayOfMonthHints still couldn't extract anything at all — same
 // reasoning as hasUnparsedTimeExpression: that combination means the
@@ -189,7 +211,9 @@ const BARE_DAY_TOKEN_RE = new RegExp(
 // bad phrasings — any phrasing extractDayOfMonthHints later learns to
 // parse automatically stops triggering this warning too.
 export function hasUnparsedDayHint(text: string): boolean {
-  if (!text || !BARE_DAY_TOKEN_RE.test(text)) return false;
+  if (!text) return false;
+  if (hasBareDayNumber(text)) return true;
+  if (!BARE_DAY_TOKEN_RE.test(text)) return false;
   return extractDayOfMonthHints(text).length === 0;
 }
 
