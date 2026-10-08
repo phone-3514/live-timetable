@@ -106,6 +106,7 @@ export function SlotCard({
   // identical reasoning for the same bug on the mobile side.
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
+  const isMultiDay = useAppStore((s) => (s.days?.length ?? 0) > 1);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
@@ -552,6 +553,7 @@ export function SlotCard({
                     c.maxBlockSlots,
                     c.level,
                     c.blockTimeRange,
+                    isMultiDay ? c.dayLabel : undefined,
                   )}
                 </p>
               ))}

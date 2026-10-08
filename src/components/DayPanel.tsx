@@ -47,6 +47,7 @@ type Props = { day: TimetableDay; daysCount: number };
 export function DayPanel({ day, daysCount }: Props) {
   const settingsDetailsRef = useDismissibleDetails();
   const bands = useAppStore((s) => s.bands);
+  const days = useAppStore((s) => s.days);
   const renameDay = useAppStore((s) => s.renameDay);
   const updateDayDate = useAppStore((s) => s.updateDayDate);
   const removeDay = useAppStore((s) => s.removeDay);
@@ -77,7 +78,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflictDetails = getMemberConflictDetails(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
-  const concentrationDetails = getConcentrationWarningDetails(day, bands);
+  const concentrationDetails = getConcentrationWarningDetails(day, bands, days);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();

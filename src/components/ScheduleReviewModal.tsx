@@ -176,12 +176,13 @@ export function ScheduleReviewModal({ onClose }: Props) {
                         key={`${c.dayId}-concentration`}
                         className="mt-1 text-[11px] font-medium text-amber-400"
                       >
-                        ⚠️ {!isSingleDay && `${c.dayLabel} `}
+                        ⚠️{" "}
                         {formatConcentrationMessage(
                           c.totalSlots,
                           c.maxBlockSlots,
                           c.level,
                           c.blockTimeRange,
+                          isSingleDay ? undefined : c.dayLabel,
                         )}
                       </p>
                     ))}

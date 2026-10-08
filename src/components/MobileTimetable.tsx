@@ -44,11 +44,12 @@ function MobileDaySection({ day, defaultOpen }: { day: TimetableDay; defaultOpen
   const [open, setOpen] = useState(defaultOpen);
   const bands = useAppStore((s) => s.bands) ?? EMPTY_BANDS;
   const removeDay = useAppStore((s) => s.removeDay);
-  const daysCount = useAppStore((s) => (s.days ?? EMPTY_DAYS).length);
+  const allDays = useAppStore((s) => s.days) ?? EMPTY_DAYS;
+  const daysCount = allDays.length;
   const bandMap = useMemo(() => new Map(bands.map((b) => [b.id, b])), [bands]);
   const conflictDetails = getMemberConflictDetails(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
-  const concentrationDetails = getConcentrationWarningDetails(day, bands);
+  const concentrationDetails = getConcentrationWarningDetails(day, bands, allDays);
 
   let order = 0;
 
