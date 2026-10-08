@@ -1,18 +1,31 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type SetStateAction } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { useApplicationStore } from "../store/useApplicationStore";
+import { computeMemberFrameCounts, useApplicationStore } from "../store/useApplicationStore";
+import {
+  useSimulatorStore,
+  type SimulatorDayInput,
+  type SimulatorSettings,
+} from "../store/useSimulatorStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToastStore } from "../store/useToastStore";
 import { clearNextHistoryAction, setNextHistoryAction } from "../store/useHistoryStore";
 import { planDaySlots, type PlannedDay, type SimulationPlan } from "../utils/applySimulationPlan";
 import { collectScheduleCandidates, parseScheduleAvailability } from "../utils/scheduleAvailability";
 import {
+  explainRejection,
   normalizeScheduleKey,
   planRejections,
   type PlannerBand,
   type PlannerSlot,
 } from "../utils/rejectionPlanner";
+import {
+  REJECTION_POLICIES,
+  comparePriority,
+  computeBandMetrics,
+  describePriorityBasis,
+} from "../utils/rejectionPolicy";
 import { ModalPortal } from "./ModalPortal";
+import { RejectionReasonDialog } from "./RejectionReasonDialog";
 import type { TimetableDay } from "../types";
 import {
   STANDARD_SIM_EXTRAS,
@@ -24,21 +37,11 @@ import {
   resolveDeadline,
   simulateDay,
   slotEquivalent,
-  type DeadlineBasis,
   type SimExtra,
   type SimItem,
 } from "../utils/liveTimeSimulation";
 
-type Source = "manual" | "timetable" | "applications";
-
-type DayInput = {
-  startTime: string;
-  performanceMinutes: number;
-  transitionMinutes: number;
-  manualCount: number;
-  /** "" = no deadline set for this day. */
-  deadline: string;
-};
+type DayInput = SimulatorDayInput;
 
 function defaultsFor(day: TimetableDay): DayInput {
   const placed = day.slots.filter((s) => s.bandId).length;
@@ -199,6 +202,25 @@ function ExtrasEditor({
   );
 }
 
+// useState-shaped accessor onto one field of the persisted simulator settings.
+function useSim<K extends keyof SimulatorSettings>(
+  key: K,
+): [SimulatorSettings[K], (next: SetStateAction<SimulatorSettings[K]>) => void] {
+  const value = useSimulatorStore((s) => s.settings[key]);
+  const setField = useSimulatorStore((s) => s.setField);
+  const set = useCallback(
+    (next: SetStateAction<SimulatorSettings[K]>) => {
+      const current = useSimulatorStore.getState().settings[key];
+      setField(
+        key,
+        typeof next === "function" ? (next as (prev: SimulatorSettings[K]) => SimulatorSettings[K])(current) : next,
+      );
+    },
+    [key, setField],
+  );
+  return [value, set];
+}
+
 // 全日程まとめてシミュレーション: for every day at once, "this start time +
 // this many bands (typed, taken from the timetable as placed, or counted from
 // the applications) + these extras ends at …", and the reverse — "to finish
@@ -206,29 +228,34 @@ function ExtrasEditor({
 // liveTimeSimulation.ts, which runs on the real timetable's own time
 // calculation so what's shown here matches what the timetable would show.
 export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
-  useEscapeKey(onClose);
+  const [reasonBandId, setReasonBandId] = useState<string | null>(null);
+  // Esc closes the reason popup first, the simulator only when none is open.
+  useEscapeKey(reasonBandId ? () => setReasonBandId(null) : onClose);
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
   const applications = useApplicationStore((s) => s.applications);
   const applySimulationPlans = useAppStore((s) => s.applySimulationPlans);
   const showToast = useToastStore((s) => s.show);
 
-  const [source, setSource] = useState<Source>("manual");
-  const [includePending, setIncludePending] = useState(false);
-  const [basis, setBasis] = useState<DeadlineBasis>("lastBand");
-  const [extrasByDay, setExtrasByDay] = useState<Record<string, SimExtra[]>>({});
+  // The simulator's inputs live in a persisted store (and ride along in the
+  // backup file) instead of component state, so closing the modal, reloading
+  // or restoring a backup brings the same simulation back.
+  const [source, setSource] = useSim("source");
+  const [includePending, setIncludePending] = useSim("includePending");
+  const [basis, setBasis] = useSim("basis");
+  const [extrasByDay, setExtrasByDay] = useSim("extrasByDay");
   // "タイムテーブルへ反映" panel state.
-  const [excludedApplyDays, setExcludedApplyDays] = useState<Set<string>>(() => new Set());
-  const [applySettings, setApplySettings] = useState(true);
-  const [applyExtras, setApplyExtras] = useState(true);
-  const [slotMode, setSlotMode] = useState<"sim" | "max" | "none">("sim");
-  const [replaceOverride, setReplaceOverride] = useState<boolean | null>(null);
+  const [excludedApplyList, setExcludedApplyDays] = useSim("excludedApplyDays");
+  const excludedApplyDays = useMemo(() => new Set(excludedApplyList), [excludedApplyList]);
+  const [applySettings, setApplySettings] = useSim("applySettings");
+  const [applyExtras, setApplyExtras] = useSim("applyExtras");
+  const [slotMode, setSlotMode] = useSim("slotMode");
+  const [replaceOverride, setReplaceOverride] = useSim("replaceOverride");
   // 日時指定を考慮した収容チェック: at the selection stage most applications
   // are still pending, so unlike the 申込から自動 count this includes them.
-  const [plannerIncludePending, setPlannerIncludePending] = useState(true);
-  const [dayInputs, setDayInputs] = useState<Record<string, DayInput>>(() =>
-    Object.fromEntries(days.map((d) => [d.id, defaultsFor(d)])),
-  );
+  const [plannerIncludePending, setPlannerIncludePending] = useSim("plannerIncludePending");
+  const [rejectionPolicy, setRejectionPolicy] = useSim("rejectionPolicy");
+  const [dayInputs, setDayInputs] = useSim("dayInputs");
 
   const inputFor = (day: TimetableDay): DayInput => dayInputs[day.id] ?? defaultsFor(day);
   const patchDay = (dayId: string, patch: Partial<DayInput>) =>
@@ -413,12 +440,14 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       .filter(({ p }) => p.deadline !== null);
     if (dayPlans.length === 0) return null;
 
+    // Member frame counts are over every application (as in the application
+    // manager), not just the ones in this check.
+    const frameCounts = computeMemberFrameCounts(applications);
     const pool = applications
       .filter((a) => plannerIncludePending || a.approved)
-      .sort(
-        (a, b) =>
-          a.applicationDateTime.localeCompare(b.applicationDateTime) || a.createdAt - b.createdAt,
-      );
+      .map((app) => ({ app, metrics: computeBandMetrics(app, frameCounts) }))
+      .sort((a, b) => comparePriority(rejectionPolicy, a, b))
+      .map(({ app, metrics }) => ({ ...app, metrics }));
     const availabilities = pool.map((a) => parseScheduleAvailability(a.desiredDateTime));
     const writtenDays = collectScheduleCandidates(availabilities).days;
 
@@ -452,9 +481,12 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       availability: availabilities[i],
       specKey: normalizeScheduleKey(a.desiredDateTime),
       specLabel: a.desiredDateTime.trim() || "（日程の記載なし）",
+      note: describePriorityBasis(rejectionPolicy, a, a.metrics),
     }));
 
     return {
+      bands,
+      slots,
       plan: planRejections(bands, slots),
       bandCount: bands.length,
       usedDays: dayPlans.map(({ p, dayIndex }) => ({
@@ -465,7 +497,19 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       skippedDays: plans.filter((p) => p.deadline === null).map((p) => p.day.label),
       guessedDates,
     };
-  }, [plans, applications, plannerIncludePending, baseSlotMinutes]);
+  }, [plans, applications, plannerIncludePending, rejectionPolicy, baseSlotMinutes]);
+
+  const reasonDetail = useMemo(() => {
+    if (!rejectionAnalysis || !reasonBandId) return null;
+    const band = rejectionAnalysis.bands.find((b) => b.id === reasonBandId);
+    const explanation = explainRejection(
+      rejectionAnalysis.bands,
+      rejectionAnalysis.slots,
+      rejectionAnalysis.plan,
+      reasonBandId,
+    );
+    return band && explanation ? { band, explanation } : null;
+  }, [rejectionAnalysis, reasonBandId]);
 
   function describePlanned(plan: SimulationPlan, planned: PlannedDay): string {
     const parts: string[] = [];
@@ -684,6 +728,33 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                   未承認の申込も対象にする（外すと承認済みのみ）
                 </label>
 
+                <fieldset className="space-y-1">
+                  <legend className="mb-1 font-semibold text-slate-400">誰を残すか（却下する順番の基準）</legend>
+                  {REJECTION_POLICIES.map((policy) => (
+                    <label
+                      key={policy.value}
+                      className={`flex min-h-11 cursor-pointer items-start gap-2 rounded border p-2 md:min-h-0 ${
+                        rejectionPolicy === policy.value
+                          ? "border-rose-500 bg-rose-950/40"
+                          : "border-slate-700 hover:bg-slate-800/50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="rejection-policy"
+                        className="mt-0.5"
+                        checked={rejectionPolicy === policy.value}
+                        onChange={() => setRejectionPolicy(policy.value)}
+                      />
+                      <span>
+                        <span className="font-semibold text-slate-100">{policy.label}</span>
+                        <span className="block text-slate-400">{policy.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <p className="text-slate-500">どの基準でも、同順位の場合は申請が早い方を残します。</p>
+                </fieldset>
+
                 {rejectionAnalysis === null ? (
                   <p className="rounded border border-slate-700 bg-slate-900/50 p-2 text-slate-400">
                     下の各日のカードで「締切時刻」を入力すると計算します。
@@ -737,7 +808,23 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                                   </span>
                                 </p>
                                 <p className="mt-0.5 break-words text-slate-100">日時指定：{g.label}</p>
-                                <p className="mt-0.5 break-words text-slate-400">対象：{g.rejectedNames.join("、")}</p>
+                                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  <span className="text-slate-400">対象：</span>
+                                  {rejectionAnalysis.plan.rejected
+                                    .filter((b) => b.specKey === g.key)
+                                    .map((b) => (
+                                      <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => setReasonBandId(b.id)}
+                                        title="なぜこのバンドが入らないのか、理由を表示"
+                                        className="min-h-11 rounded border border-rose-700 bg-rose-950/50 px-2 text-slate-100 hover:bg-rose-900/60 md:min-h-0 md:py-0.5"
+                                      >
+                                        {b.name}
+                                        <span className="ml-1 text-rose-300">ⓘ 理由</span>
+                                      </button>
+                                    ))}
+                                </div>
                               </li>
                             ))}
                         </ul>
@@ -762,7 +849,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                     </details>
 
                     <p className="text-slate-500">
-                      申請が早い順に優先して席を確保し、入らなかった分を「却下の目安」にしています（最大組数は数学的な最大値です。誰を残すかは申請順なので、優先したい順があれば手動で調整してください）。2枠分（20分）のバンドは枠の連続までは見ず、各枠の時間帯だけで判定します。
+                      選んだ基準の順に席を確保し、入らなかった分を「却下の目安」にしています（入る組数は日時指定を満たす上での最大値で、基準を変えても基本的に変わらず、変わるのは誰が残るかです）。2枠分（20分）のバンドは枠の連続までは見ず、各枠の時間帯だけで判定します。
                     </p>
                   </>
                 )}
@@ -787,7 +874,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                               const next = new Set(prev);
                               if (e.target.checked) next.delete(day.id);
                               else next.add(day.id);
-                              return next;
+                              return [...next];
                             })
                           }
                         />
@@ -1049,6 +1136,15 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      {reasonDetail && (
+        <RejectionReasonDialog
+          band={reasonDetail.band}
+          explanation={reasonDetail.explanation}
+          dayLabels={days.map((d) => d.label)}
+          policyLabel={REJECTION_POLICIES.find((p) => p.value === rejectionPolicy)?.label ?? ""}
+          onClose={() => setReasonBandId(null)}
+        />
+      )}
     </ModalPortal>
   );
 }

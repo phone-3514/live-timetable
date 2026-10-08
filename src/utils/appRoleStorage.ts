@@ -8,6 +8,7 @@ const ORGANIZER_DATA_KEYS = [
   "live-timetable-applications",
   "live-timetable-progress",
   "live-timetable-furigana",
+  "live-timetable-simulator",
   "live-timetable-ui",
 ];
 

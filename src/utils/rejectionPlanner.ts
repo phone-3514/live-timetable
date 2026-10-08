@@ -37,6 +37,9 @@ export type PlannerBand = {
   /** Groups bands that wrote the same schedule (see normalizeScheduleKey). */
   specKey: string;
   specLabel: string;
+  /** Why this band sits where it does in the priority order (shown in the
+   * "why was this rejected" detail). */
+  note?: string;
 };
 
 export type PlannerGroup = {
@@ -56,6 +59,26 @@ export type RejectionPlan = {
   totalUnits: number;
   seatedUnits: number;
   perDaySeatedBands: Map<number, number>;
+  /** For each slot, the index (into the `bands` passed in) of the seated band
+   * holding it, or -1 when it's empty. */
+  slotBand: number[];
+};
+
+export type RejectionExplanation = {
+  /** Position in the priority order (1 = kept first) and how many bands there are. */
+  rank: number;
+  total: number;
+  /** Slots the band's own 日時指定 allows, before any reshuffling. */
+  eligibleSlots: PlannerSlot[];
+  /** Slots it could end up in if the seated bands were shuffled around. */
+  reachableSlots: PlannerSlot[];
+  /** Seated bands occupying those slots, highest priority first. `direct` ones
+   * sit in a slot the band could take outright; the rest could only be moved
+   * out of the way, and have nowhere to go. */
+  blockers: { band: PlannerBand; rank: number; direct: boolean }[];
+  /** A reachable slot is still empty — only possible for a multi-slot band
+   * that needs several slots at once. */
+  freeSlotReachable: boolean;
 };
 
 // Merges spellings of the same schedule so one group isn't split by spacing,
@@ -191,5 +214,67 @@ export function planRejections(bands: PlannerBand[], slots: PlannerSlot[]): Reje
     totalUnits: nodes.length,
     seatedUnits: bands.reduce((sum, band, b) => sum + (isSeated(b) ? band.units : 0), 0),
     perDaySeatedBands,
+    slotBand: slotOwner.map((owner) => {
+      if (owner === -1) return -1;
+      const b = nodes[owner].band;
+      return isSeated(b) ? b : -1;
+    }),
+  };
+}
+
+// Why a rejected band didn't fit: starting from the slots it could use, follow
+// "that slot's band could move to these other slots" until nothing new is
+// reachable. If no empty slot turns up, every reachable slot is held by a band
+// ranked above it that has nowhere else to go (Hall's condition) — and
+// rejecting any one of those bands is exactly what would let this one in.
+export function explainRejection(
+  bands: PlannerBand[],
+  slots: PlannerSlot[],
+  plan: RejectionPlan,
+  bandId: string,
+): RejectionExplanation | null {
+  const target = bands.findIndex((b) => b.id === bandId);
+  if (target === -1) return null;
+  const neighbours = (b: number) =>
+    slots.flatMap((slot, s) => (canUseSlot(bands[b].availability, slot) ? [s] : []));
+
+  const eligible = neighbours(target);
+  const seenSlots = new Set<number>(eligible);
+  const seenBands = new Set<number>([target]);
+  const queue = [...eligible];
+  let freeSlotReachable = false;
+  while (queue.length > 0) {
+    const s = queue.shift() as number;
+    const owner = plan.slotBand[s];
+    if (owner === -1) {
+      freeSlotReachable = true;
+      continue;
+    }
+    if (seenBands.has(owner)) continue;
+    seenBands.add(owner);
+    for (const next of neighbours(owner)) {
+      if (!seenSlots.has(next)) {
+        seenSlots.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  const directSlots = new Set(eligible);
+  const direct = new Set<number>();
+  for (const s of directSlots) if (plan.slotBand[s] !== -1) direct.add(plan.slotBand[s]);
+  const blockers = [...seenBands]
+    .filter((b) => b !== target)
+    .sort((a, b) => a - b)
+    .map((b) => ({ band: bands[b], rank: b + 1, direct: direct.has(b) }));
+
+  const byTime = (a: PlannerSlot, b: PlannerSlot) => a.dayIndex - b.dayIndex || a.start - b.start;
+  return {
+    rank: target + 1,
+    total: bands.length,
+    eligibleSlots: eligible.map((s) => slots[s]).sort(byTime),
+    reachableSlots: [...seenSlots].map((s) => slots[s]).sort(byTime),
+    blockers,
+    freeSlotReachable,
   };
 }

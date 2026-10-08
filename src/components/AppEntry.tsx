@@ -7,6 +7,7 @@ import { useAppStore } from "../store/useAppStore";
 import { useUiStore } from "../store/useUiStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useFuriganaStore } from "../store/useFuriganaStore";
+import { useSimulatorStore } from "../store/useSimulatorStore";
 import { useProgressStore } from "../store/useProgressStore";
 import { useCollabStore } from "../store/useCollabStore";
 import type { Band, TimetableDay } from "../types";
@@ -322,6 +323,7 @@ function EventCreation({ onCancel, onCreated }: { onCancel: () => void; onCreate
       eventInfo: { liveName: draft.eventName.trim(), venue: draft.venue.trim(), organizationName: draft.organizationName.trim() },
       lastDeleted: null,
     });
+    useSimulatorStore.getState().replaceSettings(null);
 
     const bandName = draft.firstBandName.trim();
     if (bandName) {
@@ -465,6 +467,7 @@ export function AppEntry({ bypassLanding }: { bypassLanding: boolean }) {
       useApplicationStore.persist.rehydrate(),
       useProgressStore.persist.rehydrate(),
       useFuriganaStore.persist.rehydrate(),
+      useSimulatorStore.persist.rehydrate(),
     ]);
     setView("organizer");
   };

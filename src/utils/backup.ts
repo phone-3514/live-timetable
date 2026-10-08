@@ -3,6 +3,7 @@ import type { Band, TimetableDay } from "../types";
 import { useAppStore, type EventInfo } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useUiStore, type AppTab } from "../store/useUiStore";
+import { useSimulatorStore, type SimulatorSettings } from "../store/useSimulatorStore";
 import type { Application } from "../types";
 
 const BACKUP_FORMAT_ID = "live-timetable-backup";
@@ -20,6 +21,8 @@ export type BackupData = {
   };
   applications: Application[];
   ui: { activeTab: AppTab };
+  /** 時間シミュレーターの入力（結果はこれと上のデータから再計算される）。古いバックアップには無い。 */
+  simulator?: SimulatorSettings;
 };
 
 // Windows/macOS both forbid these in filenames; the full-width forms
@@ -70,6 +73,7 @@ export function createBackupPayload(): BackupData {
     },
     applications: applicationState.applications,
     ui: { activeTab: uiState.activeTab },
+    simulator: useSimulatorStore.getState().settings,
   };
 }
 
@@ -129,5 +133,6 @@ export function restoreBackup(data: BackupData): void {
     applications: data.applications ?? [],
   });
   useUiStore.setState({ activeTab: data.ui?.activeTab ?? "timetable" });
+  useSimulatorStore.getState().replaceSettings(data.simulator);
 }
 
