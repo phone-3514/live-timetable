@@ -11,7 +11,8 @@ import {
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
 import { useAppStore } from "./store/useAppStore";
 import { useUiStore } from "./store/useUiStore";
-import { setNextHistoryAction, useHistoryStore } from "./store/useHistoryStore";
+import { clearNextHistoryAction, setNextHistoryAction, useHistoryStore } from "./store/useHistoryStore";
+import { useToastStore } from "./store/useToastStore";
 import { useCollabStore } from "./store/useCollabStore";
 import { useIsMobile } from "./hooks/useViewport";
 import { useAsymmetricAutoScroll } from "./hooks/useAsymmetricAutoScroll";
@@ -58,6 +59,7 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
   const insertBandAtSlot = useAppStore((s) => s.insertBandAtSlot);
   const unassignSlot = useAppStore((s) => s.unassignSlot);
   const reorderSlots = useAppStore((s) => s.reorderSlots);
+  const moveSlotToDay = useAppStore((s) => s.moveSlotToDay);
   const eventInfo = useAppStore((s) => s.eventInfo);
   const updateEventInfo = useAppStore((s) => s.updateEventInfo);
   const [activeDragData, setActiveDragData] = useState<ActiveDragData | null>(
@@ -242,17 +244,59 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
       return;
     }
 
-    // Otherwise the drag is a slot reorder: activeId/overId are bare slot ids.
+    // Otherwise the drag is a slot move: activeId is a bare slot id, overId
+    // is either another slot's id or a `day:<dayId>` day-area droppable
+    // (see DayPanel — what lets a row be dropped onto a day with no rows to
+    // hover, or into the empty space below a day's last row).
     if (activeId !== overId) {
       const day = days.find((candidate) => candidate.slots.some((slot) => slot.id === activeId));
-      const targetIsSameDay = day?.slots.some((slot) => slot.id === overId);
-      if (day && targetIsSameDay) {
-        const draggedSlot = day.slots.find((slot) => slot.id === activeId);
-        const draggedBand = bands.find((band) => band.id === draggedSlot?.bandId);
-        const label = draggedBand?.name ?? draggedSlot?.customLabel ?? "行";
-        setNextHistoryAction("出演順を変更", useCollabStore.getState().myNickname ?? "この端末");
+      if (!day) return;
+      const draggedSlot = day.slots.find((slot) => slot.id === activeId);
+      const draggedBand = bands.find((band) => band.id === draggedSlot?.bandId);
+      const label = draggedBand?.name ?? draggedSlot?.customLabel ?? "行";
+      const actor = useCollabStore.getState().myNickname ?? "この端末";
+
+      const overDayArea = overId.startsWith("day:")
+        ? days.find((candidate) => candidate.id === overId.slice("day:".length))
+        : undefined;
+      const overDay =
+        overDayArea ?? days.find((candidate) => candidate.slots.some((slot) => slot.id === overId));
+      if (!overDay) return;
+
+      if (overDay.id === day.id) {
+        // Same day: the day-area droppable adds nothing over a plain
+        // reorder (there's no "end of list" slot to swap with), so only a
+        // real slot target reorders.
+        if (overDayArea) return;
+        setNextHistoryAction("出演順を変更", actor);
         reorderSlots(activeId, overId);
         setMoveNotice({ id: Date.now(), message: `「${label}」を移動しました` });
+        return;
+      }
+
+      // Cross-day. Dropped on a day area → append to that day; dropped on a
+      // slot → insert before it, or after it if the dragged card's centre
+      // sits below that slot's centre (the standard multi-list sortable
+      // convention, so dropping on a day's last row can still append).
+      let targetIndex = overDay.slots.length;
+      if (!overDayArea) {
+        const overIndex = overDay.slots.findIndex((slot) => slot.id === overId);
+        const translated = active.rect.current.translated;
+        const isBelowCentre =
+          translated !== null && translated !== undefined
+            ? translated.top + translated.height / 2 > over.rect.top + over.rect.height / 2
+            : false;
+        targetIndex = overIndex + (isBelowCentre ? 1 : 0);
+      }
+      setNextHistoryAction("枠を別の日へ移動", actor);
+      const result = moveSlotToDay(activeId, overDay.id, targetIndex);
+      if (result !== "moved") clearNextHistoryAction();
+      if (result === "moved") {
+        setMoveNotice({ id: Date.now(), message: `「${label}」を${overDay.label}へ移動しました` });
+      } else if (result === "blocked") {
+        useToastStore
+          .getState()
+          .show(`「${label}」は${overDay.label}のこの位置には配置できません（希望日・時間帯の制約）`, "error");
       }
     }
   };

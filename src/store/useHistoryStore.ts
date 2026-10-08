@@ -41,6 +41,13 @@ export function setNextHistoryAction(action: string, actor?: string) {
   pendingAction = { action, actor };
 }
 
+// For callers that label an action before knowing whether it will actually
+// change anything (e.g. a drag-drop move the store may reject) — otherwise
+// the unused label would be attached to whatever unrelated edit comes next.
+export function clearNextHistoryAction() {
+  pendingAction = null;
+}
+
 function describeChanges(beforeDays: TimetableDay[], afterDays: TimetableDay[], bands: Band[]): HistoryDiff[] {
   const bandMap = new Map(bands.map((band) => [band.id, band.name]));
   const beforeSlots = new Map(beforeDays.flatMap((day) => day.slots.map((slot, index) => [slot.id, { day, slot, index }] as const)));

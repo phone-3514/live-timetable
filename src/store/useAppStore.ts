@@ -139,6 +139,20 @@ type AppState = {
   unassignSlot: (slotId: string) => void;
   moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
   reorderSlots: (activeId: string, overId: string) => void;
+  // Drag-and-drop move of a whole row (a band's slot or a 休憩/リハーサル-
+  // style custom slot) from one day into another at `targetIndex` of the
+  // target day's slot array. Each day owns its own slots array with its own
+  // computed schedule, so unlike reorderSlots this is remove-from-one/
+  // insert-into-other, with both days' times recomputed. A placed band is
+  // re-validated against its date/time restrictions at the time the move
+  // would actually land it (after the target day's recompute, not at the
+  // hovered slot's old time) — "blocked" is a no-op for the caller to
+  // surface; "noop" means the slot/day wasn't found or already was there.
+  moveSlotToDay: (
+    slotId: string,
+    targetDayId: string,
+    targetIndex: number,
+  ) => "moved" | "blocked" | "noop";
   updateSettings: (dayId: string, partial: Partial<TimetableSettings>) => void;
   adjustScheduleFrom: (dayId: string, slotId: string, deltaMinutes: number) => void;
   resetScheduleFrom: (dayId: string, slotId: string) => void;
@@ -450,7 +464,7 @@ const initialDays = [makeDay("1日目"), makeDay("2日目")];
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
   bands: [],
   days: initialDays,
   venueHours: DEFAULT_VENUE_HOURS,
@@ -916,6 +930,51 @@ export const useAppStore = create<AppState>()(
         ),
       };
     }),
+
+  moveSlotToDay: (slotId, targetDayId, targetIndex) => {
+    const state = get();
+    const originDay = state.days.find((d) => d.slots.some((s) => s.id === slotId));
+    const targetDay = state.days.find((d) => d.id === targetDayId);
+    const slot = originDay?.slots.find((s) => s.id === slotId);
+    if (!originDay || !targetDay || !slot || originDay.id === targetDay.id) return "noop";
+
+    // startTimeOverride pins a row to one specific day's clock — carried
+    // into another day it would anchor the row to a time that means
+    // nothing there, so the move drops it and lets the row follow the
+    // target day's own flow like any newly inserted one.
+    const moved: TimetableSlot = { ...slot, startTimeOverride: null };
+    const index = Math.max(0, Math.min(targetIndex, targetDay.slots.length));
+    const nextOrigin = recomputeTimes(
+      originDay.slots.filter((s) => s.id !== slotId),
+      originDay.settings,
+      state.bands,
+    );
+    const nextTarget = recomputeTimes(
+      [...targetDay.slots.slice(0, index), moved, ...targetDay.slots.slice(index)],
+      targetDay.settings,
+      state.bands,
+    );
+
+    // Validate against where the band would actually land (its times in
+    // the target day's recomputed schedule), not the hovered slot's old
+    // time — inserting a row shifts everything after it.
+    const band = slot.bandId ? state.bands.find((b) => b.id === slot.bandId) : undefined;
+    const landed = nextTarget.find((s) => s.id === slotId);
+    if (band && landed && !canPlaceBandInSlot(band, targetDay, landed, state.venueHours)) {
+      return "blocked";
+    }
+
+    set({
+      days: state.days.map((d) =>
+        d.id === originDay.id
+          ? { ...d, slots: nextOrigin }
+          : d.id === targetDay.id
+            ? { ...d, slots: nextTarget }
+            : d,
+      ),
+    });
+    return "moved";
+  },
 
   updateSettings: (dayId, partial) =>
     set((state) => ({

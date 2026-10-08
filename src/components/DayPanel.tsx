@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDndContext, useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   getConcentrationWarningDetails,
@@ -61,6 +62,15 @@ export function DayPanel({ day, daysCount }: Props) {
   const [showSetlistExport, setShowSetlistExport] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customMinutes, setCustomMinutes] = useState(10);
+  // The slot list's whole area is also a drop target (`day:<id>`, handled in
+  // App.tsx's handleDragEnd) so a row dragged from another day can land on a
+  // day with no rows to hover, or in the empty space under the last one.
+  // Only lit up for a slot drag — an unplaced-band drag over this area has
+  // no meaning here (those drop onto a specific slot), so highlighting it
+  // would promise something the drop doesn't do.
+  const { setNodeRef: setDayDropRef, isOver: isOverDayArea } = useDroppable({ id: `day:${day.id}` });
+  const { active: activeDrag } = useDndContext();
+  const showDayDropHighlight = isOverDayArea && activeDrag?.data.current?.type === "slot";
 
   const slots = day.slots;
   const settings = day.settings;
@@ -280,7 +290,12 @@ export function DayPanel({ day, daysCount }: Props) {
         </details>
       </div>
 
-      <div className="min-h-0 flex-1 rounded-lg bg-slate-900 p-1.5">
+      <div
+        ref={setDayDropRef}
+        className={`min-h-0 flex-1 rounded-lg bg-slate-900 p-1.5 ${
+          showDayDropHighlight ? "ring-2 ring-inset ring-indigo-400/70" : ""
+        }`}
+      >
         {slots.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-700 p-3 text-center text-xs text-slate-500">
             上のボタンで枠を作成してください
