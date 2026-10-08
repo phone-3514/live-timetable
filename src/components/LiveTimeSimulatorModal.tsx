@@ -12,6 +12,7 @@ import { clearNextHistoryAction, setNextHistoryAction } from "../store/useHistor
 import { planDaySlots, type PlannedDay, type SimulationPlan } from "../utils/applySimulationPlan";
 import { collectScheduleCandidates, parseScheduleAvailability } from "../utils/scheduleAvailability";
 import {
+  canUseSlot,
   explainRejection,
   normalizeScheduleKey,
   planRejections,
@@ -443,13 +444,14 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
     // Member frame counts are over every application (as in the application
     // manager), not just the ones in this check.
     const frameCounts = computeMemberFrameCounts(applications);
-    const pool = applications
+    const candidates = applications
       .filter((a) => plannerIncludePending || a.approved)
-      .map((app) => ({ app, metrics: computeBandMetrics(app, frameCounts) }))
-      .sort((a, b) => comparePriority(rejectionPolicy, a, b))
-      .map(({ app, metrics }) => ({ ...app, metrics }));
-    const availabilities = pool.map((a) => parseScheduleAvailability(a.desiredDateTime));
-    const writtenDays = collectScheduleCandidates(availabilities).days;
+      .map((app) => ({
+        app,
+        availability: parseScheduleAvailability(app.desiredDateTime),
+        metrics: computeBandMetrics(app, frameCounts),
+      }));
+    const writtenDays = collectScheduleCandidates(candidates.map((c) => c.availability)).days;
 
     let guessedDates = false;
     const slots: PlannerSlot[] = [];
@@ -474,14 +476,26 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       }
     }
 
-    const bands: PlannerBand[] = pool.map((a, i) => ({
-      id: a.id,
-      name: a.bandName,
-      units: slotEquivalent(a.durationMinutes ?? baseSlotMinutes, baseSlotMinutes),
-      availability: availabilities[i],
-      specKey: normalizeScheduleKey(a.desiredDateTime),
-      specLabel: a.desiredDateTime.trim() || "（日程の記載なし）",
-      note: describePriorityBasis(rejectionPolicy, a, a.metrics),
+    // Priority order: needs the slots (for "how many slots can this band use"),
+    // so it's sorted only now.
+    const pool = candidates
+      .map((c) => ({
+        ...c,
+        metrics: {
+          ...c.metrics,
+          eligibleSlots: slots.filter((slot) => canUseSlot(c.availability, slot)).length,
+        },
+      }))
+      .sort((a, b) => comparePriority(rejectionPolicy, a, b));
+
+    const bands: PlannerBand[] = pool.map(({ app, availability, metrics }) => ({
+      id: app.id,
+      name: app.bandName,
+      units: slotEquivalent(app.durationMinutes ?? baseSlotMinutes, baseSlotMinutes),
+      availability,
+      specKey: normalizeScheduleKey(app.desiredDateTime),
+      specLabel: app.desiredDateTime.trim() || "（日程の記載なし）",
+      note: describePriorityBasis(rejectionPolicy, app, metrics),
     }));
 
     return {

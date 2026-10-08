@@ -5,7 +5,7 @@ import { normalizeMemberName } from "./normalizeMemberName";
 // How the rejection check decides who keeps a seat when there aren't enough:
 // the band that sorts first is seated first, so whoever sorts last is the one
 // turned away. Ties always fall back to 申請が早い順.
-export type RejectionPolicy = "applied" | "grade" | "fewFrames" | "singleSlot";
+export type RejectionPolicy = "applied" | "grade" | "fewFrames" | "singleSlot" | "narrowWindow";
 
 export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; description: string }[] = [
   {
@@ -29,6 +29,12 @@ export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; descri
     description:
       "1枠しか出ないメンバーがいるバンドを優先して残し、そういうメンバーがいないバンドから却下します。",
   },
+  {
+    value: "narrowWindow",
+    label: "演奏可能な時間が短いバンドから却下",
+    description:
+      "日時指定で使える枠が少ない（演奏できる時間が短い）バンドから却下し、使える枠が多いバンドを残します。",
+  },
 ];
 
 export type BandMetrics = {
@@ -38,6 +44,9 @@ export type BandMetrics = {
   maxFrames: number;
   /** Has a member whose only band is this one. */
   hasSingleSlotMember: boolean;
+  /** How many of the simulated slots its 日時指定 lets it play in (filled in
+   * once the slots are known; 0 until then). */
+  eligibleSlots: number;
 };
 
 // "3年" / "３年" → 3; 院・修士・博士・M1・D2 → 5 (above any undergraduate);
@@ -68,7 +77,7 @@ export function computeBandMetrics(
     maxFrames = Math.max(maxFrames, count);
     if (count === 1) single = true;
   }
-  return { gradeLevel: gradeCount > 0 ? gradeSum / gradeCount : 0, maxFrames, hasSingleSlotMember: single };
+  return { gradeLevel: gradeCount > 0 ? gradeSum / gradeCount : 0, maxFrames, hasSingleSlotMember: single, eligibleSlots: 0 };
 }
 
 /** Negative = `a` is kept in preference to `b`. */
@@ -80,6 +89,7 @@ export function comparePriority(
   let primary = 0;
   if (policy === "grade") primary = b.metrics.gradeLevel - a.metrics.gradeLevel;
   else if (policy === "fewFrames") primary = a.metrics.maxFrames - b.metrics.maxFrames;
+  else if (policy === "narrowWindow") primary = b.metrics.eligibleSlots - a.metrics.eligibleSlots;
   else if (policy === "singleSlot")
     primary = Number(b.metrics.hasSingleSlotMember) - Number(a.metrics.hasSingleSlotMember);
   if (primary !== 0) return primary;
@@ -102,6 +112,9 @@ export function describePriorityBasis(
   }
   if (policy === "fewFrames") {
     return `メンバーの最大枠数 ${metrics.maxFrames}枠（同じなら${applied}の順）`;
+  }
+  if (policy === "narrowWindow") {
+    return `日時指定で使える枠 ${metrics.eligibleSlots}枠（同じなら${applied}の順）`;
   }
   if (policy === "singleSlot") {
     return `${metrics.hasSingleSlotMember ? "1枠のみのメンバーあり" : "1枠のみのメンバーなし"}（同じなら${applied}の順）`;
