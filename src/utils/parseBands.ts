@@ -144,6 +144,27 @@ export function extractDayOfMonthHints(text: string): number[] {
   return [...hits];
 }
 
+// Like extractDayOfMonthHints, but keeps where in the text each date was
+// written, so a schedule such as "17日16:00まで、18日18:30〜" can be cut into
+// one clause per date ("17日16:00まで、" / "18日18:30〜") and each date's own
+// time condition read separately — a single time range pulled from the whole
+// string would blend the two. A date mentioned twice in a row by two of the
+// patterns at once (e.g. "9/27(日)" matches both the slash and the
+// parenthesized-weekday forms) is kept once, at its first position.
+export function extractDayClauses(text: string): { day: number; clause: string }[] {
+  if (!text) return [];
+  const found: { day: number; index: number }[] = [];
+  for (const re of [DAY_SUFFIX_RE, SLASH_DATE_RE, WEEKDAY_PAREN_RE]) {
+    for (const m of text.matchAll(re)) found.push({ day: Number(m[1]), index: m.index ?? 0 });
+  }
+  found.sort((a, b) => a.index - b.index);
+  const unique = found.filter((entry, i) => i === 0 || entry.day !== found[i - 1].day);
+  return unique.map((entry, i) => ({
+    day: entry.day,
+    clause: text.slice(entry.index, i + 1 < unique.length ? unique[i + 1].index : text.length),
+  }));
+}
+
 // A loose signal that `text` is probably trying to state a day-of-month,
 // broader than the exact shapes above (DAY_SUFFIX_RE/SLASH_DATE_RE/
 // WEEKDAY_PAREN_RE) — mirrors BARE_TIME_TOKEN_RE/hasUnparsedTimeExpression

@@ -1,6 +1,13 @@
 import { useRef, useMemo, useState } from "react";
 import type { Application } from "../../types";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
+import { minutesToTime } from "../../utils/time";
+import {
+  collectScheduleCandidates,
+  isAvailableAtAnyDay,
+  isAvailableOn,
+  parseScheduleAvailability,
+} from "../../utils/scheduleAvailability";
 import {
   hasUnparsedDayHint,
   hasUnparsedTimeExpression,
@@ -354,6 +361,33 @@ export function ApplicationTable({
   const [singleSlotFilter, setSingleSlotFilter] = useState<TriState>("any");
   const [highSlotFilter, setHighSlotFilter] = useState<TriState>("any");
 
+  // Date/time filter. The candidate dates and clock times are read out of the
+  // applications' own 出演希望日 text (see scheduleAvailability.ts), so the
+  // organizer only ever clicks what was actually written. A date is tri-state
+  // like the other conditions (出られる / 出られない); picking a time narrows
+  // "can play on that date" to "can play on that date at that time" and, with
+  // no date chosen, means "can play at that time on at least one day".
+  const [dateFilters, setDateFilters] = useState<Record<number, TriState>>({});
+  const [selectedTime, setSelectedTime] = useState<number | null>(null);
+  const availabilityByAppId = useMemo(
+    () => new Map(applications.map((a) => [a.id, parseScheduleAvailability(a.desiredDateTime)])),
+    [applications],
+  );
+  const scheduleCandidates = useMemo(
+    () => collectScheduleCandidates([...availabilityByAppId.values()]),
+    [availabilityByAppId],
+  );
+  const dateAvailableCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        scheduleCandidates.days.map((day) => [
+          day,
+          applications.filter((a) => isAvailableOn(availabilityByAppId.get(a.id)!, day, selectedTime)).length,
+        ]),
+      ) as Record<number, number>,
+    [applications, availabilityByAppId, scheduleCandidates, selectedTime],
+  );
+
   const hasHighSlotMember = (a: Application) =>
     (highParticipationByAppId.get(a.id)?.highCount ?? 0) > 0;
 
@@ -379,6 +413,7 @@ export function ApplicationTable({
     // name ("鈴木 啓大郎", e.g. from clicking a member chip) still finds its
     // exact member and not only bands that happen to match both halves
     // separately.
+    const requiredDayChosen = scheduleCandidates.days.some((day) => dateFilters[day] === "has");
     const tokens = query.split(/[\s\u3000]+/).filter(Boolean);
     const isExclusion = (token: string) => token.length > 1 && /^[-−－]/.test(token);
     const excludeTerms = tokens.filter(isExclusion).map((token) => token.slice(1));
@@ -410,6 +445,19 @@ export function ApplicationTable({
       if (!passesTriState(syncFilter, a.hasSync)) return false;
       if (!passesTriState(singleSlotFilter, hasSingleSlotMember(a, frameCounts))) return false;
       if (!passesTriState(highSlotFilter, hasHighSlotMember(a))) return false;
+      const availability = availabilityByAppId.get(a.id)!;
+      for (const day of scheduleCandidates.days) {
+        const state = dateFilters[day] ?? "any";
+        if (state === "any") continue;
+        if (!passesTriState(state, isAvailableOn(availability, day, selectedTime))) return false;
+      }
+      if (
+        selectedTime !== null &&
+        !requiredDayChosen &&
+        !isAvailableAtAnyDay(availability, selectedTime)
+      ) {
+        return false;
+      }
       if (excludeTerms.some((t) => matchesTerm(a, t))) return false;
       if (terms.length === 0) return true;
       return (
@@ -418,14 +466,29 @@ export function ApplicationTable({
       );
     });
     // hasHighSlotMember only reads highParticipationByAppId, which is listed.
-  }, [applications, filterText, statusFilter, syncFilter, singleSlotFilter, highSlotFilter, frameCounts, highParticipationByAppId]);
+  }, [
+    applications,
+    filterText,
+    statusFilter,
+    syncFilter,
+    singleSlotFilter,
+    highSlotFilter,
+    frameCounts,
+    highParticipationByAppId,
+    availabilityByAppId,
+    scheduleCandidates,
+    dateFilters,
+    selectedTime,
+  ]);
 
   const isFiltered =
     filterText.trim() !== "" ||
     statusFilter !== "all" ||
     syncFilter !== "any" ||
     singleSlotFilter !== "any" ||
-    highSlotFilter !== "any";
+    highSlotFilter !== "any" ||
+    Object.values(dateFilters).some((state) => state !== "any") ||
+    selectedTime !== null;
 
   function clearAllFilters() {
     onFilterTextChange("");
@@ -433,6 +496,8 @@ export function ApplicationTable({
     setSyncFilter("any");
     setSingleSlotFilter("any");
     setHighSlotFilter("any");
+    setDateFilters({});
+    setSelectedTime(null);
   }
 
   const sorted = useMemo(() => {
@@ -584,6 +649,50 @@ export function ApplicationTable({
           title="全申し込みを通じて3バンド以上に参加しているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）"
         />
       </div>
+
+      {(scheduleCandidates.days.length > 0 || scheduleCandidates.times.length > 0) && (
+        <div className="flex shrink-0 flex-col gap-1.5" role="group" aria-label="日程の絞り込み">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="text-[11px] font-semibold text-slate-400">出演希望日（申請の記載から自動）</span>
+            {scheduleCandidates.days.map((day) => (
+              <TriStateFilter
+                key={day}
+                label={`${day}日`}
+                value={dateFilters[day] ?? "any"}
+                onChange={(next) => setDateFilters((prev) => ({ ...prev, [day]: next }))}
+                hasLabel="出られる"
+                notLabel="出られない"
+                hasCount={dateAvailableCounts[day] ?? 0}
+                notCount={applications.length - (dateAvailableCounts[day] ?? 0)}
+                title={`希望日に${day}日が書かれている、または日付の指定がない（両日可能など）申請を「出られる」と数えます`}
+              />
+            ))}
+          </div>
+          {scheduleCandidates.times.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-slate-400">この時刻に出られる</span>
+              {scheduleCandidates.times.map((minutes) => (
+                <button
+                  key={minutes}
+                  type="button"
+                  onClick={() => setSelectedTime((current) => (current === minutes ? null : minutes))}
+                  aria-pressed={selectedTime === minutes}
+                  className={`min-h-11 rounded border px-2.5 text-[11px] font-medium md:min-h-0 md:py-1 ${
+                    selectedTime === minutes
+                      ? "border-indigo-400 bg-indigo-600 text-white"
+                      : "border-slate-600 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {minutesToTime(minutes)}
+                </button>
+              ))}
+              <span className="text-[11px] text-slate-500">
+                選んだ日（未選択ならいずれかの日）にその時刻に出演できるバンドに絞ります。時間の書かれていない日は終日出られるものとして数えます。
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {sorted.length === 0 && (
         <p className="rounded-lg border border-slate-700 px-3 py-6 text-center text-sm text-slate-500">
