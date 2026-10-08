@@ -32,13 +32,14 @@ export function ApplicationImportPanel() {
       const text = await file.text();
       await nextFrame();
       const result = parseChatExportFile(text, file.name);
-      if (result.applications.length > 0) {
-        addApplications(result.applications);
-      }
+      const addedCount =
+        result.applications.length > 0 ? addApplications(result.applications) : 0;
+      const duplicateCount = result.applications.length - addedCount;
       const noiseNote = result.noiseFilteredCount > 0 ? `（ノイズ${result.noiseFilteredCount}件を除外）` : "";
+      const duplicateNote = duplicateCount > 0 ? `（既存と重複${duplicateCount}件を除外）` : "";
       showToast(
-        `${result.messageCount}件のメッセージを処理し、${result.applications.length}件の有効な申し込みを検出しました${noiseNote}`,
-        result.applications.length > 0 ? "success" : "info",
+        `${result.messageCount}件のメッセージを処理し、${addedCount}件の有効な申し込みを検出しました${noiseNote}${duplicateNote}`,
+        addedCount > 0 ? "success" : "info",
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "ファイルの解析に失敗しました", "error");

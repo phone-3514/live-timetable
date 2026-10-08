@@ -11,8 +11,15 @@ type ApplicationState = {
 
   /** Appends already-parsed applications (used by the batch chat-export
    * file upload flow, which parses off the main paste-and-parse path so it
-   * can run its own noise-filtering pass first — see parseChatExportFile). */
-  addApplications: (applications: Application[]) => void;
+   * can run its own noise-filtering pass first — see parseChatExportFile).
+   * Skips any application whose `raw` source text exactly matches one
+   * already in the store (or an earlier one in this same batch) — dropping
+   * the same export file on the dropzone twice, or re-exporting an
+   * overlapping date range, would otherwise silently double every band it
+   * contains, with no error and no visible cause beyond the list looking
+   * "duplicated." Returns how many were actually added, for the caller's
+   * own toast message. */
+  addApplications: (applications: Application[]) => number;
   approveApplication: (id: string) => void;
   unapproveApplication: (id: string) => void;
   /** Approves every application not already approved, in one batched
@@ -23,6 +30,16 @@ type ApplicationState = {
    * after the UI has already surfaced the 0-slots safety warning). Also
    * removes the linked Band from the timetable if it had been approved. */
   removeApplication: (id: string) => void;
+  /** Cleans up applications left over from before addApplications' own
+   * dedup existed (or from any other way an exact duplicate could have
+   * gotten in) — groups by `raw`, and within any group of 2+, keeps
+   * exactly one (the approved one if there's exactly one, otherwise the
+   * earliest) and removes the rest. Every removed entry is guaranteed
+   * unapproved, so nothing in the Timetable Editor is ever touched. A group
+   * where two or more copies were each independently approved into their
+   * own Band is left completely alone and counted in `needsManualReview`
+   * instead — deciding which placement to discard needs a human. */
+  removeExactDuplicateApplications: () => { removed: number; needsManualReview: number };
   /** Wipes every application and, for any that were approved, the Band it
    * was converted into — keeping the Timetable Editor's unplaced list in
    * sync rather than leaving orphaned bands behind. */
@@ -75,10 +92,18 @@ export const useApplicationStore = create<ApplicationState>()(
     (set, get) => ({
       applications: [],
 
-      addApplications: (newApplications) =>
-        set((state) => ({
-          applications: [...state.applications, ...newApplications],
-        })),
+      addApplications: (newApplications) => {
+        const seenRaw = new Set(get().applications.map((a) => a.raw));
+        const toAdd = newApplications.filter((app) => {
+          if (seenRaw.has(app.raw)) return false;
+          seenRaw.add(app.raw);
+          return true;
+        });
+        if (toAdd.length > 0) {
+          set((state) => ({ applications: [...state.applications, ...toAdd] }));
+        }
+        return toAdd.length;
+      },
 
       approveApplication: (id) => {
         const app = get().applications.find((a) => a.id === id);
@@ -127,6 +152,41 @@ export const useApplicationStore = create<ApplicationState>()(
         set((state) => ({
           applications: state.applications.filter((a) => a.id !== id),
         }));
+      },
+
+      removeExactDuplicateApplications: () => {
+        const apps = get().applications;
+        const groups = new Map<string, Application[]>();
+        for (const app of apps) {
+          const group = groups.get(app.raw) ?? [];
+          group.push(app);
+          groups.set(app.raw, group);
+        }
+        const idsToRemove = new Set<string>();
+        let needsManualReview = 0;
+        for (const group of groups.values()) {
+          if (group.length <= 1) continue;
+          const approved = group.filter((a) => a.approved);
+          if (approved.length >= 2) {
+            needsManualReview++;
+            continue;
+          }
+          const keepId =
+            approved[0]?.id ??
+            group.reduce((earliest, a) => (a.createdAt < earliest.createdAt ? a : earliest)).id;
+          for (const app of group) {
+            if (app.id !== keepId) idsToRemove.add(app.id);
+          }
+        }
+        if (idsToRemove.size > 0) {
+          // Every id here came from a group with at most one approved
+          // entry, and that one is always `keepId` — so everything being
+          // removed is unapproved and has no linked Band to clean up.
+          set((state) => ({
+            applications: state.applications.filter((a) => !idsToRemove.has(a.id)),
+          }));
+        }
+        return { removed: idsToRemove.size, needsManualReview };
       },
 
       clearAll: () => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { computeMemberFrameCounts, useApplicationStore } from "../../store/useApplicationStore";
 import { useIsMobile } from "../../hooks/useViewport";
+import { useToastStore } from "../../store/useToastStore";
 import { ApplicationImportPanel } from "./ApplicationImportPanel";
 import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
@@ -16,7 +17,11 @@ export function ApplicationManagerTab() {
   const unapproveApplication = useApplicationStore((s) => s.unapproveApplication);
   const approveAllPending = useApplicationStore((s) => s.approveAllPending);
   const removeApplication = useApplicationStore((s) => s.removeApplication);
+  const removeExactDuplicateApplications = useApplicationStore(
+    (s) => s.removeExactDuplicateApplications,
+  );
   const clearAll = useApplicationStore((s) => s.clearAll);
+  const showToast = useToastStore((s) => s.show);
 
   const [pendingReject, setPendingReject] = useState<Application | null>(null);
   const [filterText, setFilterText] = useState("");
@@ -38,6 +43,35 @@ export function ApplicationManagerTab() {
     () => findNearDuplicateNames(frameCounts).length,
     [frameCounts],
   );
+  // Optimistic count for the button badge — every raw text appearing more
+  // than once, minus one kept copy per group. The store action recomputes
+  // this itself when actually run (and separates out any group that isn't
+  // safe to auto-resolve), so this only needs to answer "is there anything
+  // to clean up," not match its exact removed-count precisely.
+  const exactDuplicateCount = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const app of applications) counts.set(app.raw, (counts.get(app.raw) ?? 0) + 1);
+    let extra = 0;
+    for (const count of counts.values()) {
+      if (count > 1) extra += count - 1;
+    }
+    return extra;
+  }, [applications]);
+
+  function handleRemoveDuplicates() {
+    const { removed, needsManualReview } = removeExactDuplicateApplications();
+    if (removed === 0 && needsManualReview === 0) return;
+    const reviewNote =
+      needsManualReview > 0
+        ? `（${needsManualReview}件は両方承認済みのため手動で確認してください）`
+        : "";
+    showToast(
+      removed > 0
+        ? `重複した申し込み${removed}件を削除しました${reviewNote}`
+        : `重複を検出しましたが両方承認済みのため自動削除できませんでした（${needsManualReview}件、手動で確認してください）`,
+      removed > 0 ? "success" : "info",
+    );
+  }
 
   function handleReset() {
     if (applications.length === 0) return;
@@ -90,6 +124,16 @@ export function ApplicationManagerTab() {
             className="min-h-9 rounded-full border border-amber-500 bg-amber-950/40 px-3 text-xs font-semibold text-amber-300 hover:bg-amber-900/50"
           >
             ⚠ 似た名前を確認（{nearDuplicateCount}件）
+          </button>
+        )}
+        {exactDuplicateCount > 0 && (
+          <button
+            type="button"
+            onClick={handleRemoveDuplicates}
+            title="同じ内容の申し込み（同じファイルを2回取り込んだ場合など）を自動的に整理します。両方が承認済みのペアには触れません"
+            className="min-h-9 rounded-full border border-amber-500 bg-amber-950/40 px-3 text-xs font-semibold text-amber-300 hover:bg-amber-900/50"
+          >
+            🧹 重複した申し込みを整理（{exactDuplicateCount}件）
           </button>
         )}
         <div className="ml-auto flex flex-wrap gap-2">
