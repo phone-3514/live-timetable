@@ -17,6 +17,7 @@ import { ScheduleReviewModal } from "./ScheduleReviewModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
 import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
+import { RatingPatternSelect } from "./RatingPatternSelect";
 import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
 import type { TimetableDay } from "../types";
 
@@ -244,6 +245,7 @@ export function DesktopTimetable() {
         >
           ⚡ 一括自動配置
         </button>
+        <RatingPatternSelect className="shrink-0" />
         <button
           onClick={addDay}
           className="min-h-11 shrink-0 rounded border border-dashed border-slate-600 px-3 text-slate-400 hover:bg-slate-700 md:min-h-0 md:py-1.5"

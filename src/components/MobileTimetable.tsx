@@ -22,6 +22,7 @@ import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
 import { ModalPortal } from "./ModalPortal";
+import { RatingPatternSelect } from "./RatingPatternSelect";
 import type { Band, TimetableDay } from "../types";
 
 const EMPTY_BANDS: Band[] = [];
@@ -262,6 +263,7 @@ export function MobileTimetable() {
         >
           ⚡ 一括自動配置
         </button>
+        <RatingPatternSelect className="w-full" />
         <button
           onClick={addDay}
           className="min-h-11 rounded border border-dashed border-slate-600 px-3 text-slate-400 hover:bg-slate-700"

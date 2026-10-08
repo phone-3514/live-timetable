@@ -1,5 +1,6 @@
 import type { VenueHours } from "./parseBands";
 import type { Band, TimetableDay } from "../types";
+import { DEFAULT_RATING_PATTERN, type RatingPattern } from "./autoScheduleSolver";
 import { useAppStore, type EventInfo } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useUiStore, type AppTab } from "../store/useUiStore";
@@ -18,6 +19,8 @@ export type BackupData = {
     days: TimetableDay[];
     venueHours: VenueHours;
     eventInfo: EventInfo;
+    /** 一括自動配置の評価の並べ方。古いバックアップには無い。 */
+    ratingPattern?: RatingPattern;
   };
   applications: Application[];
   ui: { activeTab: AppTab };
@@ -70,6 +73,7 @@ export function createBackupPayload(): BackupData {
       days: appState.days,
       venueHours: appState.venueHours,
       eventInfo: appState.eventInfo,
+      ratingPattern: appState.ratingPattern,
     },
     applications: applicationState.applications,
     ui: { activeTab: uiState.activeTab },
@@ -128,6 +132,7 @@ export function restoreBackup(data: BackupData): void {
     venueHours: app.venueHours ?? useAppStore.getState().venueHours,
     eventInfo: app.eventInfo ?? { liveName: "", venue: "", organizationName: "" },
     lastDeleted: null,
+    ratingPattern: app.ratingPattern ?? DEFAULT_RATING_PATTERN,
   });
   useApplicationStore.setState({
     applications: data.applications ?? [],

@@ -21,11 +21,13 @@ import { makeBlankSlot, makeCustomEventSlot } from "../utils/slotFactories";
 import { planDaySlots, type SimulationPlan } from "../utils/applySimulationPlan";
 import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
 import {
+  DEFAULT_RATING_PATTERN,
   buildScheduleContext,
   buildSchedulingDebugResult,
   improveDayByLiveComposition,
   placeRemainingBandsRelaxed,
   solveDayAssignment,
+  type RatingPattern,
 } from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
 import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
@@ -166,6 +168,9 @@ type AppState = {
   adjustScheduleFrom: (dayId: string, slotId: string, deltaMinutes: number) => void;
   resetScheduleFrom: (dayId: string, slotId: string) => void;
   autoScheduleAllDays: () => void;
+  /** How 一括自動配置 lays out the 1〜5 ratings (see RatingPattern). */
+  ratingPattern: RatingPattern;
+  setRatingPattern: (pattern: RatingPattern) => void;
   resetAllPlacements: () => void;
   // Unlike resetAllPlacements (which only unassigns bands, keeping the
   // slots themselves), this deletes every slot on every day outright —
@@ -1052,6 +1057,9 @@ export const useAppStore = create<AppState>()(
   // unplaced rather than being force-placed — solveDayAssignment reports
   // exactly which bands and why via its returned `failures`, surfaced
   // below as a toast rather than silently dropped.
+  ratingPattern: DEFAULT_RATING_PATTERN,
+  setRatingPattern: (ratingPattern) => set({ ratingPattern }),
+
   autoScheduleAllDays: () => {
     const failureMessages: string[] = [];
     const relaxedPlacementMessages: string[] = [];
@@ -1156,6 +1164,7 @@ export const useAppStore = create<AppState>()(
           dayPool,
           state.bands,
           state.venueHours,
+          { ratingPattern: state.ratingPattern },
         );
         // Step 1's own output (not the pre-fill `currentDay`) is what the
         // "終盤開始時刻" freezes against — see buildScheduleContext's own
@@ -1173,7 +1182,7 @@ export const useAppStore = create<AppState>()(
           step1Day,
           state.bands,
           state.venueHours,
-          { unplacedBandIds },
+          { unplacedBandIds, ratingPattern: state.ratingPattern },
         );
         perDayResults.push({ dayId, dayLabel: currentDay.label, currentDay, step1Day, slotsAfterStep3: improvedSlots, failures, summary });
       }
@@ -1194,6 +1203,7 @@ export const useAppStore = create<AppState>()(
           perDayResults.map((r) => r.currentDay),
           state.bands,
           state.venueHours,
+          state.ratingPattern,
         );
         for (const [dayId, slots] of relaxed.slotsByDayId) slotsByDayId.set(dayId, slots);
         relaxedPlacedBandIds = relaxed.placedBandIds;
@@ -1280,7 +1290,7 @@ export const useAppStore = create<AppState>()(
           dayLabel: r.dayLabel,
           result: buildSchedulingDebugResult(
             finalSlots,
-            buildScheduleContext(r.step1Day, state.bands, state.venueHours),
+            buildScheduleContext(r.step1Day, state.bands, state.venueHours, state.ratingPattern),
             r.failures,
             r.summary,
           ),

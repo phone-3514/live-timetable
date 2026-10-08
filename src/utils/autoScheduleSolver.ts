@@ -89,6 +89,16 @@ export function computeScheduleBlocks(slots: TimetableSlot[]): ScheduleBlock[] {
 // cached here — it genuinely does shift with band durations as swaps
 // happen, so globalTimelineComponent recomputes it per-candidate (see
 // computeEventTimeRange).
+// How the 1〜5 ratings are laid out over a day:
+//   ascending — ratings climb through the day toward the close (the original
+//               behaviour: low early, high late, a strong closer per block).
+//   spread    — high-rated bands (4–5) are scattered evenly through the day
+//               with the rest filling in low, except the last two bands before
+//               every break and before the end of the show, which are always
+//               high-rated. See calculateSpreadScore.
+export type RatingPattern = "ascending" | "spread";
+export const DEFAULT_RATING_PATTERN: RatingPattern = "ascending";
+
 export type ScheduleContext = {
   day: TimetableDay;
   allBands: Band[];
@@ -96,15 +106,22 @@ export type ScheduleContext = {
   blocks: ScheduleBlock[];
   eventStartMinutes: number;
   finalPhaseStart: number;
+  ratingPattern: RatingPattern;
 };
 
 // Builds the context once per day/search — the one place that assembles
 // `blocks`, `eventStartMinutes`, and `finalPhaseStart` together, so
 // solveDayAssignment, improveDayByLiveComposition, and the debug builder
 // never construct this object by hand differently from one another.
-export function buildScheduleContext(day: TimetableDay, allBands: Band[], venueHours: VenueHours): ScheduleContext {
+export function buildScheduleContext(
+  day: TimetableDay,
+  allBands: Band[],
+  venueHours: VenueHours,
+  ratingPattern: RatingPattern = DEFAULT_RATING_PATTERN,
+): ScheduleContext {
   const eventStartMinutes = timeToMinutes(day.settings.startTime);
   return {
+    ratingPattern,
     day,
     allBands,
     venueHours,
@@ -1101,6 +1118,9 @@ export type ScheduleScoreBreakdown = {
   smoothnessScore: number;
   blockClosingScore: number;
   lowRatedPerformerDistributionScore: number;
+  /** Only non-zero with the "spread" rating pattern, where it replaces the
+   * position-based ascending components above (which are then 0). */
+  spreadScore: number;
   totalScore: number;
 };
 
@@ -1111,16 +1131,75 @@ export type ScheduleScoreBreakdown = {
 // finalPhaseScore, and it's the sum that Step 3's local search actually
 // compares. totalScore is always exactly the sum of the other six fields
 // here — nothing is computed independently of this breakdown.
+// "Spread" rating pattern. Per day, over the filled slots in order:
+//   - the last two bands of every block (= before each break, and before the
+//     end of the show) are "required": they should be high-rated, scored by
+//     how far below the top rating they are (the very last band counts 1.5×);
+//   - the remaining high-rated bands (those beyond what the required spots
+//     can take) should sit evenly spaced through the other slots, and every
+//     other slot should hold a low-rated band — 4–5 where a high one belongs
+//     is full marks, 1–3 elsewhere is full marks, 3 is neutral, and a high
+//     band in a filler slot costs in proportion to its rating.
+// It's a penalty (≤ 0 score), so the search maximises by lining those up.
+const SPREAD_REQUIRED_WEIGHT = 6;
+const SPREAD_FILLER_WEIGHT = 3;
+const SPREAD_HIGH_RATING = 4;
+
+export function calculateSpreadScore(slots: TimetableSlot[], context: ScheduleContext): number {
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  const entries: { rating: number; required: boolean; isFinal: boolean }[] = [];
+  context.blocks.forEach((block, blockIndex) => {
+    const blockEntries = getBlockEntries(slots, bandMap, block);
+    blockEntries.forEach((entry, i) => {
+      entries.push({
+        rating: getLiveCompositionRating(entry.band),
+        required: i >= blockEntries.length - 2,
+        isFinal: blockIndex === context.blocks.length - 1 && i === blockEntries.length - 1,
+      });
+    });
+  });
+
+  const highness = (rating: number) => normalizeRating(rating);
+  const requiredCount = entries.filter((e) => e.required).length;
+  const highCount = entries.filter((e) => e.rating >= SPREAD_HIGH_RATING).length;
+  const extraHighCount = Math.max(0, highCount - requiredCount);
+
+  const fillerIndexes = entries.map((e, i) => (e.required ? -1 : i)).filter((i) => i >= 0);
+  const idealHigh = new Set<number>();
+  for (let j = 0; j < extraHighCount && fillerIndexes.length > 0; j++) {
+    const pick = Math.min(
+      fillerIndexes.length - 1,
+      Math.floor(((j + 0.5) * fillerIndexes.length) / extraHighCount),
+    );
+    idealHigh.add(fillerIndexes[pick]);
+  }
+
+  let penalty = 0;
+  entries.forEach((entry, i) => {
+    const h = highness(entry.rating);
+    if (entry.required) {
+      penalty += (1 - h) * SPREAD_REQUIRED_WEIGHT * (entry.isFinal ? 1.5 : 1);
+    } else if (idealHigh.has(i)) {
+      penalty += (1 - h) * SPREAD_FILLER_WEIGHT;
+    } else {
+      penalty += Math.max(0, h - 0.5) * 2 * SPREAD_FILLER_WEIGHT;
+    }
+  });
+  return -penalty;
+}
+
 export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContext): ScheduleScoreBreakdown {
-  const globalTimelineScore = globalTimelineComponent.weight * globalTimelineComponent.calculate(slots, context);
-  const finalPhaseScore = finalPhaseComponent.weight * finalPhaseComponent.calculate(slots, context);
-  const ratingFiveFinalPhaseScore =
-    ratingFiveFinalPhaseComponent.weight * ratingFiveFinalPhaseComponent.calculate(slots, context);
-  const blockTimelineScore = blockTimelineComponent.weight * blockTimelineComponent.calculate(slots, context);
-  const smoothnessScore = smoothnessComponent.weight * smoothnessComponent.calculate(slots, context);
-  const blockClosingScore = blockClosingComponent.weight * blockClosingComponent.calculate(slots, context);
+  const spread = context.ratingPattern === "spread";
+  const ascending = (component: ScoreComponent) => (spread ? 0 : component.weight * component.calculate(slots, context));
+  const globalTimelineScore = ascending(globalTimelineComponent);
+  const finalPhaseScore = ascending(finalPhaseComponent);
+  const ratingFiveFinalPhaseScore = ascending(ratingFiveFinalPhaseComponent);
+  const blockTimelineScore = ascending(blockTimelineComponent);
+  const smoothnessScore = ascending(smoothnessComponent);
+  const blockClosingScore = ascending(blockClosingComponent);
   const lowRatedPerformerDistributionScore =
     lowRatedPerformerDistributionComponent.weight * lowRatedPerformerDistributionComponent.calculate(slots, context);
+  const spreadScore = spread ? calculateSpreadScore(slots, context) : 0;
   return {
     globalTimelineScore,
     finalPhaseScore,
@@ -1129,6 +1208,7 @@ export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContex
     smoothnessScore,
     blockClosingScore,
     lowRatedPerformerDistributionScore,
+    spreadScore,
     totalScore:
       globalTimelineScore +
       finalPhaseScore +
@@ -1136,7 +1216,8 @@ export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContex
       blockTimelineScore +
       smoothnessScore +
       blockClosingScore +
-      lowRatedPerformerDistributionScore,
+      lowRatedPerformerDistributionScore +
+      spreadScore,
   };
 }
 
@@ -1523,6 +1604,7 @@ export type SolveDayAssignmentOptions = {
    * default, Math.random, is what's always been used); pass a fixed
    * number in tests for reproducible results. */
   seed?: number;
+  ratingPattern?: RatingPattern;
 };
 
 // Fills `day`'s empty performance slots with `candidateBands` (expected to
@@ -1554,7 +1636,7 @@ export function solveDayAssignment(
   const n = Math.min(emptyPositions.length, candidateBands.length);
   const positions = emptyPositions.slice(0, n);
   const pool = candidateBands.slice(0, n);
-  const context = buildScheduleContext(day, allBands, venueHours);
+  const context = buildScheduleContext(day, allBands, venueHours, options.ratingPattern);
 
   function buildSlots(order: Band[]): TimetableSlot[] {
     const slots = [...day.slots];
@@ -1894,6 +1976,7 @@ export const OPTIMIZATION_LIMITS = {
 const MIN_IMPROVEMENT = 0.0001;
 
 export type OptimizationOptions = {
+  ratingPattern?: RatingPattern;
   maxIterations?: number;
   maxCandidatesPerIteration?: number;
   /** nullで本番用の安全装置(実行時間上限)を無効化する — 決定性を検証する
@@ -2113,7 +2196,7 @@ export function improveDayByLiveComposition(
   venueHours: VenueHours,
   options: OptimizationOptions = {},
 ): { slots: TimetableSlot[]; summary: OptimizationSummary } {
-  const context = buildScheduleContext(day, bands, venueHours);
+  const context = buildScheduleContext(day, bands, venueHours, options.ratingPattern);
   const limits = {
     maxIterations: options.maxIterations ?? OPTIMIZATION_LIMITS.maxIterations,
     maxCandidatesPerIteration: options.maxCandidatesPerIteration ?? OPTIMIZATION_LIMITS.maxCandidatesPerIteration,
@@ -2417,6 +2500,7 @@ export function placeRemainingBandsRelaxed(
   days: TimetableDay[],
   allBands: Band[],
   venueHours: VenueHours,
+  ratingPattern: RatingPattern = DEFAULT_RATING_PATTERN,
 ): RelaxedPlacementResult {
   const bandMap = new Map(allBands.map((b) => [b.id, b]));
   const dayMap = new Map(days.map((d) => [d.id, d]));
@@ -2473,7 +2557,7 @@ export function placeRemainingBandsRelaxed(
       const bid = k === key ? bandId : (assignment.get(k) ?? null);
       return bid === s.bandId ? s : { ...s, bandId: bid };
     });
-    const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours);
+    const context = buildScheduleContext({ ...day, slots: candidateSlots }, allBands, venueHours, ratingPattern);
     const violationCount = validateHardConstraints(candidateSlots, context).violations.filter(
       (v) => v.type !== "TIME_CONSTRAINT",
     ).length;
@@ -2549,6 +2633,7 @@ export function placeRemainingBandsRelaxed(
     dayMap,
     allBands,
     venueHours,
+    ratingPattern,
   );
   const ratingReorderedBandIds = [...ratingReordered].filter((id) => !movedBandIds.has(id));
 
@@ -2578,6 +2663,7 @@ export function improveRatingsIgnoringSoftConstraints(
   dayMap: Map<string, TimetableDay>,
   allBands: Band[],
   venueHours: VenueHours,
+  ratingPattern: RatingPattern = DEFAULT_RATING_PATTERN,
 ): Set<string> {
   const bandMap = new Map(allBands.map((b) => [b.id, b]));
   const original = new Map<string, string | null>(); // `${dayId}::${slotId}` -> bandId
@@ -2595,7 +2681,7 @@ export function improveRatingsIgnoringSoftConstraints(
     if (!day) continue;
     current.set(dayId, slots);
     for (const slot of slots) original.set(relaxedSlotKey(dayId, slot.id), slot.bandId);
-    const context = buildScheduleContext({ ...day, slots }, allBands, venueHours);
+    const context = buildScheduleContext({ ...day, slots }, allBands, venueHours, ratingPattern);
     contexts.set(dayId, context);
     scores.set(dayId, evaluateSchedule(slots, context).totalScore);
     timeViolations.set(dayId, countTimeViolations(dayId, slots));
