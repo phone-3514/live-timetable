@@ -2352,6 +2352,11 @@ export type RelaxedPlacementResult = {
    * CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION exist to prevent exactly
    * the arrangements this pass allows itself to reach for. */
   placedBandIds: string[];
+  /** Bands that only moved in the closing レーティング-priority rearrangement
+   * (see improveRatingsIgnoringSoftConstraints) — they were already seated
+   * and weren't needed to seat anyone, they just ended up somewhere that
+   * suits their rating better. Never includes anything in placedBandIds. */
+  ratingReorderedBandIds: string[];
   /** Bands that still couldn't be seated even here — no rearrangement,
    * however disruptive, could find them a TIME_CONSTRAINT-eligible seat
    * (day/time-window eligibility), the one constraint this pass never
@@ -2535,9 +2540,160 @@ export function placeRemainingBandsRelaxed(
     resultSlotsByDayId.set(dayId, recomputeTimes(nextSlots, day.settings, allBands));
   }
 
+  // Seating is done; what's left is where everyone sits. With everything but
+  // TIME_CONSTRAINT already off the table, spend that freedom on the ライブ構成
+  // 評価 (the 5-step rating): after day/time eligibility it is what decides the
+  // arrangement, ahead of CONSECUTIVE_APPEARANCE/BLOCK_CONCENTRATION.
+  const ratingReordered = improveRatingsIgnoringSoftConstraints(
+    resultSlotsByDayId,
+    dayMap,
+    allBands,
+    venueHours,
+  );
+  const ratingReorderedBandIds = [...ratingReordered].filter((id) => !movedBandIds.has(id));
+
   return {
     slotsByDayId: resultSlotsByDayId,
     placedBandIds: [...movedBandIds],
+    ratingReorderedBandIds,
     stillUnplacedBandIds,
   };
+}
+
+const RATING_REORDER_TIME_BUDGET_MS = 3000;
+const RATING_REORDER_MAX_PASSES = 40;
+
+// Hill-climbing over swaps of two seated bands (same day or across days):
+// a swap is kept when the summed ライブ構成評価 score (evaluateSchedule, whose
+// every component is driven by the bands' 1〜5 ratings — position in the day,
+// 終盤, block closer, smoothness…) of the affected days goes up, and neither
+// day gets a new TIME_CONSTRAINT violation. CONSECUTIVE_APPEARANCE and
+// BLOCK_CONCENTRATION are deliberately not checked — this only runs in the
+// relaxed last-resort pass, where those are allowed to break. Each day's
+// scoring context (終盤開始時刻 etc.) is frozen from the arrangement it starts
+// from, like Step 3. Mutates `slotsByDayId` with the improved arrangements and
+// returns the bands that ended up in a different slot than they started in.
+export function improveRatingsIgnoringSoftConstraints(
+  slotsByDayId: Map<string, TimetableSlot[]>,
+  dayMap: Map<string, TimetableDay>,
+  allBands: Band[],
+  venueHours: VenueHours,
+): Set<string> {
+  const bandMap = new Map(allBands.map((b) => [b.id, b]));
+  const original = new Map<string, string | null>(); // `${dayId}::${slotId}` -> bandId
+  const contexts = new Map<string, ScheduleContext>();
+  const scores = new Map<string, number>();
+  const timeViolations = new Map<string, number>();
+  const current = new Map<string, TimetableSlot[]>();
+
+  const countTimeViolations = (dayId: string, slots: TimetableSlot[]) =>
+    validateHardConstraints(slots, contexts.get(dayId)!).violations.filter((v) => v.type === "TIME_CONSTRAINT")
+      .length;
+
+  for (const [dayId, slots] of slotsByDayId) {
+    const day = dayMap.get(dayId);
+    if (!day) continue;
+    current.set(dayId, slots);
+    for (const slot of slots) original.set(relaxedSlotKey(dayId, slot.id), slot.bandId);
+    const context = buildScheduleContext({ ...day, slots }, allBands, venueHours);
+    contexts.set(dayId, context);
+    scores.set(dayId, evaluateSchedule(slots, context).totalScore);
+    timeViolations.set(dayId, countTimeViolations(dayId, slots));
+  }
+
+  const startedAt = Date.now();
+  let improved = true;
+  for (let pass = 0; improved && pass < RATING_REORDER_MAX_PASSES; pass++) {
+    improved = false;
+    const positions: { dayId: string; index: number }[] = [];
+    for (const [dayId, slots] of current) {
+      slots.forEach((slot, index) => {
+        if (slot.customLabel === null && slot.bandId !== null) positions.push({ dayId, index });
+      });
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        if (Date.now() - startedAt > RATING_REORDER_TIME_BUDGET_MS) {
+          improved = false;
+          i = positions.length;
+          break;
+        }
+        const a = positions[i];
+        const b = positions[j];
+        const slotA = current.get(a.dayId)![a.index];
+        const slotB = current.get(b.dayId)![b.index];
+        if (!slotA.bandId || !slotB.bandId || slotA.bandId === slotB.bandId) continue;
+        const bandA = bandMap.get(slotA.bandId);
+        const bandB = bandMap.get(slotB.bandId);
+        const dayA = dayMap.get(a.dayId);
+        const dayB = dayMap.get(b.dayId);
+        if (!bandA || !bandB || !dayA || !dayB) continue;
+        // Cheap prune on the seats' current times; the exact check below
+        // re-runs it on the real recomputed times.
+        if (
+          !canPlaceBandInSlot(bandB, dayA, slotA, venueHours) ||
+          !canPlaceBandInSlot(bandA, dayB, slotB, venueHours)
+        ) {
+          continue;
+        }
+
+        const swapped = new Map<string, TimetableSlot[]>();
+        if (a.dayId === b.dayId) {
+          const next = current.get(a.dayId)!.map((slot, index) => {
+            if (index === a.index) return { ...slot, bandId: slotB.bandId };
+            if (index === b.index) return { ...slot, bandId: slotA.bandId };
+            return slot;
+          });
+          swapped.set(a.dayId, recomputeTimes(next, dayA.settings, allBands));
+        } else {
+          const nextA = current.get(a.dayId)!.map((slot, index) =>
+            index === a.index ? { ...slot, bandId: slotB.bandId } : slot,
+          );
+          const nextB = current.get(b.dayId)!.map((slot, index) =>
+            index === b.index ? { ...slot, bandId: slotA.bandId } : slot,
+          );
+          swapped.set(a.dayId, recomputeTimes(nextA, dayA.settings, allBands));
+          swapped.set(b.dayId, recomputeTimes(nextB, dayB.settings, allBands));
+        }
+
+        let timeOk = true;
+        let delta = 0;
+        const newScores = new Map<string, number>();
+        const newViolations = new Map<string, number>();
+        for (const [dayId, slots] of swapped) {
+          const violations = countTimeViolations(dayId, slots);
+          if (violations > (timeViolations.get(dayId) ?? 0)) {
+            timeOk = false;
+            break;
+          }
+          const score = evaluateSchedule(slots, contexts.get(dayId)!).totalScore;
+          delta += score - (scores.get(dayId) ?? 0);
+          newScores.set(dayId, score);
+          newViolations.set(dayId, violations);
+        }
+        if (!timeOk || delta <= 1e-6) continue;
+
+        for (const [dayId, slots] of swapped) {
+          current.set(dayId, slots);
+          scores.set(dayId, newScores.get(dayId)!);
+          timeViolations.set(dayId, newViolations.get(dayId)!);
+        }
+        improved = true;
+      }
+    }
+  }
+
+  const moved = new Set<string>();
+  for (const [dayId, slots] of current) {
+    slotsByDayId.set(dayId, slots);
+    for (const slot of slots) {
+      const before = original.get(relaxedSlotKey(dayId, slot.id)) ?? null;
+      if (slot.bandId !== before) {
+        if (slot.bandId) moved.add(slot.bandId);
+        if (before) moved.add(before);
+      }
+    }
+  }
+  return moved;
 }

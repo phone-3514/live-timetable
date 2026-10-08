@@ -1223,6 +1223,11 @@ export const useAppStore = create<AppState>()(
             .join("、");
           relaxedPlacementMessages.push(`${relaxedNames}（連続出演・ブロック集中の制約を緩和して配置）`);
         }
+        if (relaxed.ratingReorderedBandIds.length > 0) {
+          relaxedPlacementMessages.push(
+            `ライブ構成評価（5段階）を優先して${relaxed.ratingReorderedBandIds.length}組の位置を入れ替え`,
+          );
+        }
       }
       for (const [dayId, slots] of slotsByDayId) {
         days = days.map((d) => (d.id === dayId ? { ...d, slots } : d));
