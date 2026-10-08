@@ -240,7 +240,7 @@ export function DesktopTimetable() {
         <button
           onClick={autoScheduleAllDays}
           className="min-h-11 shrink-0 rounded bg-emerald-600 px-3 font-medium text-white hover:bg-emerald-500 md:min-h-0 md:py-1.5"
-          title="全ての日をまとめて考慮し、希望日程・出演可能時間・機材転換の条件を満たすように未配置のバンドを自動で割り振ります（枠数もバランスを取るため自動で増減します）"
+          title="全ての日をまとめて考慮し、希望日程・出演可能時間・機材転換の条件を満たすように未配置のバンドを、各日の空き枠へ自動で割り振ります（枠数は増減しません。枠数は時間シミュレーターなどで調整してください）"
         >
           ⚡ 一括自動配置
         </button>

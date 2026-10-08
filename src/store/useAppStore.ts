@@ -1028,14 +1028,14 @@ export const useAppStore = create<AppState>()(
 
   // Best-effort scheduler across ALL days at once. Two phases:
   //
-  // 1. Balance: split the unplaced pool across days so each ends up with
-  //    as close to an equal band count as possible, without violating a
-  //    hard date restriction — a band greedily joins whichever of its
-  //    eligible days currently has the smaller running total (which
-  //    starts from that day's already-filled slot count, so pre-existing
-  //    manual placements count toward the balance too). Each day's empty
-  //    performance-slot count is then topped up or trimmed to match its
-  //    target, per the request to add/remove slots automatically.
+  // 1. Distribute: split the unplaced pool across days by the empty
+  //    performance slots each day has, without violating a hard date
+  //    restriction — a band greedily joins whichever of its eligible days
+  //    has the most empty slots still free, so days fill in proportion to
+  //    the room they have. The slot counts are the organizer's to set (the
+  //    time simulator's 反映 does it, or by hand): this never adds or
+  //    removes slots. A band that finds no free slot anywhere is still
+  //    handed to a day so it is reported as unplaced rather than dropped.
   //
   // 2. Solve: for each day, hand its balanced target list to
   //    solveDayAssignment — a small CSP solver (simulated annealing over
@@ -1065,12 +1065,15 @@ export const useAppStore = create<AppState>()(
 
       const dayIds = state.days.map((d) => d.id);
       const targetByDay = new Map<string, Band[]>(dayIds.map((id) => [id, []]));
-      const runningTotal = new Map<string, number>(
+      const emptySlotsByDay = new Map<string, number>(
         state.days.map((d) => [
           d.id,
-          d.slots.filter((s) => s.bandId !== null).length,
+          d.slots.filter((s) => s.bandId === null && s.customLabel === null).length,
         ]),
       );
+      // Free slots left on each day as bands get handed out (can go below 0
+      // when there are more bands than slots).
+      const remainingSlots = new Map(emptySlotsByDay);
 
       // A band restricted to fewer eligible days has to land there
       // regardless of load; giving it first pick (rather than processing
@@ -1095,39 +1098,17 @@ export const useAppStore = create<AppState>()(
         if (eligibleDayIds.length === 0) continue;
         let best = eligibleDayIds[0];
         for (const id of eligibleDayIds) {
-          if ((runningTotal.get(id) ?? 0) < (runningTotal.get(best) ?? 0)) {
+          if ((remainingSlots.get(id) ?? 0) > (remainingSlots.get(best) ?? 0)) {
             best = id;
           }
         }
         targetByDay.get(best)!.push(band);
-        runningTotal.set(best, (runningTotal.get(best) ?? 0) + 1);
+        remainingSlots.set(best, (remainingSlots.get(best) ?? 0) - 1);
       }
+      // Bands handed to a day that has no free slot left for them.
+      const slotShortage = [...remainingSlots.values()].reduce((sum, n) => sum + Math.max(0, -n), 0);
 
       let days = state.days;
-      for (const day of state.days) {
-        const target = targetByDay.get(day.id) ?? [];
-        const emptySlotCount = day.slots.filter(
-          (s) => s.bandId === null && s.customLabel === null,
-        ).length;
-        const diff = target.length - emptySlotCount;
-        if (diff > 0) {
-          days = updateDaySlots(days, day.id, state.bands, (slots) => [
-            ...slots,
-            ...Array.from({ length: diff }, () => makeBlankSlot()),
-          ]);
-        } else if (diff < 0) {
-          let toRemove = -diff;
-          days = updateDaySlots(days, day.id, state.bands, (slots) =>
-            slots.filter((s) => {
-              if (toRemove > 0 && s.bandId === null && s.customLabel === null) {
-                toRemove--;
-                return false;
-              }
-              return true;
-            }),
-          );
-        }
-      }
 
       // See findAutoBreakInsertIndex's own doc: a day with no break yet is
       // one giant scheduling block, which the BLOCK_CONCENTRATION hard
@@ -1231,6 +1212,13 @@ export const useAppStore = create<AppState>()(
       }
       for (const [dayId, slots] of slotsByDayId) {
         days = days.map((d) => (d.id === dayId ? { ...d, slots } : d));
+      }
+      // Slots are never added here, so bands left over because every day was
+      // out of free slots deserve a pointer to where slot counts are set.
+      if (slotShortage > 0 && stillUnplacedBandIds.length > 0) {
+        failureMessages.push(
+          `空き枠が足りないため${stillUnplacedBandIds.length}組が未配置です（時間シミュレーターの「タイムテーブルに反映」などで枠を増やしてください）`,
+        );
       }
 
       // Phase C — per-day messaging + debug entries, using the FINAL
