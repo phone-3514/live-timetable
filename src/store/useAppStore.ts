@@ -19,6 +19,7 @@ import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import { makeBlankSlot, makeCustomEventSlot } from "../utils/slotFactories";
 import { planDaySlots, type SimulationPlan } from "../utils/applySimulationPlan";
+import { dayEndAbsoluteMinutes, deadlineAbsoluteMinutes, getDeadlineStatus } from "../utils/dayDeadline";
 import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
 import {
   DEFAULT_RATING_PATTERN,
@@ -1065,6 +1066,9 @@ export const useAppStore = create<AppState>()(
     const relaxedPlacementMessages: string[] = [];
     const ratingOneWarningMessages: string[] = [];
     const debugEntries: AutoScheduleDebugEntry[] = [];
+    // Performance slots still empty once everything is placed.
+    let leftoverEmptySlots = 0;
+    const deadlineMessages: string[] = [];
     set((state) => {
       if (state.days.length === 0) return state;
       const placedElsewhere = getPlacedBandIds(state.days);
@@ -1098,20 +1102,57 @@ export const useAppStore = create<AppState>()(
           (b.allowedDayIds.length > 0 ? b.allowedDayIds.length : dayIds.length),
       );
 
+      // A day's 締切: where the day would end if `extra` joined the bands
+      // already handed to it — they fill the day's empty slots in order, as
+      // the solver does — recomputed with every band's own length. Ending
+      // earlier than the deadline is fine; later is not allowed.
+      const dayById = new Map(state.days.map((d) => [d.id, d]));
+      function endWithBands(dayId: string, extra: Band): number | null {
+        const day = dayById.get(dayId)!;
+        const queue = [...(targetByDay.get(dayId) ?? []), extra];
+        let next = 0;
+        const slots = day.slots.map((slot) =>
+          slot.bandId === null && slot.customLabel === null && next < queue.length
+            ? { ...slot, bandId: queue[next++].id }
+            : slot,
+        );
+        return dayEndAbsoluteMinutes(
+          recomputeTimes(slots, day.settings, state.bands),
+          day.settings,
+          day.settings.deadlineBasis ?? "lastBand",
+        );
+      }
+      const overDeadlineBands: Band[] = [];
+
       for (const band of poolByConstraint) {
         const eligibleDayIds =
           band.allowedDayIds.length > 0
             ? dayIds.filter((id) => band.allowedDayIds.includes(id))
             : dayIds;
         if (eligibleDayIds.length === 0) continue;
-        let best = eligibleDayIds[0];
-        for (const id of eligibleDayIds) {
+        const withinDeadline = eligibleDayIds.filter((id) => {
+          const deadline = deadlineAbsoluteMinutes(dayById.get(id)!.settings);
+          if (deadline === null || (remainingSlots.get(id) ?? 0) <= 0) return true;
+          const end = endWithBands(id, band);
+          return end === null || end <= deadline;
+        });
+        if (withinDeadline.length === 0) {
+          overDeadlineBands.push(band);
+          continue;
+        }
+        let best = withinDeadline[0];
+        for (const id of withinDeadline) {
           if ((remainingSlots.get(id) ?? 0) > (remainingSlots.get(best) ?? 0)) {
             best = id;
           }
         }
         targetByDay.get(best)!.push(band);
         remainingSlots.set(best, (remainingSlots.get(best) ?? 0) - 1);
+      }
+      if (overDeadlineBands.length > 0) {
+        failureMessages.push(
+          `${overDeadlineBands.map((b) => b.name).join("、")}: 締切に収まらないため配置しませんでした（日の締切を超えるのは許可していません）`,
+        );
       }
       // Bands handed to a day that has no free slot left for them.
       const slotShortage = [...remainingSlots.values()].reduce((sum, n) => sum + Math.max(0, -n), 0);
@@ -1208,6 +1249,37 @@ export const useAppStore = create<AppState>()(
         for (const [dayId, slots] of relaxed.slotsByDayId) slotsByDayId.set(dayId, slots);
         relaxedPlacedBandIds = relaxed.placedBandIds;
         stillUnplacedBandIds = relaxed.stillUnplacedBandIds;
+        // The relaxed pass looks only at day/time eligibility, so a band it
+        // seated (or moved) can push a day past its 締切. Those are taken back
+        // out, latest first, until the day is within it — ending early is fine,
+        // ending late is not.
+        const movedByRelaxed = new Set(relaxed.placedBandIds);
+        for (const r of perDayResults) {
+          let slots = slotsByDayId.get(r.dayId) ?? r.slotsAfterStep3;
+          let removed = 0;
+          for (;;) {
+            const status = getDeadlineStatus({ settings: r.currentDay.settings, slots });
+            if (!status || status.overBy <= 0) break;
+            let victim = -1;
+            slots.forEach((slot, index) => {
+              if (slot.bandId && movedByRelaxed.has(slot.bandId)) victim = index;
+            });
+            if (victim === -1) break;
+            const victimBandId = slots[victim].bandId!;
+            slots = recomputeTimes(
+              slots.map((slot, index) => (index === victim ? { ...slot, bandId: null } : slot)),
+              r.currentDay.settings,
+              state.bands,
+            );
+            relaxedPlacedBandIds = relaxedPlacedBandIds.filter((id) => id !== victimBandId);
+            stillUnplacedBandIds = [...stillUnplacedBandIds, victimBandId];
+            removed++;
+          }
+          if (removed > 0) {
+            slotsByDayId.set(r.dayId, slots);
+            failureMessages.push(`${r.dayLabel}: 締切を超えるため${removed}組を未配置に戻しました`);
+          }
+        }
         if (relaxedPlacedBandIds.length > 0) {
           const relaxedNames = relaxedPlacedBandIds
             .map((id) => state.bands.find((b) => b.id === id)?.name ?? id)
@@ -1297,13 +1369,28 @@ export const useAppStore = create<AppState>()(
         });
       }
 
+      for (const day of days) {
+        const status = getDeadlineStatus(day);
+        if (status && status.overBy > 0) {
+          deadlineMessages.push(`${day.label}: 締切を${status.overBy}分超過しています`);
+        }
+      }
+      leftoverEmptySlots = days.reduce(
+        (sum, d) => sum + d.slots.filter((slot) => slot.bandId === null && slot.customLabel === null).length,
+        0,
+      );
       return { days };
     });
     useAutoScheduleDebugStore.getState().setEntries(debugEntries);
-    if (failureMessages.length > 0) {
-      useToastStore
-        .getState()
-        .show(`自動配置が一部の制約を満たせず、該当バンドを未配置のままにしました（${failureMessages.join(" / ")}）`, "error");
+    if (failureMessages.length > 0 || deadlineMessages.length > 0) {
+      const parts: string[] = [];
+      if (failureMessages.length > 0) {
+        parts.push(`自動配置が一部の制約を満たせず、該当バンドを未配置のままにしました（${failureMessages.join(" / ")}）`);
+      }
+      if (deadlineMessages.length > 0) {
+        parts.push(`締切を超えています（${deadlineMessages.join(" / ")}）`);
+      }
+      useToastStore.getState().show(parts.join(" ／ "), "error");
     } else if (relaxedPlacementMessages.length > 0) {
       // トーストは1件しか表示できないため優先度をつける。未配置(上記)が
       // なければこちらを表示 — 連続出演/ブロック集中というハード制約を
@@ -1318,6 +1405,15 @@ export const useAppStore = create<AppState>()(
       // 配置を維持した上での妥協であり、詳細はスコア詳細(管理者専用)でも
       // 確認できる。
       useToastStore.getState().show(`評価1のバンドを終盤に配置せざるを得ませんでした（${ratingOneWarningMessages.join(" / ")}）`, "info");
+    } else if (leftoverEmptySlots > 0) {
+      // Nothing was left unplaced, so the slots simply outnumber the bands
+      // (枠数をシミュレーターの「最大枠数」や未承認を含む申込数で作った場合など).
+      useToastStore
+        .getState()
+        .show(
+          `全バンドを配置しましたが、バンド数より枠が${leftoverEmptySlots}枠多いため空き枠が残りました（枠は自動では減らしません。不要な枠は手動で削除してください）`,
+          "info",
+        );
     }
   },
 

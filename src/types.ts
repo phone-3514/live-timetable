@@ -143,6 +143,11 @@ export type TimetableSettings = {
   startTime: string;
   performanceMinutes: number;
   transitionMinutes: number;
+  /** 締切 "HH:MM": the day must not end later than this (earlier is fine).
+   * Set by the time simulator's 反映, or typed on the day; absent = none. */
+  deadline?: string;
+  /** What `deadline` is measured to; default "lastBand". */
+  deadlineBasis?: "lastBand" | "final";
 };
 
 export type TimetableDay = {

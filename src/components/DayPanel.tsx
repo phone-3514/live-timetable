@@ -8,6 +8,7 @@ import {
   useAppStore,
 } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
+import { getDeadlineStatus } from "../utils/dayDeadline";
 import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
@@ -79,6 +80,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const conflictDetails = getMemberConflictDetails(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
   const concentrationDetails = getConcentrationWarningDetails(day, bands, days);
+  const deadlineStatus = getDeadlineStatus(day);
 
   const handleAddCustomNamed = () => {
     const label = customName.trim();
@@ -204,6 +206,35 @@ export function DayPanel({ day, daysCount }: Props) {
             className="min-h-11 w-14 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
           />
         </label>
+        <label className="flex flex-col gap-0.5 text-slate-400" title="この時刻より後に終わる配置は自動配置が許可しません（早く終わる分には構いません）">
+          締切
+          <input
+            type="time"
+            value={settings.deadline ?? ""}
+            onChange={(e) => updateSettings(day.id, { deadline: e.target.value || undefined })}
+            className="min-h-11 w-24 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
+          />
+        </label>
+        {settings.deadline && (
+          <label className="flex flex-col gap-0.5 text-slate-400">
+            締切の基準
+            <select
+              value={settings.deadlineBasis ?? "lastBand"}
+              onChange={(e) =>
+                updateSettings(day.id, { deadlineBasis: e.target.value as "lastBand" | "final" })
+              }
+              className="min-h-11 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100 md:min-h-0"
+            >
+              <option value="lastBand">最後の演奏の終了</option>
+              <option value="final">撤収など含む全体の終了</option>
+            </select>
+          </label>
+        )}
+        {deadlineStatus && deadlineStatus.overBy > 0 && (
+          <span className="self-center font-medium text-rose-400">
+            ⚠ 締切を{deadlineStatus.overBy}分超過
+          </span>
+        )}
       </div>
 
       <div className="relative flex shrink-0 flex-wrap items-center gap-1 text-xs">

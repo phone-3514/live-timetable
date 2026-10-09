@@ -439,7 +439,9 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                 : p.result.bandCount;
           const plan: SimulationPlan = {
             dayId: p.day.id,
-            settings: applySettings ? p.settings : null,
+            settings: applySettings
+              ? { ...p.settings, deadline: p.input.deadline || undefined, deadlineBasis: basis }
+              : null,
             slotCount,
             extras: applyExtras ? p.extras : null,
             replaceCustomSlots: replaceCustom,
