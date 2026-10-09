@@ -315,7 +315,11 @@ export function computeMemberFrameCounts(
   return result;
 }
 
-export const HIGH_PARTICIPATION_THRESHOLD = 3;
+/** A member is "over" when the N in their "N枠目" exceeds this (2.5枠目 counts). */
+export const FRAME_LIMIT = 2;
+export function exceedsFrameLimit(frameNumber: number): boolean {
+  return frameNumber > FRAME_LIMIT;
+}
 
 /**
  * Which of their slots this listing is for a member, as the submitter wrote
@@ -341,7 +345,7 @@ export function isSingleSlotMember(
 
 export type HighParticipationInfo = {
   /** Number of this band's members whose "N枠目" on this application is
-   * >= HIGH_PARTICIPATION_THRESHOLD. */
+   * exceeds FRAME_LIMIT (2枠超過). */
   highCount: number;
   /** highCount broken down by that N, ascending (e.g. "3 slots: 1 person,
    * 4 slots: 1 person") — for the badge's expanded detail. */
@@ -366,7 +370,7 @@ export function computeHighParticipation(app: Application): HighParticipationInf
   }
   const bySlots = new Map<number, number>();
   for (const count of frameByName.values()) {
-    if (count >= HIGH_PARTICIPATION_THRESHOLD) {
+    if (exceedsFrameLimit(count)) {
       bySlots.set(count, (bySlots.get(count) ?? 0) + 1);
     }
   }

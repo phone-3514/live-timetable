@@ -574,7 +574,7 @@ export function stripSetlistPrefix(line: string): string {
 }
 // A standalone "希望順位"/slot-preference note ("3枠目", "第2希望"). Not
 // useful data once parsed — discarded entirely rather than stored anywhere.
-export const SLOT_RANK_LINE_RE = /^\d+\s*枠目|^第\s*\d+\s*希望/;
+export const SLOT_RANK_LINE_RE = /^\d+(?:[.．]\d+)?\s*枠目|^第\s*\d+\s*希望/;
 // "演奏"/"音源" after "同期" is optional (see SYNC_ANSWER_RE's own doc) so
 // a line like "同期音源：なし" or bare "同期：なし" is skipped here too,
 // instead of leaking through as a garbage member/setlist line.
@@ -626,7 +626,9 @@ export function stripFrameCountAnnotation(name: string): string {
 // text as noise to discard ("2枠のみ", "枠指定なし" included), but only
 // the "N枠目" phrasing actually names an ordinal — the others don't, so
 // they correctly return null here rather than a made-up number.
-const FRAME_ORDINAL_RE = /([0-9０-９]+)\s*枠目/;
+// Decimals are kept as written ("2.5枠目" → 2.5, a half-slot) — reading only the
+// "5" would turn it into a 5th slot.
+const FRAME_ORDINAL_RE = /([0-9０-９]+(?:[.．][0-9０-９]+)?)\s*枠目/;
 export function extractFrameOrdinal(name: string): number | null {
   const match = FRAME_ORDINAL_RE.exec(name);
   if (!match) return null;

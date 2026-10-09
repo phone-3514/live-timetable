@@ -100,7 +100,7 @@ export function HighParticipationBadge({ info }: { info: HighParticipationInfo }
         aria-expanded={expanded}
         className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-300 hover:border-amber-400 md:min-h-0"
       >
-        ⚠ 3枠以上: {info.highCount}人
+        ⚠ 2枠超過: {info.highCount}人
       </button>
       {expanded && (
         <p className="mt-1 max-w-[12rem] text-[11px] font-normal leading-snug text-amber-300">
@@ -278,7 +278,7 @@ type TriState = "any" | "has" | "not";
 // One yes/no condition with a third "don't care" state: 指定なし (ignored),
 // 〇〇いる (must have it) or 〇〇いない (must NOT have it). Lets the same
 // condition be used to include or exclude bands, and two of them combine
-// into things like "has a 3枠以上 member AND has no 1枠のみ member". The
+// into things like "has a 2枠超過 member AND has no 1枠のみ member". The
 // counts shown are how many bands each side would match on their own.
 function TriStateFilter({
   label,
@@ -356,7 +356,7 @@ export function ApplicationTable({
   // who is in exactly one band across ALL applications (frameCounts counts
   // every application, approved or not) and wrote no later "N枠目" — the
   // people with only a single frame, which is what an organizer scans for
-  // when deciding who still has room; "3枠以上" is the band-level signal the
+  // when deciding who still has room; "2枠超過" is the band-level signal the
   // table already shows as a badge: a member whose "N枠目" on this very
   // application is 3 or more (no N written = 1, however many bands they're in).
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved">("all");
@@ -638,7 +638,7 @@ export function ApplicationTable({
               : "border-slate-600 text-slate-300 hover:bg-slate-700"
           }`}
         >
-          3枠以上の人数で並び替え{sortIndicator("highParticipationCount")}
+          2枠超過の人数で並び替え{sortIndicator("highParticipationCount")}
         </button>
       </div>
 
@@ -689,14 +689,14 @@ export function ApplicationTable({
           title="全申し込みを通じて1バンドにしか参加していないメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）"
         />
         <TriStateFilter
-          label="3枠以上の参加者"
+          label="2枠超過の参加者"
           value={highSlotFilter}
           onChange={setHighSlotFilter}
           hasLabel="いる"
           notLabel="いない"
           hasCount={triCounts.high}
           notCount={applications.length - triCounts.high}
-          title="申請に「3枠目」以上と書かれているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）。枠番号が書かれていないメンバーは1枠目として扱います"
+          title="申請に「2枠目」を超える枠番号（2.5枠目、3枠目など）が書かれているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）。枠番号が書かれていないメンバーは1枠目として扱います"
         />
       </div>
 
@@ -853,9 +853,9 @@ export function ApplicationTable({
                 <th
                   className={headerClass}
                   onClick={() => toggleSort("highParticipationCount")}
-                  title="このバンドの申請に「3枠目」以上と書かれているメンバーの人数（クリックで 昇順 → 降順 → 解除）"
+                  title="このバンドの申請に2枠目を超える枠番号（2.5枠目、3枠目など）が書かれているメンバーの人数（クリックで 昇順 → 降順 → 解除）"
                 >
-                  3枠以上{sortIndicator("highParticipationCount")}
+                  2枠超過{sortIndicator("highParticipationCount")}
                 </th>
                 <th className={headerClass} onClick={() => toggleSort("durationMinutes")}>
                   演奏時間{sortIndicator("durationMinutes")}

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Application } from "../../types";
-import { listMemberFrameDetails, HIGH_PARTICIPATION_THRESHOLD } from "../../store/useApplicationStore";
+import { listMemberFrameDetails, exceedsFrameLimit } from "../../store/useApplicationStore";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { Badge } from "./Badge";
@@ -14,7 +14,7 @@ interface Props {
 // Per-band popup for the Application Manager: for this band's own member
 // list, exactly which other bands (not just how many) each person is also
 // on — the concrete detail behind both the "現在N枠" grade badges in
-// MemberFrameCounts and the "⚠ 3枠以上" HighParticipationBadge on this same
+// MemberFrameCounts and the "⚠ 2枠超過" HighParticipationBadge on this same
 // row, which only ever surface a bare count.
 export function MemberFrameDetailModal({ app, applications, onClose }: Props) {
   useEscapeKey(onClose);
@@ -57,7 +57,7 @@ export function MemberFrameDetailModal({ app, applications, onClose }: Props) {
           {details.map((d, i) => {
             // Flagged by the "N枠目" written on THIS application, not by how
             // many bands the member appears in overall.
-            const isHigh = (d.frameOrdinal ?? 1) >= HIGH_PARTICIPATION_THRESHOLD;
+            const isHigh = exceedsFrameLimit(d.frameOrdinal ?? 1);
             return (
               <div
                 key={i}
