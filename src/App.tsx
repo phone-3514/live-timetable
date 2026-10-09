@@ -171,6 +171,11 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
     asymmetricAutoScroll.onDragMove(event);
   };
 
+  const showReorderBlocked = (bandNames: string[]) =>
+    useToastStore
+      .getState()
+      .show(`この位置には移動できません（${bandNames.join("、")}が希望日・時間帯の制約に合わなくなります）`, "error");
+
   const handleDragEnd = (event: DragEndEvent) => {
     asymmetricAutoScroll.onDragEnd();
     setActiveDragData(null);
@@ -222,8 +227,13 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
       if (originSlot && targetDay && originDay?.id === targetDay.id) {
         if (originSlot.id !== overId) {
           setNextHistoryAction("出演順を変更", actor);
-          reorderSlots(originSlot.id, overId);
-          notifyMove();
+          const result = reorderSlots(originSlot.id, overId);
+          if (result.status === "moved") {
+            notifyMove();
+          } else {
+            clearNextHistoryAction();
+            if (result.status === "blocked") showReorderBlocked(result.bandNames);
+          }
         }
         return;
       }
@@ -269,8 +279,13 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
         // real slot target reorders.
         if (overDayArea) return;
         setNextHistoryAction("出演順を変更", actor);
-        reorderSlots(activeId, overId);
-        setMoveNotice({ id: Date.now(), message: `「${label}」を移動しました` });
+        const result = reorderSlots(activeId, overId);
+        if (result.status === "moved") {
+          setMoveNotice({ id: Date.now(), message: `「${label}」を移動しました` });
+        } else {
+          clearNextHistoryAction();
+          if (result.status === "blocked") showReorderBlocked(result.bandNames);
+        }
         return;
       }
 

@@ -10,6 +10,7 @@ import {
 } from "../store/useAppStore";
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
 import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
+import { useToastStore } from "../store/useToastStore";
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 import { BandSwapModal } from "./BandSwapModal";
@@ -106,6 +107,14 @@ export function SlotCard({
   // identical reasoning for the same bug on the mobile side.
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
+  const handleMove = (direction: "up" | "down") => {
+    const result = moveSlot(dayId, slot.id, direction);
+    if (result.status === "blocked") {
+      useToastStore
+        .getState()
+        .show(`この位置には移動できません（${result.bandNames.join("、")}が希望日・時間帯の制約に合わなくなります）`, "error");
+    }
+  };
   const isMultiDay = useAppStore((s) => (s.days?.length ?? 0) > 1);
   const removeSlot = useAppStore((s) => s.removeSlot);
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
@@ -542,6 +551,11 @@ export function SlotCard({
                   ⚙ 前後の枠と共有機材が重複
                 </p>
               )}
+              {band && day && !canPlaceBandInSlot(band, day, slot, venueHours) && (
+                <p className="text-xs font-medium text-rose-400">
+                  ⚠ 希望日・時間帯の外に配置されています
+                </p>
+              )}
               {concentrationEntries.map((c) => (
                 <p
                   key={c.memberName}
@@ -570,7 +584,7 @@ export function SlotCard({
 
       <div className="flex flex-col justify-center gap-1">
         <button
-          onClick={() => moveSlot(dayId, slot.id, "up")}
+          onClick={() => handleMove("up")}
           disabled={index === 0}
           className="flex min-h-9 min-w-9 items-center justify-center px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20 md:min-h-0 md:min-w-0"
           title="上に移動"
@@ -578,7 +592,7 @@ export function SlotCard({
           ▲
         </button>
         <button
-          onClick={() => moveSlot(dayId, slot.id, "down")}
+          onClick={() => handleMove("down")}
           disabled={index === total - 1}
           className="flex min-h-9 min-w-9 items-center justify-center px-1 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-20 md:min-h-0 md:min-w-0"
           title="下に移動"

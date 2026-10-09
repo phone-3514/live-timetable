@@ -143,8 +143,12 @@ type AppState = {
   // gets silently dropped just because a line was left out.
   reorderDayBandsByNames: (dayId: string, orderedNames: string[]) => void;
   unassignSlot: (slotId: string) => void;
-  moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => void;
-  reorderSlots: (activeId: string, overId: string) => void;
+  // Reordering rows inside a day shifts every later start time, so it is
+  // re-checked against each band's date/time restrictions: "blocked" (with the
+  // names of the bands that would end up somewhere they can't play) is a no-op
+  // for the caller to surface.
+  moveSlot: (dayId: string, slotId: string, direction: "up" | "down") => ReorderResult;
+  reorderSlots: (activeId: string, overId: string) => ReorderResult;
   // Drag-and-drop move of a whole row (a band's slot or a 休憩/リハーサル-
   // style custom slot) from one day into another at `targetIndex` of the
   // target day's slot array. Each day owns its own slots array with its own
@@ -181,6 +185,32 @@ type AppState = {
   // references them anymore.
   clearAllSlots: () => void;
 };
+
+export type ReorderResult = { status: "moved" | "noop" } | { status: "blocked"; bandNames: string[] };
+
+// Bands that can play where `before` has them but not where `after` does — the
+// names a reorder would newly break. A band that was already out of its window
+// before the move isn't counted, so fixing or leaving such a day still works.
+function newlyIneligibleBandNames(
+  before: TimetableDay,
+  after: TimetableDay,
+  bands: Band[],
+  venueHours: VenueHours,
+): string[] {
+  const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const offenders = (day: TimetableDay) => {
+    const ids = new Set<string>();
+    for (const slot of day.slots) {
+      const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
+      if (band && !canPlaceBandInSlot(band, day, slot, venueHours)) ids.add(band.id);
+    }
+    return ids;
+  };
+  const wasBroken = offenders(before);
+  return [...offenders(after)]
+    .filter((id) => !wasBroken.has(id))
+    .map((id) => bandMap.get(id)?.name ?? id);
+}
 
 function defaultSettings(): TimetableSettings {
   return { startTime: "10:00", performanceMinutes: 20, transitionMinutes: 15 };
@@ -896,34 +926,41 @@ export const useAppStore = create<AppState>()(
       return { days };
     }),
 
-  moveSlot: (dayId, slotId, direction) =>
-    set((state) => ({
-      days: updateDaySlots(state.days, dayId, state.bands, (slots) => {
-        const idx = slots.findIndex((s) => s.id === slotId);
-        if (idx < 0) return slots;
-        const swapWith = direction === "up" ? idx - 1 : idx + 1;
-        if (swapWith < 0 || swapWith >= slots.length) return slots;
-        const next = [...slots];
-        [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
-        return next;
-      }),
-    })),
+  moveSlot: (dayId, slotId, direction) => {
+    const state = get();
+    const day = state.days.find((d) => d.id === dayId);
+    const idx = day?.slots.findIndex((s) => s.id === slotId) ?? -1;
+    if (!day || idx < 0) return { status: "noop" };
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= day.slots.length) return { status: "noop" };
+    const days = updateDaySlots(state.days, dayId, state.bands, (slots) => {
+      const next = [...slots];
+      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      return next;
+    });
+    const after = days.find((d) => d.id === dayId)!;
+    const broken = newlyIneligibleBandNames(day, after, state.bands, state.venueHours);
+    if (broken.length > 0) return { status: "blocked", bandNames: broken };
+    set({ days });
+    return { status: "moved" };
+  },
 
-  reorderSlots: (activeId, overId) =>
-    set((state) => {
-      const day = state.days.find((d) =>
-        d.slots.some((s) => s.id === activeId),
-      );
-      if (!day) return state;
-      const oldIndex = day.slots.findIndex((s) => s.id === activeId);
-      const newIndex = day.slots.findIndex((s) => s.id === overId);
-      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return state;
-      return {
-        days: updateDaySlots(state.days, day.id, state.bands, (slots) =>
-          arrayMove(slots, oldIndex, newIndex),
-        ),
-      };
-    }),
+  reorderSlots: (activeId, overId) => {
+    const state = get();
+    const day = state.days.find((d) => d.slots.some((s) => s.id === activeId));
+    if (!day) return { status: "noop" };
+    const oldIndex = day.slots.findIndex((s) => s.id === activeId);
+    const newIndex = day.slots.findIndex((s) => s.id === overId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return { status: "noop" };
+    const days = updateDaySlots(state.days, day.id, state.bands, (slots) =>
+      arrayMove(slots, oldIndex, newIndex),
+    );
+    const after = days.find((d) => d.id === day.id)!;
+    const broken = newlyIneligibleBandNames(day, after, state.bands, state.venueHours);
+    if (broken.length > 0) return { status: "blocked", bandNames: broken };
+    set({ days });
+    return { status: "moved" };
+  },
 
   moveSlotToDay: (slotId, targetDayId, targetIndex) => {
     const state = get();
