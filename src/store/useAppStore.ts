@@ -31,6 +31,7 @@ import {
   type RatingPattern,
 } from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
+import { useSimulatorStore } from "./useSimulatorStore";
 import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
 import { useToastStore } from "./useToastStore";
 import { useAutoScheduleDebugStore, type AutoScheduleDebugEntry } from "./useAutoScheduleDebugStore";
@@ -1069,11 +1070,26 @@ export const useAppStore = create<AppState>()(
     // Performance slots still empty once everything is placed.
     let leftoverEmptySlots = 0;
     const deadlineMessages: string[] = [];
-    set((state) => {
-      if (state.days.length === 0) return state;
+    set((current) => {
+      if (current.days.length === 0) return current;
+      // A day with no 締切 of its own takes the one typed for it in the time
+      // simulator, so the deadline set there holds here without having to
+      // 反映 it first (the day's own 締切, when there is one, wins).
+      const simulator = useSimulatorStore.getState().settings;
+      const state = {
+        ...current,
+        days: current.days.map((day) => {
+          const typed = simulator.dayInputs[day.id]?.deadline;
+          if (day.settings.deadline || !typed) return day;
+          return {
+            ...day,
+            settings: { ...day.settings, deadline: typed, deadlineBasis: simulator.basis },
+          };
+        }),
+      };
       const placedElsewhere = getPlacedBandIds(state.days);
       const pool = state.bands.filter((b) => !placedElsewhere.has(b.id));
-      if (pool.length === 0) return state;
+      if (pool.length === 0) return current;
 
       const dayIds = state.days.map((d) => d.id);
       const targetByDay = new Map<string, Band[]>(dayIds.map((id) => [id, []]));
