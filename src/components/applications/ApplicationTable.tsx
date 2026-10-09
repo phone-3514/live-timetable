@@ -16,6 +16,7 @@ import {
 } from "../../utils/parseBands";
 import {
   computeHighParticipation,
+  isSingleSlotMember,
   useApplicationStore,
   type HighParticipationInfo,
   type MemberFrameCount,
@@ -269,7 +270,7 @@ export function MemberFrameDetailButton({
 }
 
 function hasSingleSlotMember(a: Application, frameCounts: Map<string, MemberFrameCount>): boolean {
-  return a.members.some((m) => frameCounts.get(normalizeMemberName(m.name))?.count === 1);
+  return a.members.some((m) => isSingleSlotMember(m, frameCounts));
 }
 
 type TriState = "any" | "has" | "not";
@@ -344,19 +345,20 @@ export function ApplicationTable({
   const highParticipationByAppId = useMemo(() => {
     const map = new Map<string, HighParticipationInfo>();
     for (const app of applications) {
-      map.set(app.id, computeHighParticipation(app, frameCounts));
+      map.set(app.id, computeHighParticipation(app));
     }
     return map;
-  }, [applications, frameCounts]);
+  }, [applications]);
 
   // Structured filters, AND-combined with each other and with the text query
   // below. Each yes/no condition is tri-state (指定なし / いる / いない), so it
   // can include or exclude. "1枠のみ" means the band has at least one member
   // who is in exactly one band across ALL applications (frameCounts counts
-  // every application, approved or not) — the people with only a single
-  // frame, which is what an organizer scans for when deciding who still has
-  // room; "3枠以上" is the band-level high-participation signal the table
-  // already shows as a badge.
+  // every application, approved or not) and wrote no later "N枠目" — the
+  // people with only a single frame, which is what an organizer scans for
+  // when deciding who still has room; "3枠以上" is the band-level signal the
+  // table already shows as a badge: a member whose "N枠目" on this very
+  // application is 3 or more (no N written = 1, however many bands they're in).
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved">("all");
   const [syncFilter, setSyncFilter] = useState<TriState>("any");
   const [singleSlotFilter, setSingleSlotFilter] = useState<TriState>("any");
@@ -374,6 +376,19 @@ export function ApplicationTable({
   // scheduler can't read (or leftover ~~取り消し線~~), "未記入" = blank.
   const [unrecognizedFilter, setUnrecognizedFilter] = useState<TriState>("any");
   const [blankScheduleFilter, setBlankScheduleFilter] = useState<TriState>("any");
+  // 演奏時間: the lengths actually written on the applications, each one a
+  // tri-state like the dates (key -1 = 未記入, no 演奏時間 given).
+  const [durationFilters, setDurationFilters] = useState<Record<number, TriState>>({});
+  const durationCandidates = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const a of applications) {
+      const key = a.durationMinutes ?? -1;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort(([a], [b]) => (a === -1 ? 1 : b === -1 ? -1 : a - b))
+      .map(([minutes, count]) => ({ minutes, count }));
+  }, [applications]);
   const availabilityByAppId = useMemo(
     () => new Map(applications.map((a) => [a.id, parseScheduleAvailability(a.desiredDateTime)])),
     [applications],
@@ -457,6 +472,11 @@ export function ApplicationTable({
       if (!passesTriState(syncFilter, a.hasSync)) return false;
       if (!passesTriState(singleSlotFilter, hasSingleSlotMember(a, frameCounts))) return false;
       if (!passesTriState(highSlotFilter, hasHighSlotMember(a))) return false;
+      for (const { minutes } of durationCandidates) {
+        const state = durationFilters[minutes] ?? "any";
+        if (state === "any") continue;
+        if (!passesTriState(state, (a.durationMinutes ?? -1) === minutes)) return false;
+      }
       if (!passesTriState(unrecognizedFilter, isScheduleTextUnrecognized(a.desiredDateTime))) return false;
       if (!passesTriState(blankScheduleFilter, !a.desiredDateTime.trim())) return false;
       const availability = availabilityByAppId.get(a.id)!;
@@ -495,6 +515,8 @@ export function ApplicationTable({
     selectedTime,
     unrecognizedFilter,
     blankScheduleFilter,
+    durationFilters,
+    durationCandidates,
   ]);
 
   const isFiltered =
@@ -506,7 +528,8 @@ export function ApplicationTable({
     Object.values(dateFilters).some((state) => state !== "any") ||
     selectedTime !== null ||
     unrecognizedFilter !== "any" ||
-    blankScheduleFilter !== "any";
+    blankScheduleFilter !== "any" ||
+    Object.values(durationFilters).some((state) => state !== "any");
 
   function clearAllFilters() {
     onFilterTextChange("");
@@ -518,6 +541,7 @@ export function ApplicationTable({
     setSelectedTime(null);
     setUnrecognizedFilter("any");
     setBlankScheduleFilter("any");
+    setDurationFilters({});
   }
 
   const sorted = useMemo(() => {
@@ -557,11 +581,16 @@ export function ApplicationTable({
     return copy;
   }, [filtered, sortKey, sortDir, highParticipationByAppId]);
 
+  // Click cycle per column: 昇順 → 降順 → 解除 (back to the default order,
+  // 申請日時の昇順).
   function toggleSort(key: SortKey) {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
+    if (key !== sortKey) {
       setSortKey(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey("applicationDateTime");
       setSortDir("asc");
     }
   }
@@ -602,6 +631,7 @@ export function ApplicationTable({
         <button
           type="button"
           onClick={() => toggleSort("highParticipationCount")}
+          title="押すたびに 昇順 → 降順 → 解除（申請日時順に戻る）"
           className={`min-h-11 rounded border px-3 text-[11px] font-medium md:min-h-0 md:py-1 ${
             sortKey === "highParticipationCount"
               ? "border-amber-500 bg-amber-950/50 text-amber-300"
@@ -666,9 +696,36 @@ export function ApplicationTable({
           notLabel="いない"
           hasCount={triCounts.high}
           notCount={applications.length - triCounts.high}
-          title="全申し込みを通じて3バンド以上に参加しているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）"
+          title="申請に「3枠目」以上と書かれているメンバーがいるバンド（いない＝そういうメンバーが1人もいないバンド）。枠番号が書かれていないメンバーは1枠目として扱います"
         />
       </div>
+
+      {durationCandidates.length >= 2 && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5"
+          role="group"
+          aria-label="演奏時間の絞り込み"
+        >
+          <span className="text-[11px] font-semibold text-slate-400">演奏時間（申請の記載から自動）</span>
+          {durationCandidates.map(({ minutes, count }) => (
+            <TriStateFilter
+              key={minutes}
+              label={minutes === -1 ? "未記入" : `${minutes}分`}
+              value={durationFilters[minutes] ?? "any"}
+              onChange={(next) => setDurationFilters((prev) => ({ ...prev, [minutes]: next }))}
+              hasLabel="該当"
+              notLabel="除く"
+              hasCount={count}
+              notCount={applications.length - count}
+              title={
+                minutes === -1
+                  ? "演奏時間が書かれていない申請"
+                  : `演奏時間が${minutes}分の申請（除く＝${minutes}分以外）`
+              }
+            />
+          ))}
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-col gap-1.5" role="group" aria-label="日程の絞り込み">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -796,7 +853,7 @@ export function ApplicationTable({
                 <th
                   className={headerClass}
                   onClick={() => toggleSort("highParticipationCount")}
-                  title="このバンドのメンバーのうち、全申し込みを通じて3バンド以上に参加している人数"
+                  title="このバンドの申請に「3枠目」以上と書かれているメンバーの人数（クリックで 昇順 → 降順 → 解除）"
                 >
                   3枠以上{sortIndicator("highParticipationCount")}
                 </th>

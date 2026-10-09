@@ -317,32 +317,55 @@ export function computeMemberFrameCounts(
 
 export const HIGH_PARTICIPATION_THRESHOLD = 3;
 
+/**
+ * Which of their slots this listing is for a member, as the submitter wrote
+ * it ("Dr. 鈴木 3枠目" → 3). A member with no "N枠目" on this band's
+ * application counts as 1 (their first or second slot — nothing to flag),
+ * however many other bands they are in: the number that matters for 枠数 is
+ * the one on this application, not the member's total across applications.
+ */
+export function memberFrameNumber(member: { frameOrdinal?: number | null }): number {
+  const n = member.frameOrdinal;
+  return n !== null && n !== undefined && Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+/** A member whose only band is this one, and who didn't write a later "N枠目". */
+export function isSingleSlotMember(
+  member: { name: string; frameOrdinal?: number | null },
+  frameCounts: Map<string, MemberFrameCount>,
+): boolean {
+  return (
+    frameCounts.get(normalizeMemberName(member.name))?.count === 1 && memberFrameNumber(member) <= 1
+  );
+}
+
 export type HighParticipationInfo = {
-  /** Number of this band's members whose total frame count across all
-   * applications is >= HIGH_PARTICIPATION_THRESHOLD. */
+  /** Number of this band's members whose "N枠目" on this application is
+   * >= HIGH_PARTICIPATION_THRESHOLD. */
   highCount: number;
-  /** highCount broken down by exact slot count, ascending (e.g. "3 slots:
-   * 1 person, 4 slots: 1 person") — for the badge's expanded detail. */
+  /** highCount broken down by that N, ascending (e.g. "3 slots: 1 person,
+   * 4 slots: 1 person") — for the badge's expanded detail. */
   breakdown: { slots: number; people: number }[];
 };
 
 /**
  * For one application/band, how many of its members are "high
- * participation" (3+ total bands across every application, not just this
- * one) — a lottery/scheduling signal for "this band is stacked with
- * people who are already spread thin elsewhere". Takes the already-computed
- * frameCounts map (see computeMemberFrameCounts) rather than recomputing it
- * per band, so scanning every application only costs one pass over its own
- * (small) member list, not a full cross-application scan each time.
+ * participation": the "N枠目" written for them on THIS application is 3 or
+ * more (see memberFrameNumber) — a lottery/scheduling signal for "this band
+ * is stacked with people who are already spread thin elsewhere". It depends
+ * only on what this application says, not on how many other bands the member
+ * appears in: someone in five bands whose line here says nothing counts as
+ * 1 and isn't flagged.
  */
-export function computeHighParticipation(
-  app: Application,
-  frameCounts: Map<string, MemberFrameCount>,
-): HighParticipationInfo {
-  const uniqueNames = new Set(app.members.map((m) => normalizeMemberName(m.name)));
+export function computeHighParticipation(app: Application): HighParticipationInfo {
+  // One entry per person (the highest N written for them on this band).
+  const frameByName = new Map<string, number>();
+  for (const m of app.members) {
+    const name = normalizeMemberName(m.name);
+    frameByName.set(name, Math.max(frameByName.get(name) ?? 1, memberFrameNumber(m)));
+  }
   const bySlots = new Map<number, number>();
-  for (const name of uniqueNames) {
-    const count = frameCounts.get(name)?.count ?? 0;
+  for (const count of frameByName.values()) {
     if (count >= HIGH_PARTICIPATION_THRESHOLD) {
       bySlots.set(count, (bySlots.get(count) ?? 0) + 1);
     }

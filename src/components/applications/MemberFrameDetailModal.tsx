@@ -55,7 +55,9 @@ export function MemberFrameDetailModal({ app, applications, onClose }: Props) {
             </p>
           )}
           {details.map((d, i) => {
-            const isHigh = d.bandNames.length >= HIGH_PARTICIPATION_THRESHOLD;
+            // Flagged by the "N枠目" written on THIS application, not by how
+            // many bands the member appears in overall.
+            const isHigh = (d.frameOrdinal ?? 1) >= HIGH_PARTICIPATION_THRESHOLD;
             return (
               <div
                 key={i}

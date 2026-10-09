@@ -1,6 +1,9 @@
 import type { Application } from "../types";
-import type { MemberFrameCount } from "../store/useApplicationStore";
-import { normalizeMemberName } from "./normalizeMemberName";
+import {
+  isSingleSlotMember,
+  memberFrameNumber,
+  type MemberFrameCount,
+} from "../store/useApplicationStore";
 
 // How the rejection check decides who keeps a seat when there aren't enough:
 // the band that sorts first is seated first, so whoever sorts last is the one
@@ -21,7 +24,8 @@ export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; descri
   {
     value: "fewFrames",
     label: "枠数が多い人がいるバンドから却下",
-    description: "メンバーの最大枠数（掛け持ち数）が多いバンドから却下し、少ないバンドを残します。",
+    description:
+      "申請に書かれた「N枠目」のNが大きいメンバーがいるバンドから却下し、小さいバンドを残します（枠番号が書かれていなければ1枠目扱い）。",
   },
   {
     value: "singleSlot",
@@ -40,7 +44,8 @@ export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; descri
 export type BandMetrics = {
   /** Average grade of the members whose grade is known (0 = nobody's is). */
   gradeLevel: number;
-  /** Largest number of bands any one member is in. */
+  /** Largest "N枠目" written for any member on this band's application
+   * (1 when none is written). */
   maxFrames: number;
   /** Has a member whose only band is this one. */
   hasSingleSlotMember: boolean;
@@ -73,9 +78,8 @@ export function computeBandMetrics(
       gradeSum += level;
       gradeCount++;
     }
-    const count = frameCounts.get(normalizeMemberName(member.name))?.count ?? 1;
-    maxFrames = Math.max(maxFrames, count);
-    if (count === 1) single = true;
+    maxFrames = Math.max(maxFrames, memberFrameNumber(member));
+    if (isSingleSlotMember(member, frameCounts)) single = true;
   }
   return { gradeLevel: gradeCount > 0 ? gradeSum / gradeCount : 0, maxFrames, hasSingleSlotMember: single, eligibleSlots: 0 };
 }
