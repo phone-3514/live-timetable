@@ -61,6 +61,11 @@ export type Band = {
   // 読むこと。自動振り分けStep2(autoScheduleSolver.ts)がこの値を使って
   // 評価5ほど後半・評価1ほど前半へ寄せる改善を行う。
   liveCompositionRating?: number;
+  // 時間指定の理由メモ — 時間指定をした理由は Discord の申請ではなく運営の
+  // LINE に届くため、それを手書きで残すメモ。管理者専用: 公開用ドキュメント
+  // (PublicBand, see pamphlet/types.ts)には含めない。linkedApp がある場合は
+  // Application.timeReasonNote と常に同じ値(useApplicationStore 経由で更新)。
+  timeReasonNote?: string;
 };
 
 // ---------- Application Manager ----------
@@ -119,6 +124,20 @@ export type Application = {
    * un-approving or clearing can remove exactly that Band and nothing else. */
   linkedBandId: string | null;
   parseWarning?: string;
+  /** 時間指定の理由メモ(運営が手書き)。承認済みならリンク先 Band にも同じ値が入る。 */
+  timeReasonNote?: string;
+};
+
+/** 申請より先に届いた時間指定の理由(LINE など) — 申請が取り込まれたとき、または
+ * 運営が選んで、Application.timeReasonNote に紐づける。それまでは単独のメモ。 */
+export type PendingReasonNote = {
+  id: string;
+  /** 送ってきた人の名前(LINE名・申請者名・メンバー名など)。 */
+  senderName: string;
+  /** わかっていればバンド名 — 取り込んだ申請のバンド名と一致すると自動で紐づく。 */
+  bandName: string;
+  note: string;
+  createdAt: number;
 };
 
 export type TimetableSlot = {

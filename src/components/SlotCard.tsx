@@ -536,6 +536,11 @@ export function SlotCard({
               <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
+              {band.timeReasonNote?.trim() && (
+                <p className="truncate text-xs text-amber-300/80" title={band.timeReasonNote}>
+                  📝 時間指定の理由: {band.timeReasonNote}
+                </p>
+              )}
               {sameBandConflictNames.length > 0 && (
                 <p className="member-conflict-text text-xs font-medium">
                   ⚠️ {sameBandConflictNames.join("、")} が同じバンドで連続出演しています

@@ -45,6 +45,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const allBands = useAppStore((s) => s.bands);
   const syncApplicationFromBand = useApplicationStore((s) => s.syncApplicationFromBand);
   const updateApplicationDesiredDateTime = useApplicationStore((s) => s.updateApplicationDesiredDateTime);
+  const updateApplicationTimeReasonNote = useApplicationStore((s) => s.updateApplicationTimeReasonNote);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
 
   // Priority for what's actually shown/edited: the band's own
@@ -70,6 +71,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const [editSetlist, setEditSetlist] = useState("");
   const [editHasSync, setEditHasSync] = useState(band.hasSync);
   const [editDesiredDateTime, setEditDesiredDateTime] = useState("");
+  const [editReasonNote, setEditReasonNote] = useState("");
 
   // Escape cancels an in-progress edit first (same as clicking
   // "キャンセル"), rather than immediately closing the whole modal out from
@@ -83,6 +85,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     }
   });
 
+  const currentReasonNote = linkedApp?.timeReasonNote ?? band.timeReasonNote ?? "";
   const currentDesiredDateTime = linkedApp?.desiredDateTime || band.desiredTime || "";
   const desiredDateTime = currentDesiredDateTime || "未設定";
   const desiredUnparsed =
@@ -104,6 +107,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     setEditSetlist(setlist.join("\n"));
     setEditHasSync(band.hasSync);
     setEditDesiredDateTime(currentDesiredDateTime);
+    setEditReasonNote(currentReasonNote);
     setIsEditing(true);
   }
 
@@ -185,6 +189,11 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
     if (trimmedDesired !== currentDesiredDateTime.trim()) {
       if (linkedApp) updateApplicationDesiredDateTime(linkedApp.id, trimmedDesired);
       else updateBand(band.id, { desiredTime: trimmedDesired });
+    }
+    const trimmedNote = editReasonNote.trim();
+    if (trimmedNote !== currentReasonNote.trim()) {
+      if (linkedApp) updateApplicationTimeReasonNote(linkedApp.id, trimmedNote);
+      else updateBand(band.id, { timeReasonNote: trimmedNote });
     }
     setIsEditing(false);
     return true;
@@ -329,6 +338,26 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                 </>
               ) : (
                 desiredDateTime
+              )}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="font-semibold text-slate-500">時間指定の理由メモ</dt>
+            <dd className="mt-0.5 text-slate-200">
+              {isEditing ? (
+                <textarea
+                  rows={3}
+                  value={editReasonNote}
+                  onChange={(e) => setEditReasonNote(e.target.value)}
+                  aria-label="時間指定の理由メモ"
+                  placeholder="LINEで届いた理由を手書きで（運営だけが見られます）"
+                  className="min-h-11 w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none placeholder:text-slate-500 md:min-h-0"
+                />
+              ) : currentReasonNote ? (
+                <span className="whitespace-pre-wrap break-words text-amber-200">{currentReasonNote}</span>
+              ) : (
+                <span className="text-slate-500">未記入</span>
               )}
             </dd>
           </div>

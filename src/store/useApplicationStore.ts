@@ -1,13 +1,38 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { Application, ApplicationMember, ApplicationSetlistItem, Band } from "../types";
+import type { Application, ApplicationMember, ApplicationSetlistItem, Band, PendingReasonNote } from "../types";
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { organizerStateStorage } from "../utils/appRoleStorage";
 import { useAppStore } from "./useAppStore";
 
+// How many pending reason notes the last addApplications attached by band
+// name — read once by the import toast (see consumeAutoAttachedNoteCount).
+let autoAttachedNoteCount = 0;
+export function consumeAutoAttachedNoteCount(): number {
+  const count = autoAttachedNoteCount;
+  autoAttachedNoteCount = 0;
+  return count;
+}
+
+// Band names compared loosely: width-folded, case-folded, spaces dropped.
+function normalizeBandName(name: string): string {
+  return name.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+}
+
 type ApplicationState = {
   applications: Application[];
+  /** 申請より先に届いた理由メモ — see PendingReasonNote. */
+  pendingReasonNotes: PendingReasonNote[];
+  addPendingReasonNote: (input: { senderName: string; bandName: string; note: string }) => void;
+  updatePendingReasonNote: (
+    id: string,
+    patch: Partial<Pick<PendingReasonNote, "senderName" | "bandName" | "note">>,
+  ) => void;
+  removePendingReasonNote: (id: string) => void;
+  /** Moves the note onto the application's 理由メモ (appended to what is
+   * already there) and removes it from the pending list. */
+  attachPendingReasonNote: (noteId: string, applicationId: string) => void;
 
   /** Appends already-parsed applications (used by the batch chat-export
    * file upload flow, which parses off the main paste-and-parse path so it
@@ -58,6 +83,9 @@ type ApplicationState = {
    * band's allowed days and un-places it from any day it no longer fits —
    * so the timetable never keeps acting on the old text. */
   updateApplicationDesiredDateTime: (id: string, desiredDateTime: string) => void;
+  /** 時間指定の理由メモ(運営が手書き) — updates the application and, once
+   * approved, its linked Band, so the timetable shows the same note. */
+  updateApplicationTimeReasonNote: (id: string, note: string) => void;
   /** Called whenever a linked Band is edited in the Timetable Editor
    * (PlacedBandDetailModal) — replaces the application's own bandName/
    * members/setlist/hasSync to match, so the Application Manager (list,
@@ -84,6 +112,7 @@ function applicationToBand(app: Application): Band {
     memberDetails: app.members.map((m) => ({ name: m.name, grade: m.grade, part: m.part })),
     setlist: app.setlist.map((s) => (s.artist ? `${s.title}/${s.artist}` : s.title)),
     desiredTime: app.desiredDateTime,
+    timeReasonNote: app.timeReasonNote,
     ngTime: "",
     durationMinutes: app.durationMinutes ?? undefined,
     allowedDayIds: [],
@@ -98,6 +127,47 @@ export const useApplicationStore = create<ApplicationState>()(
   persist(
     (set, get) => ({
       applications: [],
+      pendingReasonNotes: [],
+
+      addPendingReasonNote: ({ senderName, bandName, note }) => {
+        const text = note.trim();
+        if (!text) return;
+        set((state) => ({
+          pendingReasonNotes: [
+            {
+              id: crypto.randomUUID(),
+              senderName: senderName.trim(),
+              bandName: bandName.trim(),
+              note: text,
+              createdAt: Date.now(),
+            },
+            ...(state.pendingReasonNotes ?? []),
+          ],
+        }));
+      },
+
+      updatePendingReasonNote: (id, patch) =>
+        set((state) => ({
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).map((n) =>
+            n.id === id ? { ...n, ...patch } : n,
+          ),
+        })),
+
+      removePendingReasonNote: (id) =>
+        set((state) => ({
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== id),
+        })),
+
+      attachPendingReasonNote: (noteId, applicationId) => {
+        const note = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
+        const app = get().applications.find((a) => a.id === applicationId);
+        if (!note || !app) return;
+        const combined = app.timeReasonNote ? `${app.timeReasonNote}\n${note.note}` : note.note;
+        get().updateApplicationTimeReasonNote(applicationId, combined);
+        set((state) => ({
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== noteId),
+        }));
+      },
 
       addApplications: (newApplications) => {
         const seenRaw = new Set(get().applications.map((a) => a.raw));
@@ -108,6 +178,20 @@ export const useApplicationStore = create<ApplicationState>()(
         });
         if (toAdd.length > 0) {
           set((state) => ({ applications: [...state.applications, ...toAdd] }));
+          // A reason that arrived before its application: when the note named
+          // this band (same name), it moves onto the application right away.
+          // Notes with only a sender name stay pending for the organizer to
+          // match by hand — names on LINE and in Discord often differ.
+          for (const app of toAdd) {
+            const key = normalizeBandName(app.bandName);
+            if (!key) continue;
+            for (const note of get().pendingReasonNotes ?? []) {
+              if (note.bandName && normalizeBandName(note.bandName) === key) {
+                get().attachPendingReasonNote(note.id, app.id);
+                autoAttachedNoteCount++;
+              }
+            }
+          }
         }
         return toAdd.length;
       },
@@ -228,6 +312,20 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
         if (app.linkedBandId) {
           useAppStore.getState().updateBand(app.linkedBandId, { desiredTime: desiredDateTime });
+        }
+      },
+
+      updateApplicationTimeReasonNote: (id, note) => {
+        const app = get().applications.find((a) => a.id === id);
+        const next = note.trim();
+        if (!app || (app.timeReasonNote ?? "") === next) return;
+        set((state) => ({
+          applications: state.applications.map((a) =>
+            a.id === id ? { ...a, timeReasonNote: next } : a,
+          ),
+        }));
+        if (app.linkedBandId) {
+          useAppStore.getState().updateBand(app.linkedBandId, { timeReasonNote: next });
         }
       },
 

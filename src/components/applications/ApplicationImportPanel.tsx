@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useApplicationStore } from "../../store/useApplicationStore";
+import { consumeAutoAttachedNoteCount, useApplicationStore } from "../../store/useApplicationStore";
 import { useToastStore } from "../../store/useToastStore";
 import { parseChatExportFile } from "../../utils/parseChatExportFile";
 
@@ -37,8 +37,10 @@ export function ApplicationImportPanel() {
       const duplicateCount = result.applications.length - addedCount;
       const noiseNote = result.noiseFilteredCount > 0 ? `（ノイズ${result.noiseFilteredCount}件を除外）` : "";
       const duplicateNote = duplicateCount > 0 ? `（既存と重複${duplicateCount}件を除外）` : "";
+      const attachedNotes = consumeAutoAttachedNoteCount();
+      const noteNote = attachedNotes > 0 ? `。申請前の理由メモ${attachedNotes}件をバンド名で自動的に紐づけました` : "";
       showToast(
-        `${result.messageCount}件のメッセージを処理し、${addedCount}件の有効な申し込みを検出しました${noiseNote}${duplicateNote}`,
+        `${result.messageCount}件のメッセージを処理し、${addedCount}件の有効な申し込みを検出しました${noiseNote}${duplicateNote}${noteNote}`,
         addedCount > 0 ? "success" : "info",
       );
     } catch (err) {

@@ -7,6 +7,7 @@ import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
 import { RejectConfirmModal } from "./RejectConfirmModal";
 import { NameResolutionModal } from "./NameResolutionModal";
+import { PendingReasonNotesModal } from "./PendingReasonNotesModal";
 import { findNearDuplicateNames } from "../../utils/nameResolution";
 import type { Application } from "../../types";
 
@@ -26,6 +27,8 @@ export function ApplicationManagerTab() {
   const [pendingReject, setPendingReject] = useState<Application | null>(null);
   const [filterText, setFilterText] = useState("");
   const [showNameResolution, setShowNameResolution] = useState(false);
+  const [showReasonNotes, setShowReasonNotes] = useState(false);
+  const pendingNoteCount = useApplicationStore((s) => (s.pendingReasonNotes ?? []).length);
 
   // Computed once here and shared by MemberFrameCounts (per-member chips)
   // and ApplicationTable (per-band high-participation counts) instead of
@@ -117,6 +120,14 @@ export function ApplicationManagerTab() {
         >
           👥 参加者 {frameCounts.size}名
         </span>
+        <button
+          type="button"
+          onClick={() => setShowReasonNotes(true)}
+          title="申請より先にLINEで届いた時間指定の理由を残し、申請が来たら紐づけます"
+          className="min-h-9 rounded-full border border-amber-600 bg-amber-950/30 px-3 text-xs font-semibold text-amber-200 hover:bg-amber-900/40"
+        >
+          📝 申請前の理由メモ{pendingNoteCount > 0 ? `（${pendingNoteCount}件）` : ""}
+        </button>
         {nearDuplicateCount > 0 && (
           <button
             type="button"
@@ -208,6 +219,7 @@ export function ApplicationManagerTab() {
         />
       )}
 
+      {showReasonNotes && <PendingReasonNotesModal onClose={() => setShowReasonNotes(false)} />}
       {showNameResolution && (
         <NameResolutionModal
           frameCounts={frameCounts}

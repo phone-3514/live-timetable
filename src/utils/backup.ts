@@ -5,7 +5,7 @@ import { useAppStore, type EventInfo } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
 import { useUiStore, type AppTab } from "../store/useUiStore";
 import { useSimulatorStore, type SimulatorSettings } from "../store/useSimulatorStore";
-import type { Application } from "../types";
+import type { Application, PendingReasonNote } from "../types";
 
 const BACKUP_FORMAT_ID = "live-timetable-backup";
 const BACKUP_VERSION = 1;
@@ -23,6 +23,8 @@ export type BackupData = {
     ratingPattern?: RatingPattern;
   };
   applications: Application[];
+  /** 申請前の理由メモ。古いバックアップには無い。 */
+  pendingReasonNotes?: PendingReasonNote[];
   ui: { activeTab: AppTab };
   /** 時間シミュレーターの入力（結果はこれと上のデータから再計算される）。古いバックアップには無い。 */
   simulator?: SimulatorSettings;
@@ -76,6 +78,7 @@ export function createBackupPayload(): BackupData {
       ratingPattern: appState.ratingPattern,
     },
     applications: applicationState.applications,
+    pendingReasonNotes: applicationState.pendingReasonNotes,
     ui: { activeTab: uiState.activeTab },
     simulator: useSimulatorStore.getState().settings,
   };
@@ -136,6 +139,7 @@ export function restoreBackup(data: BackupData): void {
   });
   useApplicationStore.setState({
     applications: data.applications ?? [],
+    pendingReasonNotes: data.pendingReasonNotes ?? [],
   });
   useUiStore.setState({ activeTab: data.ui?.activeTab ?? "timetable" });
   useSimulatorStore.getState().replaceSettings(data.simulator);

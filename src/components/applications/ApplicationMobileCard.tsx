@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
+import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
 import {
   EditableDesiredDateTime,
   EditBandButton,
@@ -83,6 +84,7 @@ export function ApplicationMobileCard({
       <div className="mt-1.5">
         <span className="text-[11px] font-semibold text-slate-500">出演希望日</span>
         <EditableDesiredDateTime app={app} variant="inline" />
+        <EditableTimeReasonNote app={app} variant="inline" />
       </div>
 
       {highParticipationInfo.highCount > 0 && (
