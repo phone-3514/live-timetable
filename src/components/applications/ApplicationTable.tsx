@@ -17,6 +17,7 @@ import {
 import {
   computeHighParticipation,
   isSingleSlotMember,
+  listSingleSlotMemberNames,
   useApplicationStore,
   type HighParticipationInfo,
   type MemberFrameCount,
@@ -87,6 +88,32 @@ export function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
 // clutter). Click toggles an inline breakdown ("3枠: 1人, 4枠: 1人"); the
 // same text is also on the badge's title so a mouse hover shows it without
 // a click, satisfying both interaction styles on desktop and touch.
+// "⚠ 1枠のみ: 田中、佐藤" — the band has members who play in no other band, so
+// turning it down leaves them without any slot. Shown whenever there is one,
+// not only in the reject confirmation. Click toggles the names; the same text
+// is on the title for a hover.
+export function SingleSlotBadge({ names }: { names: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (names.length === 0) return null;
+  const text = names.map((n) => stripAffiliationNoteForDisplay(n)).join("、");
+  return (
+    <div className="inline-block">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        title={`この申請にしか出ないメンバー: ${text}`}
+        aria-expanded={expanded}
+        className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-rose-500 bg-rose-950 px-2 py-1 text-xs font-semibold leading-none text-rose-300 hover:border-rose-400 md:min-h-0"
+      >
+        ⚠ 1枠のみ: {names.length}人
+      </button>
+      {expanded && (
+        <p className="mt-1 max-w-[12rem] text-[11px] font-normal leading-snug text-rose-300">{text}</p>
+      )}
+    </div>
+  );
+}
+
 export function HighParticipationBadge({ info }: { info: HighParticipationInfo }) {
   const [expanded, setExpanded] = useState(false);
   if (info.highCount === 0) return null;
@@ -343,6 +370,12 @@ export function ApplicationTable({
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("applicationDateTime");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const singleSlotNamesByAppId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const app of applications) map.set(app.id, listSingleSlotMemberNames(app, frameCounts));
+    return map;
+  }, [applications, frameCounts]);
 
   const highParticipationByAppId = useMemo(() => {
     const map = new Map<string, HighParticipationInfo>();
@@ -811,6 +844,7 @@ export function ApplicationTable({
               app={app}
               applications={applications}
               highParticipationInfo={highParticipationByAppId.get(app.id)!}
+              singleSlotNames={singleSlotNamesByAppId.get(app.id) ?? []}
               onApprove={onApprove}
               onUnapprove={onUnapprove}
               onRequestReject={onRequestReject}
@@ -887,6 +921,9 @@ export function ApplicationTable({
                   </td>
                   <td className="break-words px-2 py-1.5 font-medium text-slate-100">
                     {app.bandName}
+                    <div className="mt-1 font-normal">
+                      <SingleSlotBadge names={singleSlotNamesByAppId.get(app.id) ?? []} />
+                    </div>
                     {app.parseWarning && (
                       <p className="mt-0.5 text-[10px] font-normal text-amber-400">
                         ⚠ {app.parseWarning}

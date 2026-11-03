@@ -12,6 +12,7 @@ import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppSto
 import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
 import { useMemberReasonNotesFor } from "./applications/MemberReasonNotesLine";
+import { useSingleSlotNamesForBand } from "../store/useApplicationStore";
 
 const NO_MEMBERS: string[] = [];
 import type { Band, TimetableSlot } from "../types";
@@ -111,6 +112,7 @@ export function SlotCard({
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
   const memberNoteEntries = useMemberReasonNotesFor(band?.members ?? NO_MEMBERS);
+  const singleSlotNames = useSingleSlotNamesForBand(band?.id);
   const handleMove = (direction: "up" | "down") => {
     const result = moveSlot(dayId, slot.id, direction);
     if (result.status === "blocked") {
@@ -540,6 +542,11 @@ export function SlotCard({
               <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
+              {singleSlotNames.length > 0 && (
+                <p className="truncate text-xs font-medium text-rose-400" title="このバンドにしか出ないメンバー">
+                  ⚠ 1枠のみ: {singleSlotNames.join("、")}
+                </p>
+              )}
               {memberNoteEntries.map((e) => (
                 <p key={e.name} className="truncate text-xs text-amber-300/80" title={e.note}>
                   👤 {e.name}の理由: {e.note}

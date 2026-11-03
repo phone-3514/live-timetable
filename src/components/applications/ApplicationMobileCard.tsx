@@ -8,6 +8,7 @@ import {
   EditableDesiredDateTime,
   EditBandButton,
   HighParticipationBadge,
+  SingleSlotBadge,
   MemberBadgeList,
   MemberFrameDetailButton,
   SetlistLines,
@@ -18,6 +19,7 @@ type Props = {
   app: Application;
   applications: Application[];
   highParticipationInfo: HighParticipationInfo;
+  singleSlotNames: string[];
   onApprove: (id: string) => void;
   onUnapprove: (id: string) => void;
   onRequestReject: (app: Application) => void;
@@ -37,6 +39,7 @@ export function ApplicationMobileCard({
   app,
   applications,
   highParticipationInfo,
+  singleSlotNames,
   onApprove,
   onUnapprove,
   onRequestReject,
@@ -89,9 +92,10 @@ export function ApplicationMobileCard({
         <MemberReasonNotesLine memberNames={app.members.map((m) => m.name)} />
       </div>
 
-      {highParticipationInfo.highCount > 0 && (
-        <div className="mt-2">
+      {(highParticipationInfo.highCount > 0 || singleSlotNames.length > 0) && (
+        <div className="mt-2 flex flex-wrap items-start gap-1.5">
           <HighParticipationBadge info={highParticipationInfo} />
+          <SingleSlotBadge names={singleSlotNames} />
         </div>
       )}
 

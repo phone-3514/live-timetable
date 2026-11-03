@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type {
@@ -479,6 +480,34 @@ export function exceedsFrameLimit(frameNumber: number): boolean {
 export function memberFrameNumber(member: { frameOrdinal?: number | null }): number {
   const n = member.frameOrdinal;
   return n !== null && n !== undefined && Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+/** Names (as written on this application) of members who play only in this
+ * band — what rejecting it would leave with no slot at all. */
+export function listSingleSlotMemberNames(
+  app: Application,
+  frameCounts: Map<string, MemberFrameCount>,
+): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const m of app.members) {
+    const key = normalizeMemberName(m.name);
+    if (!key || seen.has(key) || !isSingleSlotMember(m, frameCounts)) continue;
+    seen.add(key);
+    names.push(m.name);
+  }
+  return names;
+}
+
+/** The 1枠のみ members of the application a placed band came from (empty when
+ * the band isn't linked to one). For the timetable's own warning line. */
+export function useSingleSlotNamesForBand(bandId: string | null | undefined): string[] {
+  const applications = useApplicationStore((s) => s.applications);
+  return useMemo(() => {
+    if (!bandId) return [];
+    const app = applications.find((a) => a.linkedBandId === bandId);
+    return app ? listSingleSlotMemberNames(app, computeMemberFrameCounts(applications)) : [];
+  }, [applications, bandId]);
 }
 
 /** A member whose only band is this one, and who didn't write a later "N枠目". */
