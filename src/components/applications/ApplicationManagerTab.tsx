@@ -28,7 +28,9 @@ export function ApplicationManagerTab() {
   const [filterText, setFilterText] = useState("");
   const [showNameResolution, setShowNameResolution] = useState(false);
   const [showReasonNotes, setShowReasonNotes] = useState(false);
-  const pendingNoteCount = useApplicationStore((s) => (s.pendingReasonNotes ?? []).length);
+  const pendingNoteCount = useApplicationStore(
+    (s) => (s.pendingReasonNotes ?? []).filter((n) => !n.attachedTo).length,
+  );
 
   // Computed once here and shared by MemberFrameCounts (per-member chips)
   // and ApplicationTable (per-band high-participation counts) instead of
@@ -79,7 +81,7 @@ export function ApplicationManagerTab() {
   function handleReset() {
     if (applications.length === 0) return;
     const ok = window.confirm(
-      "エントリー初期化: 貼り付けたテキスト・解析済みの全申し込み・承認済みバンドのタイムテーブルへの反映をすべて削除します。この操作は取り消せません。よろしいですか？",
+      "エントリー初期化: 貼り付けたテキスト・解析済みの全申し込み・承認済みバンドのタイムテーブルへの反映をすべて削除します。申請に紐づけた理由メモも申請と一緒に消えますが、「申請前の理由メモ」の履歴には残ります。この操作は取り消せません。よろしいですか？",
     );
     if (ok) clearAll();
   }

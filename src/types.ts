@@ -138,6 +138,15 @@ export type PendingReasonNote = {
   bandName: string;
   note: string;
   createdAt: number;
+  /** Set once the note has been attached. The note itself stays on the list
+   * (as 履歴) instead of being deleted, so it survives the application it went
+   * onto being cleared (エントリー初期化) — it can be put back to 紐づけ待ち, or
+   * re-attached automatically when an application with the same band name is
+   * imported again. */
+  attachedTo?:
+    | { kind: "application"; applicationId: string; label: string }
+    | { kind: "member"; name: string };
+  attachedAt?: number;
 };
 
 /** 個人(メンバー)に紐づけた時間指定の理由メモ — 「田中さんは17日は午前だけ無理」の

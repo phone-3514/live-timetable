@@ -68,7 +68,13 @@ const fieldClass =
 
 export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
-  const notes = useApplicationStore((s) => s.pendingReasonNotes) ?? [];
+  const allNotes = useApplicationStore((s) => s.pendingReasonNotes) ?? [];
+  const notes = useMemo(() => allNotes.filter((n) => !n.attachedTo), [allNotes]);
+  const attachedNotes = useMemo(
+    () => allNotes.filter((n) => n.attachedTo).sort((a, b) => (b.attachedAt ?? 0) - (a.attachedAt ?? 0)),
+    [allNotes],
+  );
+  const unattach = useApplicationStore((s) => s.unattachPendingReasonNote);
   const applications = useApplicationStore((s) => s.applications);
   const add = useApplicationStore((s) => s.addPendingReasonNote);
   const update = useApplicationStore((s) => s.updatePendingReasonNote);
@@ -263,6 +269,41 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
               })}
             </section>
           </div>
+
+          {attachedNotes.length > 0 && (
+            <details className="border-t border-slate-700 px-4 py-3">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200">
+                紐づけ済みの履歴（{attachedNotes.length}件）— 申請を初期化してもここに残ります
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {attachedNotes.map((n) => (
+                  <li key={n.id} className="space-y-1 rounded border border-slate-700 bg-slate-800/30 p-2 text-xs">
+                    <p className="text-slate-400">
+                      {n.senderName && `${n.senderName} ／ `}
+                      {n.attachedTo?.kind === "member" ? `👤 ${n.attachedTo.name} に紐づけ済み` : `${n.attachedTo?.label ?? ""} に紐づけ済み`}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words text-slate-200">{n.note}</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => unattach(n.id)}
+                        className="min-h-11 rounded border border-slate-600 px-2 text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-0.5"
+                      >
+                        紐づけ待ちに戻す
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remove(n.id)}
+                        className="min-h-11 rounded border border-rose-700 px-2 text-rose-300 hover:bg-rose-950/50 md:min-h-0 md:py-0.5"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           {memberNotes.length > 0 && (
             <section className="space-y-2 border-t border-slate-700 px-4 py-3">

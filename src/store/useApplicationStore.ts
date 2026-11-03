@@ -52,6 +52,9 @@ type ApplicationState = {
   /** Moves the note onto the application's 理由メモ (appended to what is
    * already there) and removes it from the pending list. */
   attachPendingReasonNote: (noteId: string, applicationId: string) => void;
+  /** Puts an attached note back on the 紐づけ待ち list (its text stays wherever
+   * it was already added). */
+  unattachPendingReasonNote: (noteId: string) => void;
   /** 個人(メンバー)に紐づけた理由メモ — shown wherever that person appears. */
   memberReasonNotes: MemberReasonNote[];
   /** Moves a pending note onto a person (appended to theirs) instead of a band. */
@@ -168,14 +171,27 @@ export const useApplicationStore = create<ApplicationState>()(
         const key = normalizeMemberName(memberName);
         if (!pending || !key) return;
         const existing = (get().memberReasonNotes ?? []).find((m) => m.key === key);
-        get().setMemberReasonNote(
-          memberName,
-          existing ? `${existing.note}\n${pending.note}` : pending.note,
-        );
+        if (!existing?.note.includes(pending.note)) {
+          get().setMemberReasonNote(
+            memberName,
+            existing ? `${existing.note}\n${pending.note}` : pending.note,
+          );
+        }
         set((state) => ({
-          pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== noteId),
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).map((n) =>
+            n.id === noteId
+              ? { ...n, attachedTo: { kind: "member", name: memberName.trim() }, attachedAt: Date.now() }
+              : n,
+          ),
         }));
       },
+
+      unattachPendingReasonNote: (noteId) =>
+        set((state) => ({
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).map((n) =>
+            n.id === noteId ? { ...n, attachedTo: undefined, attachedAt: undefined } : n,
+          ),
+        })),
 
       editMemberReasonNote: (key, note) =>
         set((state) => ({
@@ -229,10 +245,20 @@ export const useApplicationStore = create<ApplicationState>()(
         const note = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
         const app = get().applications.find((a) => a.id === applicationId);
         if (!note || !app) return;
-        const combined = app.timeReasonNote ? `${app.timeReasonNote}\n${note.note}` : note.note;
-        get().updateApplicationTimeReasonNote(applicationId, combined);
+        if (!(app.timeReasonNote ?? "").includes(note.note)) {
+          const combined = app.timeReasonNote ? `${app.timeReasonNote}\n${note.note}` : note.note;
+          get().updateApplicationTimeReasonNote(applicationId, combined);
+        }
         set((state) => ({
-          pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== noteId),
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).map((n) =>
+            n.id === noteId
+              ? {
+                  ...n,
+                  attachedTo: { kind: "application", applicationId, label: app.bandName },
+                  attachedAt: Date.now(),
+                }
+              : n,
+          ),
         }));
       },
 
@@ -253,7 +279,15 @@ export const useApplicationStore = create<ApplicationState>()(
             const key = normalizeBandName(app.bandName);
             if (!key) continue;
             for (const note of get().pendingReasonNotes ?? []) {
-              if (note.bandName && normalizeBandName(note.bandName) === key) {
+              // Waiting notes that name this band — and notes that were attached
+              // to an application that no longer exists (エントリー初期化 and
+              // re-import) and were attached to / written for this band.
+              const orphaned =
+                note.attachedTo?.kind === "application" &&
+                !get().applications.some((a) => a.id === (note.attachedTo as { applicationId: string }).applicationId);
+              if (note.attachedTo && !orphaned) continue;
+              const names = [note.bandName, orphaned ? (note.attachedTo as { label: string }).label : ""];
+              if (names.some((n) => n && normalizeBandName(n) === key)) {
                 get().attachPendingReasonNote(note.id, app.id);
                 autoAttachedNoteCount++;
               }
