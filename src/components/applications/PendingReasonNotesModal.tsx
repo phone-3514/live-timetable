@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApplicationStore } from "../../store/useApplicationStore";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
+import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { ModalPortal } from "../ModalPortal";
 import type { Application, PendingReasonNote } from "../../types";
@@ -36,6 +37,32 @@ function suggestionsFor(note: PendingReasonNote, applications: Application[]): A
     .slice(0, 4);
 }
 
+type PersonOption = { key: string; name: string };
+
+// Every distinct member across the applications (by normalized name) — what a
+// note about a person, rather than a band, can be attached to.
+function listPeople(applications: Application[]): PersonOption[] {
+  const byKey = new Map<string, PersonOption>();
+  for (const app of applications) {
+    for (const m of app.members) {
+      const key = normalizeMemberName(m.name);
+      if (key && !byKey.has(key)) byKey.set(key, { key, name: stripAffiliationNoteForDisplay(m.name) });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function personSuggestionsFor(note: PendingReasonNote, people: PersonOption[]): PersonOption[] {
+  const sender = loose(note.senderName);
+  if (!sender) return [];
+  return people
+    .filter((p) => {
+      const name = loose(p.name);
+      return name.length > 0 && (name.includes(sender) || sender.includes(name));
+    })
+    .slice(0, 4);
+}
+
 const fieldClass =
   "min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:py-1.5";
 
@@ -47,6 +74,11 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
   const update = useApplicationStore((s) => s.updatePendingReasonNote);
   const remove = useApplicationStore((s) => s.removePendingReasonNote);
   const attach = useApplicationStore((s) => s.attachPendingReasonNote);
+  const attachToMember = useApplicationStore((s) => s.attachPendingReasonNoteToMember);
+  const memberNotes = useApplicationStore((s) => s.memberReasonNotes) ?? [];
+  const setMemberNote = useApplicationStore((s) => s.setMemberReasonNote);
+  const editMemberNote = useApplicationStore((s) => s.editMemberReasonNote);
+  const people = useMemo(() => listPeople(applications), [applications]);
 
   const [senderName, setSenderName] = useState("");
   const [bandName, setBandName] = useState("");
@@ -142,6 +174,7 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
               )}
               {notes.map((n) => {
                 const suggestions = suggestionsFor(n, applications);
+                const personSuggestions = personSuggestionsFor(n, people);
                 return (
                   <article key={n.id} className="space-y-2 rounded border border-slate-700 bg-slate-800/40 p-3">
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -180,6 +213,30 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
                           {app.bandName} に紐づける
                         </button>
                       ))}
+                      {personSuggestions.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => attachToMember(n.id, p.name)}
+                          title="この人が出るすべてのバンドに表示されます"
+                          className="min-h-11 rounded border border-sky-600 bg-sky-950/40 px-2 text-sky-200 hover:bg-sky-900/50 md:min-h-0 md:py-1"
+                        >
+                          👤 {p.name} 個人に紐づける
+                        </button>
+                      ))}
+                      <select
+                        value=""
+                        onChange={(e) => e.target.value && attachToMember(n.id, e.target.value)}
+                        aria-label="人を選んで個人に紐づける"
+                        className="min-h-11 max-w-full rounded border border-slate-600 bg-slate-800 px-2 text-slate-200 md:min-h-0 md:py-1"
+                      >
+                        <option value="">👤 人を選んで個人に紐づける…</option>
+                        {people.map((p) => (
+                          <option key={p.key} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
                       <select
                         value=""
                         onChange={(e) => e.target.value && attach(n.id, e.target.value)}
@@ -206,6 +263,38 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
               })}
             </section>
           </div>
+
+          {memberNotes.length > 0 && (
+            <section className="space-y-2 border-t border-slate-700 px-4 py-3">
+              <h3 className="text-xs font-semibold text-slate-400">
+                個人に紐づけたメモ（{memberNotes.length}人）— その人が出るすべてのバンドに表示されます
+              </h3>
+              {memberNotes
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name, "ja"))
+                .map((m) => (
+                  <div key={m.key} className="flex items-start gap-2">
+                    <span className="w-28 shrink-0 break-words pt-2 text-xs font-medium text-sky-200 md:pt-1.5">
+                      👤 {m.name}
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={m.note}
+                      onChange={(e) => editMemberNote(m.key, e.target.value)}
+                      aria-label={`${m.name}の理由メモ`}
+                      className={fieldClass}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setMemberNote(m.name, "")}
+                      className="min-h-11 shrink-0 rounded border border-rose-700 px-2 text-xs text-rose-300 hover:bg-rose-950/50 md:min-h-0 md:py-1"
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+            </section>
+          )}
 
           <div className="border-t border-slate-700 px-4 py-2 text-right">
             <button

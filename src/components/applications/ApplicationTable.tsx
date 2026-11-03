@@ -28,6 +28,7 @@ import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
 import { MemberFrameDetailModal } from "./MemberFrameDetailModal";
 import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
+import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
 
 type SortKey =
   | "applicantName"
@@ -912,6 +913,7 @@ export function ApplicationTable({
                   <td className="break-words px-2 py-1.5 text-slate-300">
                     <EditableDesiredDateTime app={app} variant="cell" />
                     <EditableTimeReasonNote app={app} variant="cell" />
+                    <MemberReasonNotesLine memberNames={app.members.map((m) => m.name)} />
                   </td>
                   <td className="px-2 py-1.5">
                     <div className="flex flex-col gap-1">

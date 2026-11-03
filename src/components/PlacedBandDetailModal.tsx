@@ -8,6 +8,7 @@ import { hasUnparsedDayHint, hasUnparsedTimeExpression } from "../utils/parseBan
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { countAssignedSlotsForMember } from "../utils/memberSlotCount";
 import { Badge } from "./applications/Badge";
+import { useMemberReasonNotesFor } from "./applications/MemberReasonNotesLine";
 import { ModalPortal } from "./ModalPortal";
 import type { Band, BandMemberDetail, TimetableSlot } from "../types";
 
@@ -47,6 +48,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
   const updateApplicationDesiredDateTime = useApplicationStore((s) => s.updateApplicationDesiredDateTime);
   const updateApplicationTimeReasonNote = useApplicationStore((s) => s.updateApplicationTimeReasonNote);
   const linkedApp = applications.find((a) => a.linkedBandId === band.id);
+  const memberNoteEntries = useMemberReasonNotesFor(band.members);
 
   // Priority for what's actually shown/edited: the band's own
   // memberDetails once anyone has edited it (see handleSave), then a
@@ -341,6 +343,19 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
               )}
             </dd>
           </div>
+
+          {memberNoteEntries.length > 0 && (
+            <div>
+              <dt className="font-semibold text-slate-500">メンバー個人の理由メモ</dt>
+              <dd className="mt-0.5 space-y-0.5 text-amber-200">
+                {memberNoteEntries.map((e) => (
+                  <p key={e.name} className="whitespace-pre-wrap break-words">
+                    👤 {e.name}：{e.note}
+                  </p>
+                ))}
+              </dd>
+            </div>
+          )}
 
           <div>
             <dt className="font-semibold text-slate-500">時間指定の理由メモ</dt>

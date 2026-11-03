@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { Application, ApplicationMember, ApplicationSetlistItem, Band, PendingReasonNote } from "../types";
+import type {
+  Application,
+  ApplicationMember,
+  ApplicationSetlistItem,
+  Band,
+  MemberReasonNote,
+  PendingReasonNote,
+} from "../types";
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { organizerStateStorage } from "../utils/appRoleStorage";
@@ -33,6 +40,15 @@ type ApplicationState = {
   /** Moves the note onto the application's 理由メモ (appended to what is
    * already there) and removes it from the pending list. */
   attachPendingReasonNote: (noteId: string, applicationId: string) => void;
+  /** 個人(メンバー)に紐づけた理由メモ — shown wherever that person appears. */
+  memberReasonNotes: MemberReasonNote[];
+  /** Moves a pending note onto a person (appended to theirs) instead of a band. */
+  attachPendingReasonNoteToMember: (noteId: string, memberName: string) => void;
+  /** Replaces a person's note; empty text removes it. */
+  setMemberReasonNote: (memberName: string, note: string) => void;
+  /** Live typing in the note's textarea: stored as typed (no trim, never
+   * removes the row), so clearing the text mid-edit doesn't make it vanish. */
+  editMemberReasonNote: (key: string, note: string) => void;
 
   /** Appends already-parsed applications (used by the batch chat-export
    * file upload flow, which parses off the main paste-and-parse path so it
@@ -128,6 +144,40 @@ export const useApplicationStore = create<ApplicationState>()(
     (set, get) => ({
       applications: [],
       pendingReasonNotes: [],
+      memberReasonNotes: [],
+
+      attachPendingReasonNoteToMember: (noteId, memberName) => {
+        const pending = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
+        const key = normalizeMemberName(memberName);
+        if (!pending || !key) return;
+        const existing = (get().memberReasonNotes ?? []).find((m) => m.key === key);
+        get().setMemberReasonNote(
+          memberName,
+          existing ? `${existing.note}\n${pending.note}` : pending.note,
+        );
+        set((state) => ({
+          pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== noteId),
+        }));
+      },
+
+      editMemberReasonNote: (key, note) =>
+        set((state) => ({
+          memberReasonNotes: (state.memberReasonNotes ?? []).map((m) => (m.key === key ? { ...m, note } : m)),
+        })),
+
+      setMemberReasonNote: (memberName, note) => {
+        const key = normalizeMemberName(memberName);
+        if (!key) return;
+        const text = note.trim();
+        set((state) => {
+          const others = (state.memberReasonNotes ?? []).filter((m) => m.key !== key);
+          if (!text) return { memberReasonNotes: others };
+          const current = (state.memberReasonNotes ?? []).find((m) => m.key === key);
+          return {
+            memberReasonNotes: [...others, { key, name: current?.name ?? memberName.trim(), note: text }],
+          };
+        });
+      },
 
       addPendingReasonNote: ({ senderName, bandName, note }) => {
         const text = note.trim();

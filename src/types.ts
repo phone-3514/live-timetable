@@ -140,6 +140,16 @@ export type PendingReasonNote = {
   createdAt: number;
 };
 
+/** 個人(メンバー)に紐づけた時間指定の理由メモ — 「田中さんは17日は午前だけ無理」の
+ * ように、バンドではなく人についての理由。その人が出る全バンドに表示される。
+ * key は normalizeMemberName(name)。 */
+export type MemberReasonNote = {
+  key: string;
+  /** 表示用の名前(最初に紐づけたときの表記)。 */
+  name: string;
+  note: string;
+};
+
 export type TimetableSlot = {
   id: string;
   bandId: string | null;

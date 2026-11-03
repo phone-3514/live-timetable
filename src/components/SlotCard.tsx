@@ -11,6 +11,9 @@ import {
 import type { ConcentrationEntry, MemberConflictEntry } from "../store/useAppStore";
 import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
+import { useMemberReasonNotesFor } from "./applications/MemberReasonNotesLine";
+
+const NO_MEMBERS: string[] = [];
 import type { Band, TimetableSlot } from "../types";
 import { PlacedBandDetailModal } from "./PlacedBandDetailModal";
 import { BandSwapModal } from "./BandSwapModal";
@@ -107,6 +110,7 @@ export function SlotCard({
   // identical reasoning for the same bug on the mobile side.
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
+  const memberNoteEntries = useMemberReasonNotesFor(band?.members ?? NO_MEMBERS);
   const handleMove = (direction: "up" | "down") => {
     const result = moveSlot(dayId, slot.id, direction);
     if (result.status === "blocked") {
@@ -536,6 +540,11 @@ export function SlotCard({
               <p className="truncate text-xs text-slate-400">
                 {band.members.join(", ")}
               </p>
+              {memberNoteEntries.map((e) => (
+                <p key={e.name} className="truncate text-xs text-amber-300/80" title={e.note}>
+                  👤 {e.name}の理由: {e.note}
+                </p>
+              ))}
               {band.timeReasonNote?.trim() && (
                 <p className="truncate text-xs text-amber-300/80" title={band.timeReasonNote}>
                   📝 時間指定の理由: {band.timeReasonNote}

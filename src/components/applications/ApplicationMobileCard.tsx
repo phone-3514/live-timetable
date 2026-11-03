@@ -3,6 +3,7 @@ import type { Application } from "../../types";
 import type { HighParticipationInfo } from "../../store/useApplicationStore";
 import { Badge } from "./Badge";
 import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
+import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
 import {
   EditableDesiredDateTime,
   EditBandButton,
@@ -85,6 +86,7 @@ export function ApplicationMobileCard({
         <span className="text-[11px] font-semibold text-slate-500">出演希望日</span>
         <EditableDesiredDateTime app={app} variant="inline" />
         <EditableTimeReasonNote app={app} variant="inline" />
+        <MemberReasonNotesLine memberNames={app.members.map((m) => m.name)} />
       </div>
 
       {highParticipationInfo.highCount > 0 && (
