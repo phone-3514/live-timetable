@@ -6,6 +6,7 @@ import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
 import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
 import {
   EditableDesiredDateTime,
+  EditApplicationButton,
   EditBandButton,
   HighParticipationBadge,
   SingleSlotBadge,
@@ -142,6 +143,10 @@ export function ApplicationMobileCard({
         >
           却下
         </button>
+        <EditApplicationButton
+          app={app}
+          className="min-h-11 flex-1 rounded-md border-2 border-indigo-600 text-sm font-semibold text-indigo-300 hover:bg-indigo-950/40"
+        />
         {app.linkedBandId && (
           <EditBandButton
             bandId={app.linkedBandId}

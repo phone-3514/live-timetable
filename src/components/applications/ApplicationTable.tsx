@@ -29,6 +29,7 @@ import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
 import { MemberFrameDetailModal } from "./MemberFrameDetailModal";
 import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
+import { ApplicationEditModal } from "./ApplicationEditModal";
 import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
 
 type SortKey =
@@ -254,6 +255,19 @@ export function EditableDesiredDateTime({
 // below gate on that), but still guards against a stale id (a linked
 // Band that's since been deleted) the same way LiveCompositionRatingStars
 // does, so a stale reference can't crash this screen.
+// Opens the 申請を編集 dialog for any application, approved or not.
+export function EditApplicationButton({ app, className }: { app: Application; className: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className} title="バンド名・メンバー・セットリストなど申請の内容を編集">
+        ✎ 申請を編集
+      </button>
+      {open && <ApplicationEditModal app={app} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 export function EditBandButton({ bandId, className }: { bandId: string; className: string }) {
   const band = useAppStore((s) => s.bands.find((b) => b.id === bandId));
   const [showEdit, setShowEdit] = useState(false);
@@ -974,6 +988,10 @@ export function ApplicationTable({
                       >
                         却下
                       </button>
+                      <EditApplicationButton
+                        app={app}
+                        className="rounded border border-indigo-600 px-2 py-1 text-[11px] font-medium text-indigo-300 hover:bg-indigo-950/40"
+                      />
                       {app.linkedBandId && (
                         <EditBandButton
                           bandId={app.linkedBandId}

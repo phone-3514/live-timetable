@@ -28,6 +28,17 @@ function normalizeBandName(name: string): string {
   return name.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 }
 
+export type ApplicationEditPatch = {
+  applicantName: string;
+  bandName: string;
+  durationMinutes: number | null;
+  hasSync: boolean;
+  members: ApplicationMember[];
+  setlist: ApplicationSetlistItem[];
+  desiredDateTime: string;
+  timeReasonNote: string;
+};
+
 type ApplicationState = {
   applications: Application[];
   /** 申請より先に届いた理由メモ — see PendingReasonNote. */
@@ -100,6 +111,11 @@ type ApplicationState = {
    * band's allowed days and un-places it from any day it no longer fits —
    * so the timetable never keeps acting on the old text. */
   updateApplicationDesiredDateTime: (id: string, desiredDateTime: string) => void;
+  /** Edits an application's content by hand (the 申請を編集 dialog): name,
+   * applicant, length, sync, members, setlist, 出演希望日 and 理由メモ. Once
+   * approved, the linked Band gets the same values (through updateBand, which
+   * also re-resolves its allowed days when the 出演希望日 changed). */
+  updateApplication: (id: string, patch: ApplicationEditPatch) => void;
   /** 時間指定の理由メモ(運営が手書き) — updates the application and, once
    * approved, its linked Band, so the timetable shows the same note. */
   updateApplicationTimeReasonNote: (id: string, note: string) => void;
@@ -363,6 +379,37 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
         if (app.linkedBandId) {
           useAppStore.getState().updateBand(app.linkedBandId, { desiredTime: desiredDateTime });
+        }
+      },
+
+      updateApplication: (id, patch) => {
+        const app = get().applications.find((a) => a.id === id);
+        if (!app) return;
+        const next: Application = {
+          ...app,
+          applicantName: patch.applicantName.trim(),
+          bandName: patch.bandName.trim(),
+          durationMinutes: patch.durationMinutes,
+          hasSync: patch.hasSync,
+          members: patch.members,
+          setlist: patch.setlist,
+          desiredDateTime: patch.desiredDateTime.trim(),
+          timeReasonNote: patch.timeReasonNote.trim(),
+        };
+        set((state) => ({
+          applications: state.applications.map((a) => (a.id === id ? next : a)),
+        }));
+        if (app.linkedBandId) {
+          useAppStore.getState().updateBand(app.linkedBandId, {
+            name: next.bandName,
+            members: next.members.map((m) => m.name),
+            memberDetails: next.members.map((m) => ({ name: m.name, grade: m.grade, part: m.part })),
+            setlist: next.setlist.map((s) => (s.artist ? `${s.title}/${s.artist}` : s.title)),
+            durationMinutes: next.durationMinutes ?? undefined,
+            hasSync: next.hasSync,
+            desiredTime: next.desiredDateTime,
+            timeReasonNote: next.timeReasonNote,
+          });
         }
       },
 
