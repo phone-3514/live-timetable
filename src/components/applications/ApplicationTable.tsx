@@ -83,12 +83,6 @@ export function SetlistLines({ setlist }: { setlist: Application["setlist"] }) {
   );
 }
 
-// Compact badge for "how many of this band's members are already spread
-// across 3+ bands elsewhere" — a lottery/scheduling signal, not shown at
-// all when zero (keeps rows without any high-participation member free of
-// clutter). Click toggles an inline breakdown ("3枠: 1人, 4枠: 1人"); the
-// same text is also on the badge's title so a mouse hover shows it without
-// a click, satisfying both interaction styles on desktop and touch.
 // "⚠ 1枠のみ: 田中、佐藤" — the band has members who play in no other band, so
 // turning it down leaves them without any slot. Shown whenever there is one,
 // not only in the reject confirmation. Click toggles the names; the same text
@@ -115,29 +109,30 @@ export function SingleSlotBadge({ names }: { names: string[] }) {
   );
 }
 
+// Chips for the members whose "N枠目" on this application is over 2, one per
+// slot number ("3枠目 1人", "2.5枠目 2人") — a lottery/scheduling signal, not
+// shown at all when there are none.
 export function HighParticipationBadge({ info }: { info: HighParticipationInfo }) {
-  const [expanded, setExpanded] = useState(false);
   if (info.highCount === 0) return null;
 
-  const breakdownText = info.breakdown.map((b) => `${b.slots}枠: ${b.people}人`).join(" / ");
-
+  // One chip per "N枠目" actually written, e.g. "3枠目 1人" / "2.5枠目 2人",
+  // instead of a single total — so which slot numbers are in play is visible
+  // without opening anything.
   return (
-    <div className="inline-block">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        title={breakdownText}
-        aria-expanded={expanded}
-        className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-300 hover:border-amber-400 md:min-h-0"
-      >
-        ⚠ 2枠超過: {info.highCount}人
-      </button>
-      {expanded && (
-        <p className="mt-1 max-w-[12rem] text-[11px] font-normal leading-snug text-amber-300">
-          {breakdownText}
-        </p>
-      )}
-    </div>
+    <ul
+      className="flex flex-wrap gap-1"
+      aria-label="2枠を超える枠番号の内訳"
+      title={`2枠を超える枠番号の内訳（合計${info.highCount}人）`}
+    >
+      {info.breakdown.map((b) => (
+        <li
+          key={b.slots}
+          className="inline-flex items-center whitespace-nowrap rounded-md border border-amber-500 bg-amber-950 px-2 py-1 text-xs font-semibold leading-none text-amber-300"
+        >
+          ⚠ {b.slots}枠目 {b.people}人
+        </li>
+      ))}
+    </ul>
   );
 }
 
