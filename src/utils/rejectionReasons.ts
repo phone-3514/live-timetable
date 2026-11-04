@@ -88,6 +88,22 @@ export function describeRejectionReason(
         headline: `1枠のみのメンバーがいないため（競合${blockers.length}組のうち${withSingle}組には1枠のみのメンバーがいます）${tail}`,
       };
     }
+    case "singleSlotThenFrames": {
+      if (m?.hasSingleSlotMember) {
+        return {
+          ...base,
+          category: "1枠のみの人がいるが枠が足りない",
+          headline: `1枠のみのメンバーがいるため最優先にしましたが、使える枠が、同じく優先されるバンドなどで埋まっているため${tail}`,
+        };
+      }
+      const avg = averageOf(others.map((o) => o?.maxFrames));
+      const protectedCount = others.filter((o) => o?.hasSingleSlotMember).length;
+      return {
+        ...base,
+        category: "1枠のみの人がいない・枠数が多い",
+        headline: `1枠のみのメンバーがいなくて枠数が多いため（このバンドは最大${m ? round1(m.maxFrames) : "?"}枠目／競合${blockers.length}組は平均で最大${avg ? round1(avg) : "?"}枠目、うち${protectedCount}組は1枠のみのメンバーがいて優先）${tail}`,
+      };
+    }
     case "narrowWindow": {
       const avg = averageOf(others.map((o) => o?.eligibleSlots));
       return {

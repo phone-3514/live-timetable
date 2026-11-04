@@ -8,7 +8,13 @@ import {
 // How the rejection check decides who keeps a seat when there aren't enough:
 // the band that sorts first is seated first, so whoever sorts last is the one
 // turned away. Ties always fall back to 申請が早い順.
-export type RejectionPolicy = "applied" | "grade" | "fewFrames" | "singleSlot" | "narrowWindow";
+export type RejectionPolicy =
+  | "applied"
+  | "grade"
+  | "fewFrames"
+  | "singleSlot"
+  | "singleSlotThenFrames"
+  | "narrowWindow";
 
 export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; description: string }[] = [
   {
@@ -32,6 +38,12 @@ export const REJECTION_POLICIES: { value: RejectionPolicy; label: string; descri
     label: "1枠のみの人がいないバンドから却下",
     description:
       "1枠しか出ないメンバーがいるバンドを優先して残し、そういうメンバーがいないバンドから却下します。",
+  },
+  {
+    value: "singleSlotThenFrames",
+    label: "1枠のみの人がいない かつ 枠数が多いバンドから却下",
+    description:
+      "1枠のみのメンバーがいるバンドは絶対条件として最優先で残します。そのうえで、1枠のみの人がいないバンドの中から、枠数（N枠目）が多いバンドを先に却下します。",
   },
   {
     value: "narrowWindow",
@@ -96,6 +108,13 @@ export function comparePriority(
   else if (policy === "narrowWindow") primary = b.metrics.eligibleSlots - a.metrics.eligibleSlots;
   else if (policy === "singleSlot")
     primary = Number(b.metrics.hasSingleSlotMember) - Number(a.metrics.hasSingleSlotMember);
+  else if (policy === "singleSlotThenFrames") {
+    // 1枠のみの人がいる is absolute: those bands all sort ahead of the rest. Only
+    // within each group does the 枠数 (fewer N枠目 kept first) matter.
+    primary =
+      Number(b.metrics.hasSingleSlotMember) - Number(a.metrics.hasSingleSlotMember) ||
+      a.metrics.maxFrames - b.metrics.maxFrames;
+  }
   if (primary !== 0) return primary;
   return (
     a.app.applicationDateTime.localeCompare(b.app.applicationDateTime) || a.app.createdAt - b.app.createdAt
@@ -119,6 +138,9 @@ export function describePriorityBasis(
   }
   if (policy === "narrowWindow") {
     return `日時指定で使える枠 ${metrics.eligibleSlots}枠（同じなら${applied}の順）`;
+  }
+  if (policy === "singleSlotThenFrames") {
+    return `${metrics.hasSingleSlotMember ? "1枠のみのメンバーあり（絶対条件で優先）" : "1枠のみのメンバーなし"}／最大${Math.round(metrics.maxFrames * 10) / 10}枠目（同じなら${applied}の順）`;
   }
   if (policy === "singleSlot") {
     return `${metrics.hasSingleSlotMember ? "1枠のみのメンバーあり" : "1枠のみのメンバーなし"}（同じなら${applied}の順）`;
