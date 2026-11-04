@@ -6,7 +6,7 @@ import {
   type TimeRange,
   type VenueHours,
 } from "./parseBands";
-import { findMemberConstraintViolations } from "./memberConstraints";
+import { applyTimeBuffer, findMemberConstraintViolations } from "./memberConstraints";
 import { timeToMinutes } from "./time";
 
 // A null bound in a TimeRange means "unbounded on that side" (e.g. "14時
@@ -64,7 +64,12 @@ export function canPlaceBandInSlot(
   day: TimetableDay,
   slot: TimetableSlot,
   venue: VenueHours = DEFAULT_VENUE_HOURS,
+  options: { bufferMinutes?: number } = {},
 ): boolean {
+  // bufferMinutes: how far to keep clear of every written time restriction (the
+  // auto-scheduler passes TIME_RESTRICTION_BUFFER_MINUTES; manual placement
+  // checks the restriction exactly as written).
+  const buffer = options.bufferMinutes ?? 0;
   if (slot.customLabel !== null) return false;
   if (band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
     return false;
@@ -76,17 +81,18 @@ export function canPlaceBandInSlot(
   const ng = timeRangeForDay(band.ngTime, day, venue);
   // An NG time that names only other dates doesn't apply to this day.
   const ngApplies = !(ng.namesDates && day.date && !ng.matchedDay);
-  if (ngApplies && ng.range && slotOverlapsRange(slotStart, slotEnd, ng.range)) {
+  const ngRange = applyTimeBuffer(ng.range, "ng", buffer);
+  if (ngApplies && ngRange && slotOverlapsRange(slotStart, slotEnd, ngRange)) {
     return false;
   }
 
-  const { range: desiredRange } = timeRangeForDay(band.desiredTime, day, venue);
+  const desiredRange = applyTimeBuffer(timeRangeForDay(band.desiredTime, day, venue).range, "ok", buffer);
   if (desiredRange && !slotOverlapsRange(slotStart, slotEnd, desiredRange)) {
     return false;
   }
 
   // A member's own 出演不可/可能時間 (from their 理由メモ, see memberConstraints).
-  if (findMemberConstraintViolations(band, day, slot, venue).length > 0) return false;
+  if (findMemberConstraintViolations(band, day, slot, venue, buffer).length > 0) return false;
 
   return true;
 }

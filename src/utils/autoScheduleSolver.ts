@@ -2,6 +2,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { VenueHours } from "./parseBands";
 import { canPlaceBandInSlot } from "./scheduleEligibility";
+import { TIME_RESTRICTION_BUFFER_MINUTES } from "./memberConstraints";
 import { alignTimeToReference, recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
 import { minutesToTime, timeToMinutes } from "./time";
@@ -107,6 +108,9 @@ export type ScheduleContext = {
   eventStartMinutes: number;
   finalPhaseStart: number;
   ratingPattern: RatingPattern;
+  /** Margin kept clear of every written time restriction while building the
+   * schedule (see TIME_RESTRICTION_BUFFER_MINUTES). */
+  timeBufferMinutes: number;
 };
 
 // Builds the context once per day/search — the one place that assembles
@@ -122,6 +126,7 @@ export function buildScheduleContext(
   const eventStartMinutes = timeToMinutes(day.settings.startTime);
   return {
     ratingPattern,
+    timeBufferMinutes: TIME_RESTRICTION_BUFFER_MINUTES,
     day,
     allBands,
     venueHours,
@@ -419,7 +424,7 @@ export function validateHardConstraints(slots: TimetableSlot[], context: Schedul
   for (const slot of slots) {
     if (!slot.bandId) continue;
     const band = bandMap.get(slot.bandId);
-    if (band && !canPlaceBandInSlot(band, context.day, slot, context.venueHours)) {
+    if (band && !canPlaceBandInSlot(band, context.day, slot, context.venueHours, { bufferMinutes: context.timeBufferMinutes })) {
       violations.push({
         type: "TIME_CONSTRAINT",
         message: `${band.name}が出演可能時間外の枠(${slot.startTime || "?"})に配置されています`,

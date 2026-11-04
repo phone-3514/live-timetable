@@ -32,6 +32,7 @@ import {
 } from "../utils/autoScheduleSolver";
 import { organizerStateStorage } from "../utils/appRoleStorage";
 import { useSimulatorStore } from "./useSimulatorStore";
+import { TIME_RESTRICTION_BUFFER_MINUTES } from "../utils/memberConstraints";
 import { clampLiveCompositionRating } from "../utils/liveCompositionRating";
 import { useToastStore } from "./useToastStore";
 import { useAutoScheduleDebugStore, type AutoScheduleDebugEntry } from "./useAutoScheduleDebugStore";
@@ -1342,6 +1343,26 @@ export const useAppStore = create<AppState>()(
         if (relaxed.ratingReorderedBandIds.length > 0) {
           relaxedPlacementMessages.push(
             `ライブ構成評価（5段階）を優先して${relaxed.ratingReorderedBandIds.length}組の位置を入れ替え`,
+          );
+        }
+        // The normal passes keep TIME_RESTRICTION_BUFFER_MINUTES clear of every
+        // written time restriction; the last-resort pass only needs the
+        // restriction itself to hold. Say which bands ended up inside the margin.
+        const tightBandNames = new Set<string>();
+        for (const r of perDayResults) {
+          for (const slot of slotsByDayId.get(r.dayId) ?? []) {
+            const band = slot.bandId ? state.bands.find((b) => b.id === slot.bandId) : undefined;
+            if (!band || !relaxedPlacedBandIds.includes(band.id)) continue;
+            const strictOk = canPlaceBandInSlot(band, r.currentDay, slot, state.venueHours);
+            const bufferedOk = canPlaceBandInSlot(band, r.currentDay, slot, state.venueHours, {
+              bufferMinutes: TIME_RESTRICTION_BUFFER_MINUTES,
+            });
+            if (strictOk && !bufferedOk) tightBandNames.add(band.name);
+          }
+        }
+        if (tightBandNames.size > 0) {
+          relaxedPlacementMessages.push(
+            `${[...tightBandNames].join("、")}（時間指定の前後${TIME_RESTRICTION_BUFFER_MINUTES}分の余裕を取れず、指定の範囲ぎりぎりに配置）`,
           );
         }
       }

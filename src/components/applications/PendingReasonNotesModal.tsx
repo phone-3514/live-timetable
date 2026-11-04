@@ -2,7 +2,11 @@ import { useMemo, useState } from "react";
 import { useApplicationStore } from "../../store/useApplicationStore";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
-import { describeMemberWindow, parseMemberConstraintText } from "../../utils/memberConstraints";
+import {
+  TIME_RESTRICTION_BUFFER_MINUTES,
+  describeMemberWindow,
+  parseMemberConstraintText,
+} from "../../utils/memberConstraints";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { ModalPortal } from "../ModalPortal";
 import type { Application, PendingReasonNote } from "../../types";
@@ -334,6 +338,7 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
                             {parsed.windows.length > 0 ? (
                               <p className="text-emerald-300">
                                 ✓ 配置に反映：{parsed.windows.map(describeMemberWindow).join(" ／ ")}
+                                （自動配置では前後{TIME_RESTRICTION_BUFFER_MINUTES}分の余裕を取ります）
                               </p>
                             ) : (
                               <p className="text-slate-500">配置には反映されません（日時と「不可」「のみ可」などが読み取れませんでした）</p>

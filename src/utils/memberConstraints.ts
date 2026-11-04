@@ -22,6 +22,26 @@ import { timeToMinutes } from "./time";
 // only window they CAN play in that day. A time written with no date applies to
 // every day. A line that is neither is reported as unrecognised, never guessed.
 
+/** When the timetable is being built, every time restriction is kept this far
+ * clear of: a "16:00~不可" person is scheduled to be off by 15:40, an "17:00以降
+ * 可能" band starts no earlier than 17:20. */
+export const TIME_RESTRICTION_BUFFER_MINUTES = 20;
+
+/**
+ * `range` with the safety margin applied. A window the band/person can NOT play
+ * in (kind "ng") grows by `buffer` on each bounded side; a window they can ONLY
+ * play in (kind "ok") shrinks by it — unless that would leave nothing, when it is
+ * kept as written. Unbounded sides stay unbounded.
+ */
+export function applyTimeBuffer(range: TimeRange | null, kind: "ng" | "ok", buffer: number): TimeRange | null {
+  if (!range || buffer <= 0) return range;
+  const sign = kind === "ng" ? -1 : 1;
+  const start = range.startMinutes !== null ? range.startMinutes + sign * buffer : null;
+  const end = range.endMinutes !== null ? range.endMinutes - sign * buffer : null;
+  if (kind === "ok" && start !== null && end !== null && start >= end) return range;
+  return { startMinutes: start, endMinutes: end };
+}
+
 export type MemberWindow = {
   kind: "ng" | "ok";
   /** Day of month the window is for; null = every day. */
@@ -110,13 +130,20 @@ function dayOfMonthOf(day: Pick<TimetableDay, "date">): number | null {
   return Number(day.date.slice(8, 10)) || null;
 }
 
-/** Does this person's constraint list keep them out of [start, end) on `dom`? */
-export function windowsBlock(windows: MemberWindow[], dom: number | null, start: number, end: number): boolean {
+/** Does this person's constraint list keep them out of [start, end) on `dom`?
+ * `bufferMinutes` > 0 keeps the slot that far clear of every window's edges. */
+export function windowsBlock(
+  windows: MemberWindow[],
+  dom: number | null,
+  start: number,
+  end: number,
+  bufferMinutes = 0,
+): boolean {
   const applies = (w: MemberWindow) => w.day === null || (dom !== null && w.day === dom);
   const ng = windows.filter((w) => w.kind === "ng" && applies(w));
-  if (ng.some((w) => overlaps(w.range, start, end))) return true;
+  if (ng.some((w) => overlaps(applyTimeBuffer(w.range, "ng", bufferMinutes), start, end))) return true;
   const ok = windows.filter((w) => w.kind === "ok" && applies(w));
-  return ok.length > 0 && !ok.some((w) => overlaps(w.range, start, end));
+  return ok.length > 0 && !ok.some((w) => overlaps(applyTimeBuffer(w.range, "ok", bufferMinutes), start, end));
 }
 
 /** Names of the band's members whose own constraints rule out this slot. */
@@ -125,12 +152,13 @@ export function findMemberConstraintViolations(
   day: Pick<TimetableDay, "date">,
   slot: Pick<TimetableSlot, "startTime" | "endTime" | "customLabel">,
   _venue: VenueHours = DEFAULT_VENUE_HOURS,
+  bufferMinutes = 0,
 ): string[] {
   if (registry.size === 0 || slot.customLabel !== null || !slot.startTime || !slot.endTime) return [];
   const start = timeToMinutes(slot.startTime);
   const end = timeToMinutes(slot.endTime);
   const dom = dayOfMonthOf(day);
-  return band.members.filter((name) => windowsBlock(getMemberWindows(name), dom, start, end));
+  return band.members.filter((name) => windowsBlock(getMemberWindows(name), dom, start, end, bufferMinutes));
 }
 
 /** Short Japanese description of one window, e.g. "21日 13:00〜 出演不可". */
