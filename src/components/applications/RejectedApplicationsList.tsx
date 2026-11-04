@@ -2,6 +2,7 @@ import { useApplicationStore } from "../../store/useApplicationStore";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import { ModalPortal } from "../ModalPortal";
+import { downloadRejectedCsv } from "../../utils/rejectedExport";
 
 function formatDate(ms: number | undefined): string {
   if (!ms) return "";
@@ -24,6 +25,15 @@ export function RejectedApplicationsList() {
     );
   }
   return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => void downloadRejectedCsv(rejected)}
+        title="却下済みのバンドを、Excelなどで開けるCSVファイルとして保存します"
+        className="min-h-11 rounded border border-slate-600 px-3 text-xs text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1"
+      >
+        📄 ファイルに出力（CSV）
+      </button>
     <ul className="space-y-2">
       {rejected.map((app) => (
         <li key={app.id} className="space-y-1 rounded border border-slate-700 bg-slate-800/40 p-3 text-xs">
@@ -60,6 +70,7 @@ export function RejectedApplicationsList() {
         </li>
       ))}
     </ul>
+    </div>
   );
 }
 
