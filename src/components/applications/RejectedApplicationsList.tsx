@@ -4,7 +4,7 @@ import { computeMemberImpacts, describeBandImpact } from "../../utils/rejectionI
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import { ModalPortal } from "../ModalPortal";
-import { downloadRejectedCsv } from "../../utils/rejectedExport";
+import { downloadRejectedExcel } from "../../utils/rejectedExport";
 
 function formatDate(ms: number | undefined): string {
   if (!ms) return "";
@@ -33,11 +33,11 @@ export function RejectedApplicationsList() {
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => void downloadRejectedCsv(rejected, applications)}
-        title="却下済みのバンドを、Excelなどで開けるCSVファイルとして保存します"
+        onClick={() => void downloadRejectedExcel(rejected, applications)}
+        title="却下済みのバンドを、Excelファイル（.xlsx）として保存します。却下による枠数の変動の表つき"
         className="min-h-11 rounded border border-slate-600 px-3 text-xs text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1"
       >
-        📄 ファイルに出力（CSV）
+        📄 Excelファイルに出力（.xlsx）
       </button>
       {zeroedPeople.length > 0 && (
         <p className="rounded border border-rose-700 bg-rose-950/30 px-2 py-1.5 text-xs text-rose-200">
