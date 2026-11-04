@@ -269,10 +269,9 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
                 );
               })}
             </section>
-          </div>
 
           {attachedNotes.length > 0 && (
-            <details className="border-t border-slate-700 px-4 py-3">
+            <details className="border-t border-slate-700 pt-3">
               <summary className="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200">
                 紐づけ済みの履歴（{attachedNotes.length}件）— 申請を初期化してもここに残ります
               </summary>
@@ -307,10 +306,11 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
           )}
 
           {memberNotes.length > 0 && (
-            <section className="space-y-2 border-t border-slate-700 px-4 py-3">
-              <h3 className="text-xs font-semibold text-slate-400">
+            <details className="border-t border-slate-700 pt-3">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200">
                 個人に紐づけたメモ（{memberNotes.length}人）— その人が出るすべてのバンドに表示されます
-              </h3>
+              </summary>
+              <div className="mt-2 space-y-2">
               {memberNotes
                 .slice()
                 .sort((a, b) => a.name.localeCompare(b.name, "ja"))
@@ -356,8 +356,10 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
                     </button>
                   </div>
                 ))}
-            </section>
+              </div>
+            </details>
           )}
+          </div>
 
           <div className="border-t border-slate-700 px-4 py-2 text-right">
             <button
