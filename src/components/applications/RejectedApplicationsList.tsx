@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { useApplicationStore } from "../../store/useApplicationStore";
+import { computeMemberImpacts, describeBandImpact } from "../../utils/rejectionImpact";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
 import { ModalPortal } from "../ModalPortal";
@@ -16,6 +18,9 @@ export function RejectedApplicationsList() {
   const rejected = useApplicationStore((s) => s.rejectedApplications) ?? [];
   const restore = useApplicationStore((s) => s.restoreRejectedApplication);
   const remove = useApplicationStore((s) => s.deleteRejectedApplication);
+  const applications = useApplicationStore((s) => s.applications);
+  const impacts = useMemo(() => computeMemberImpacts(applications, rejected), [applications, rejected]);
+  const zeroedPeople = useMemo(() => [...impacts.values()].filter((i) => i.now === 0), [impacts]);
 
   if (rejected.length === 0) {
     return (
@@ -28,12 +33,17 @@ export function RejectedApplicationsList() {
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => void downloadRejectedCsv(rejected)}
+        onClick={() => void downloadRejectedCsv(rejected, applications)}
         title="却下済みのバンドを、Excelなどで開けるCSVファイルとして保存します"
         className="min-h-11 rounded border border-slate-600 px-3 text-xs text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1"
       >
         📄 ファイルに出力（CSV）
       </button>
+      {zeroedPeople.length > 0 && (
+        <p className="rounded border border-rose-700 bg-rose-950/30 px-2 py-1.5 text-xs text-rose-200">
+          ⚠ 却下により出演枠が0になった人：{zeroedPeople.map((p) => p.name).join("、")}
+        </p>
+      )}
     <ul className="space-y-2">
       {rejected.map((app) => (
         <li key={app.id} className="space-y-1 rounded border border-slate-700 bg-slate-800/40 p-3 text-xs">
@@ -49,6 +59,23 @@ export function RejectedApplicationsList() {
             却下{app.rejectedAt ? `（${formatDate(app.rejectedAt)}）` : ""}：
             {app.rejectionReason || "理由の記録なし"}
           </p>
+          <div className="break-words text-slate-300">
+            <p className="text-slate-500">枠数の変動（却下前→現在）</p>
+            <ul className="mt-0.5 flex flex-wrap gap-1">
+              {describeBandImpact(app, impacts).map((line) => (
+                <li
+                  key={line}
+                  className={`rounded border px-1.5 py-0.5 ${
+                    line.includes("出演枠なし")
+                      ? "border-rose-600 bg-rose-950/50 font-semibold text-rose-200"
+                      : "border-slate-600 bg-slate-900/60"
+                  }`}
+                >
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="flex gap-2 pt-0.5">
             <button
               type="button"
