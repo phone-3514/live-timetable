@@ -28,6 +28,7 @@ import { ApplicationMobileCard } from "./ApplicationMobileCard";
 import { LiveCompositionRatingStars } from "./LiveCompositionRatingStars";
 import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
 import { MemberFrameDetailModal } from "./MemberFrameDetailModal";
+import { artistKey } from "../../utils/artistGroups";
 import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
 import { ApplicationEditModal } from "./ApplicationEditModal";
 import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
@@ -496,10 +497,18 @@ export function ApplicationTable({
     // band they're in, not only the ones spelled exactly like the query.
     const matchesTerm = (a: Application, term: string) => {
       const normalizedTerm = normalizeMemberName(term);
+      const termArtistKey = artistKey(term);
       return (
         a.bandName.toLowerCase().includes(term) ||
         a.applicantName.toLowerCase().includes(term) ||
         a.desiredDateTime.toLowerCase().includes(term) ||
+        // The artists in the setlist ("ヨルシカ"), matched loosely so width,
+        // case and spacing don't matter.
+        a.setlist.some(
+          (s) =>
+            s.artist.toLowerCase().includes(term) ||
+            (termArtistKey.length > 0 && artistKey(s.artist).includes(termArtistKey)),
+        ) ||
         a.members.some(
           (m) =>
             m.name.toLowerCase().includes(term) ||
@@ -656,7 +665,7 @@ export function ApplicationTable({
           type="text"
           value={filterText}
           onChange={(e) => onFilterTextChange(e.target.value)}
-          placeholder="スペース区切りで複数条件（AND）／除外は -語（例: 1年 -Vo）"
+          placeholder="バンド名・メンバー・アーティスト名など。スペース区切りで複数条件（AND）／除外は -語（例: 1年 -Vo ヨルシカ）"
           title="バンド名・申請者・メンバー・学年・パート・希望日を検索。スペース区切りの語がすべて一致するバンドを表示（語ごとの一致は別のメンバーでも可）。「-語」を付けるとその語に一致するバンドを除外します。例：「ヨルシカ 9/27」「1年 Vo」「1年 -Vo」"
           className="min-h-11 w-full max-w-md rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 md:min-h-0"
         />
