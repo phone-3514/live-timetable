@@ -9,6 +9,8 @@ import { RejectConfirmModal } from "./RejectConfirmModal";
 import { NameResolutionModal } from "./NameResolutionModal";
 import { PendingReasonNotesModal } from "./PendingReasonNotesModal";
 import { RejectedApplicationsModal } from "./RejectedApplicationsList";
+import { SameArtistGroupsModal } from "./SameArtistGroupsModal";
+import { groupBandsByArtist } from "../../utils/artistGroups";
 import { findNearDuplicateNames } from "../../utils/nameResolution";
 import type { Application } from "../../types";
 
@@ -31,6 +33,8 @@ export function ApplicationManagerTab() {
   const [showNameResolution, setShowNameResolution] = useState(false);
   const [showReasonNotes, setShowReasonNotes] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [showArtists, setShowArtists] = useState(false);
+  const sameArtistGroupCount = useMemo(() => groupBandsByArtist(applications).length, [applications]);
   const pendingNoteCount = useApplicationStore(
     (s) => (s.pendingReasonNotes ?? []).filter((n) => !n.attachedTo).length,
   );
@@ -135,6 +139,14 @@ export function ApplicationManagerTab() {
         </button>
         <button
           type="button"
+          onClick={() => setShowArtists(true)}
+          title="セットリストに同じアーティストが書かれているバンドをグループ分けして表示"
+          className="min-h-9 rounded-full border border-violet-600 bg-violet-950/30 px-3 text-xs font-semibold text-violet-200 hover:bg-violet-900/40"
+        >
+          🎤 同じアーティスト{sameArtistGroupCount > 0 ? `（${sameArtistGroupCount}組）` : ""}
+        </button>
+        <button
+          type="button"
           onClick={() => setShowRejected(true)}
           title="却下したバンドの一覧。あとから戻せます"
           className="min-h-9 rounded-full border border-rose-600 bg-rose-950/30 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-900/40"
@@ -232,6 +244,7 @@ export function ApplicationManagerTab() {
         />
       )}
 
+      {showArtists && <SameArtistGroupsModal onClose={() => setShowArtists(false)} />}
       {showRejected && <RejectedApplicationsModal onClose={() => setShowRejected(false)} />}
       {showReasonNotes && <PendingReasonNotesModal onClose={() => setShowReasonNotes(false)} />}
       {showNameResolution && (
