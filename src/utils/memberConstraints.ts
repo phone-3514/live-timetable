@@ -62,34 +62,108 @@ const NEGATIVE_RE = /不可|無理|ＮＧ|NG|ダメ|だめ|出られ(?:ない|�
 const POSITIVE_RE = /のみ|だけ|限定|可能|ＯＫ|OK|大丈夫|出られ(?:る|ます)|参加できる/i;
 const TIME_HINT_RE = /\d{1,2}\s*(?:[:：]\d{1,2}|時)|午前|午後|夕方|終日|一日中|全日|\d{1,2}\s*日/;
 
-function parseClause(text: string, day: number | null, windows: MemberWindow[], unrecognized: string[]) {
-  const trimmed = text.trim();
-  if (!trimmed || !TIME_HINT_RE.test(trimmed)) return;
-  const negative = NEGATIVE_RE.test(trimmed);
-  const positive = POSITIVE_RE.test(trimmed);
-  if (!negative && !positive) {
-    unrecognized.push(trimmed);
-    return;
+// A clock time, then the ways a bound is written next to one.
+const T = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分|半)?)`;
+const SEP = String.raw`[~〜～\-－–—ー]`;
+const RANGE_RE = new RegExp(
+  `(${T})\\s*${SEP}\\s*(${T})` + // 10:00~12:00
+    `|(${T})\\s*(?:${SEP}|以降|以後|から)` + // 15:30~ / 15:30以降
+    `|${SEP}\\s*(${T})` + // ~12:30
+    `|(${T})\\s*まで`, // 12:30まで
+  "g",
+);
+
+function tokenToMinutes(token: string | undefined): number | null {
+  if (!token) return null;
+  let m = /^(\d{1,2})[:：](\d{1,2})$/.exec(token);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = /^(\d{1,2})時(\d{1,2})分$/.exec(token);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = /^(\d{1,2})時半$/.exec(token);
+  if (m) return Number(m[1]) * 60 + 30;
+  m = /^(\d{1,2})時$/.exec(token);
+  if (m) return Number(m[1]) * 60;
+  return null;
+}
+
+/** Every time range in `text` ("10:00~12:00, 16:00~19:00" is two), plus the
+ * 午前/午後/夕方 keywords when no clock time is written. A text with no time at
+ * all gives a single null (the whole day). */
+function extractAllRanges(text: string): (TimeRange | null)[] {
+  const normalized = text.normalize("NFKC");
+  const ranges: TimeRange[] = [];
+  for (const m of normalized.matchAll(RANGE_RE)) {
+    if (m[1] !== undefined) {
+      const start = tokenToMinutes(m[1]);
+      const end = tokenToMinutes(m[2]);
+      if (start !== null && end !== null && end > start) ranges.push({ startMinutes: start, endMinutes: end });
+    } else if (m[3] !== undefined) {
+      const start = tokenToMinutes(m[3]);
+      if (start !== null) ranges.push({ startMinutes: start, endMinutes: null });
+    } else if (m[4] !== undefined) {
+      const end = tokenToMinutes(m[4]);
+      if (end !== null) ranges.push({ startMinutes: null, endMinutes: end });
+    } else if (m[5] !== undefined) {
+      const end = tokenToMinutes(m[5]);
+      if (end !== null) ranges.push({ startMinutes: null, endMinutes: end });
+    }
   }
-  windows.push({
-    kind: negative ? "ng" : "ok",
-    day,
-    range: extractTimeRange(trimmed, DEFAULT_VENUE_HOURS),
-    source: trimmed,
-  });
+  if (ranges.length > 0) return ranges;
+  return [extractTimeRange(text, DEFAULT_VENUE_HOURS)];
+}
+
+function polarityOf(text: string): "ng" | "ok" | null {
+  if (NEGATIVE_RE.test(text)) return "ng";
+  if (POSITIVE_RE.test(text)) return "ok";
+  return null;
 }
 
 export function parseMemberConstraintText(text: string): ParsedMemberConstraints {
   const windows: MemberWindow[] = [];
   const unrecognized: string[] = [];
+
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed || !TIME_HINT_RE.test(trimmed)) continue;
+
+    // One ending like "… 不可" often covers every date written before it, so a
+    // clause with no word of its own takes the line's — when the line says only
+    // one thing. A line saying both (not OK on one date, OK on another) needs
+    // each clause to carry its own.
+    const hasNeg = NEGATIVE_RE.test(trimmed);
+    const hasPos = POSITIVE_RE.test(trimmed);
+    const lineKind: "ng" | "ok" | null = hasNeg && hasPos ? null : hasNeg ? "ng" : hasPos ? "ok" : null;
+
     const clauses = extractDayClauses(trimmed);
+    const units: { days: (number | null)[]; text: string }[] = [];
     if (clauses.length === 0) {
-      parseClause(trimmed, null, windows, unrecognized);
+      units.push({ days: [null], text: trimmed });
     } else {
-      for (const clause of clauses) parseClause(clause.clause, clause.day, windows, unrecognized);
+      // "20日, 21日 10:00~13:00 不可": a date with nothing after it shares the
+      // next clause's times and word.
+      let pending: number[] = [];
+      clauses.forEach((clause, i) => {
+        const carriesInfo = extractAllRanges(clause.clause).some((r) => r !== null) || polarityOf(clause.clause) !== null;
+        if (!carriesInfo && i < clauses.length - 1) {
+          pending.push(clause.day);
+          return;
+        }
+        units.push({ days: [...pending, clause.day], text: clause.clause });
+        pending = [];
+      });
+    }
+
+    for (const unit of units) {
+      const kind = polarityOf(unit.text) ?? lineKind;
+      if (!kind) {
+        unrecognized.push(unit.text.trim());
+        continue;
+      }
+      for (const day of unit.days) {
+        for (const range of extractAllRanges(unit.text)) {
+          windows.push({ kind, day, range, source: unit.text.trim() });
+        }
+      }
     }
   }
   return { windows, unrecognized };
@@ -114,6 +188,20 @@ export function setMemberConstraintRegistry(notes: MemberReasonNote[]): void {
   registry = next;
 }
 
+const parseCache = new Map<string, MemberWindow[]>();
+
+/** parseMemberConstraintText(text).windows, remembered by text — the placement
+ * checks run this for a band's own 理由メモ on every slot they test. */
+export function parseConstraintWindowsCached(text: string | undefined): MemberWindow[] {
+  if (!text) return [];
+  const hit = parseCache.get(text);
+  if (hit) return hit;
+  const windows = parseMemberConstraintText(text).windows;
+  if (parseCache.size > 500) parseCache.clear();
+  parseCache.set(text, windows);
+  return windows;
+}
+
 export function getMemberWindows(memberName: string): MemberWindow[] {
   return registry.get(normalizeMemberName(memberName)) ?? [];
 }
@@ -125,7 +213,7 @@ function overlaps(range: TimeRange | null, start: number, end: number): boolean 
   return start < rangeEnd && rangeStart < end;
 }
 
-function dayOfMonthOf(day: Pick<TimetableDay, "date">): number | null {
+export function dayOfMonthOf(day: Pick<TimetableDay, "date">): number | null {
   if (!day.date) return null;
   return Number(day.date.slice(8, 10)) || null;
 }

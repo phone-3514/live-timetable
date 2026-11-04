@@ -6,7 +6,13 @@ import {
   type TimeRange,
   type VenueHours,
 } from "./parseBands";
-import { applyTimeBuffer, findMemberConstraintViolations } from "./memberConstraints";
+import {
+  applyTimeBuffer,
+  dayOfMonthOf,
+  findMemberConstraintViolations,
+  parseConstraintWindowsCached,
+  windowsBlock,
+} from "./memberConstraints";
 import { timeToMinutes } from "./time";
 
 // A null bound in a TimeRange means "unbounded on that side" (e.g. "14時
@@ -93,6 +99,12 @@ export function canPlaceBandInSlot(
 
   // A member's own 出演不可/可能時間 (from their 理由メモ, see memberConstraints).
   if (findMemberConstraintViolations(band, day, slot, venue, buffer).length > 0) return false;
+
+  // The band's own 理由メモ ("20日 10:00~12:00, 21日 不可") read the same way.
+  const noteWindows = parseConstraintWindowsCached(band.timeReasonNote);
+  if (noteWindows.length > 0 && windowsBlock(noteWindows, dayOfMonthOf(day), slotStart, slotEnd, buffer)) {
+    return false;
+  }
 
   return true;
 }

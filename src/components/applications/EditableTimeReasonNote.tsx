@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Application } from "../../types";
 import { useApplicationStore } from "../../store/useApplicationStore";
+import { describeMemberWindow, parseMemberConstraintText } from "../../utils/memberConstraints";
 
 // Click-to-edit 時間指定の理由メモ. The reason for a time restriction reaches
 // the organizers on LINE rather than in the Discord application, so this is a
@@ -61,6 +62,20 @@ export function EditableTimeReasonNote({
     />
   );
 
+  const parsed = note ? parseMemberConstraintText(note) : null;
+  const recognition = parsed && (
+    <div className="mt-0.5 space-y-0.5 text-[10px]">
+      {parsed.windows.length > 0 && (
+        <p className="text-emerald-300">
+          ✓ 配置に反映：{parsed.windows.map(describeMemberWindow).join(" ／ ")}
+        </p>
+      )}
+      {parsed.unrecognized.length > 0 && (
+        <p className="text-amber-400">⚠ 不可か可能か読み取れない行：{parsed.unrecognized.join(" ／ ")}</p>
+      )}
+    </div>
+  );
+
   const display = (
     <button
       type="button"
@@ -76,12 +91,18 @@ export function EditableTimeReasonNote({
   );
 
   if (variant === "inline") {
-    return <div className="min-w-0">{editing ? textarea : display}</div>;
+    return (
+      <div className="min-w-0">
+        {editing ? textarea : display}
+        {!editing && recognition}
+      </div>
+    );
   }
   return (
     <div className="relative">
       {display}
       {editing && textarea}
+      {!editing && recognition}
     </div>
   );
 }

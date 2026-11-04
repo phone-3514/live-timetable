@@ -25,7 +25,7 @@ import {
   computeBandMetrics,
   describePriorityBasis,
 } from "../utils/rejectionPolicy";
-import { getMemberWindows } from "../utils/memberConstraints";
+import { getMemberWindows, parseConstraintWindowsCached } from "../utils/memberConstraints";
 import { ModalPortal } from "./ModalPortal";
 import { RejectionReasonDialog } from "./RejectionReasonDialog";
 import type { TimetableDay } from "../types";
@@ -475,7 +475,10 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
         app,
         availability: parseScheduleAvailability(app.desiredDateTime),
         // Members' own 出演不可/可能時間 (理由メモ) rule out slots too.
-        memberWindows: app.members.map((m) => getMemberWindows(m.name)).filter((w) => w.length > 0),
+        memberWindows: [
+          ...app.members.map((m) => getMemberWindows(m.name)),
+          parseConstraintWindowsCached(app.timeReasonNote),
+        ].filter((w) => w.length > 0),
         metrics: computeBandMetrics(app, frameCounts),
       }));
     const writtenDays = collectScheduleCandidates(candidates.map((c) => c.availability)).days;
