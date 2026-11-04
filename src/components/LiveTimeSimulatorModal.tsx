@@ -28,6 +28,8 @@ import {
 import { getMemberWindows, parseConstraintWindowsCached, weekdayOf } from "../utils/memberConstraints";
 import { ModalPortal } from "./ModalPortal";
 import { RejectionReasonDialog } from "./RejectionReasonDialog";
+import { RejectedBandsListModal, type RejectedItem } from "./RejectedBandsListModal";
+import { describeRejectionReason } from "../utils/rejectionReasons";
 import type { TimetableDay } from "../types";
 import {
   STANDARD_SIM_EXTRAS,
@@ -231,8 +233,15 @@ function useSim<K extends keyof SimulatorSettings>(
 // calculation so what's shown here matches what the timetable would show.
 export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
   const [reasonBandId, setReasonBandId] = useState<string | null>(null);
+  const [showRejectedList, setShowRejectedList] = useState(false);
   // Esc closes the reason popup first, the simulator only when none is open.
-  useEscapeKey(reasonBandId ? () => setReasonBandId(null) : onClose);
+  useEscapeKey(
+    reasonBandId
+      ? () => setReasonBandId(null)
+      : showRejectedList
+        ? () => setShowRejectedList(false)
+        : onClose,
+  );
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
   const applications = useApplicationStore((s) => s.applications);
@@ -524,6 +533,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       units: slotEquivalent(app.durationMinutes ?? baseSlotMinutes, baseSlotMinutes),
       availability,
       memberWindows,
+      metrics,
       specKey: normalizeScheduleKey(app.desiredDateTime),
       specLabel: app.desiredDateTime.trim() || "（日程の記載なし）",
       note: describePriorityBasis(rejectionPolicy, app, metrics),
@@ -543,6 +553,20 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       guessedDates,
     };
   }, [plans, applications, memberReasonNotes, plannerIncludePending, rejectionPolicy, baseSlotMinutes]);
+
+  // The 却下したバンド一覧: each rejected band with its reason and rivals.
+  const rejectedItems = useMemo<RejectedItem[]>(() => {
+    if (!rejectionAnalysis) return [];
+    return rejectionAnalysis.plan.rejected.flatMap((band) => {
+      const explanation = explainRejection(
+        rejectionAnalysis.bands,
+        rejectionAnalysis.slots,
+        rejectionAnalysis.plan,
+        band.id,
+      );
+      return explanation ? [{ band, reason: describeRejectionReason(rejectionPolicy, band, explanation) }] : [];
+    });
+  }, [rejectionAnalysis, rejectionPolicy]);
 
   const reasonDetail = useMemo(() => {
     if (!rejectionAnalysis || !reasonBandId) return null;
@@ -840,7 +864,16 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
 
                     {rejectionAnalysis.plan.rejected.length > 0 && (
                       <div className="space-y-1.5">
-                        <p className="font-semibold text-slate-400">どの日時指定のバンドを何組却下するか</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-400">どの日時指定のバンドを何組却下するか</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowRejectedList(true)}
+                            className="min-h-11 rounded border border-rose-600 bg-rose-950/40 px-3 text-rose-200 hover:bg-rose-900/50 md:min-h-0 md:py-1"
+                          >
+                            📋 却下したバンド一覧（理由つき）
+                          </button>
+                        </div>
                         <ul className="space-y-1.5">
                           {rejectionAnalysis.plan.groups
                             .filter((g) => g.rejected > 0)
@@ -1181,6 +1214,14 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      {showRejectedList && (
+        <RejectedBandsListModal
+          items={rejectedItems}
+          policyLabel={REJECTION_POLICIES.find((p) => p.value === rejectionPolicy)?.label ?? ""}
+          onShowDetail={(bandId) => setReasonBandId(bandId)}
+          onClose={() => setShowRejectedList(false)}
+        />
+      )}
       {reasonDetail && (
         <RejectionReasonDialog
           band={reasonDetail.band}

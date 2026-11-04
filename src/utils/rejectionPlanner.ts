@@ -1,6 +1,7 @@
 import type { TimeRange } from "./parseBands";
 import type { ScheduleAvailability } from "./scheduleAvailability";
 import { windowsBlock, type MemberWindow } from "./memberConstraints";
+import type { BandMetrics } from "./rejectionPolicy";
 
 // "Who would have to be turned away?" — given the time slots a set of days can
 // actually offer (each with a real start/end) and what every application says
@@ -43,6 +44,8 @@ export type PlannerBand = {
   /** Each member's own 出演不可/可能時間 windows (from their 理由メモ), for the
    * members that have any — a slot one of them is ruled out of can't be used. */
   memberWindows?: MemberWindow[][];
+  /** What the 却下基準 ranked this band on (for the rejection reason text). */
+  metrics?: BandMetrics;
   /** Why this band sits where it does in the priority order (shown in the
    * "why was this rejected" detail). */
   note?: string;
