@@ -25,6 +25,7 @@ import {
   computeBandMetrics,
   describePriorityBasis,
 } from "../utils/rejectionPolicy";
+import { getMemberWindows } from "../utils/memberConstraints";
 import { ModalPortal } from "./ModalPortal";
 import { RejectionReasonDialog } from "./RejectionReasonDialog";
 import type { TimetableDay } from "../types";
@@ -235,6 +236,8 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
   const applications = useApplicationStore((s) => s.applications);
+  // Read only so the rejection check re-runs when a person's note changes.
+  const memberReasonNotes = useApplicationStore((s) => s.memberReasonNotes);
   const applySimulationPlans = useAppStore((s) => s.applySimulationPlans);
   const showToast = useToastStore((s) => s.show);
 
@@ -471,6 +474,8 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       .map((app) => ({
         app,
         availability: parseScheduleAvailability(app.desiredDateTime),
+        // Members' own 出演不可/可能時間 (理由メモ) rule out slots too.
+        memberWindows: app.members.map((m) => getMemberWindows(m.name)).filter((w) => w.length > 0),
         metrics: computeBandMetrics(app, frameCounts),
       }));
     const writtenDays = collectScheduleCandidates(candidates.map((c) => c.availability)).days;
@@ -505,16 +510,17 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
         ...c,
         metrics: {
           ...c.metrics,
-          eligibleSlots: slots.filter((slot) => canUseSlot(c.availability, slot)).length,
+          eligibleSlots: slots.filter((slot) => canUseSlot(c.availability, slot, c.memberWindows)).length,
         },
       }))
       .sort((a, b) => comparePriority(rejectionPolicy, a, b));
 
-    const bands: PlannerBand[] = pool.map(({ app, availability, metrics }) => ({
+    const bands: PlannerBand[] = pool.map(({ app, availability, memberWindows, metrics }) => ({
       id: app.id,
       name: app.bandName,
       units: slotEquivalent(app.durationMinutes ?? baseSlotMinutes, baseSlotMinutes),
       availability,
+      memberWindows,
       specKey: normalizeScheduleKey(app.desiredDateTime),
       specLabel: app.desiredDateTime.trim() || "（日程の記載なし）",
       note: describePriorityBasis(rejectionPolicy, app, metrics),
@@ -533,7 +539,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
       skippedDays: plans.filter((p) => p.deadline === null).map((p) => p.day.label),
       guessedDates,
     };
-  }, [plans, applications, plannerIncludePending, rejectionPolicy, baseSlotMinutes]);
+  }, [plans, applications, memberReasonNotes, plannerIncludePending, rejectionPolicy, baseSlotMinutes]);
 
   const reasonDetail = useMemo(() => {
     if (!rejectionAnalysis || !reasonBandId) return null;

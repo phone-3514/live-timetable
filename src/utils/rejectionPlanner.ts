@@ -1,5 +1,6 @@
 import type { TimeRange } from "./parseBands";
 import type { ScheduleAvailability } from "./scheduleAvailability";
+import { windowsBlock, type MemberWindow } from "./memberConstraints";
 
 // "Who would have to be turned away?" — given the time slots a set of days can
 // actually offer (each with a real start/end) and what every application says
@@ -37,6 +38,9 @@ export type PlannerBand = {
   /** Groups bands that wrote the same schedule (see normalizeScheduleKey). */
   specKey: string;
   specLabel: string;
+  /** Each member's own 出演不可/可能時間 windows (from their 理由メモ), for the
+   * members that have any — a slot one of them is ruled out of can't be used. */
+  memberWindows?: MemberWindow[][];
   /** Why this band sits where it does in the priority order (shown in the
    * "why was this rejected" detail). */
   note?: string;
@@ -102,7 +106,12 @@ function rangeOverlapsSlot(range: TimeRange | null, slot: PlannerSlot): boolean 
   return slot.start < end && start < slot.end;
 }
 
-export function canUseSlot(availability: ScheduleAvailability, slot: PlannerSlot): boolean {
+export function canUseSlot(
+  availability: ScheduleAvailability,
+  slot: PlannerSlot,
+  memberWindows: MemberWindow[][] = [],
+): boolean {
+  if (memberWindows.some((windows) => windowsBlock(windows, slot.dayOfMonth, slot.start, slot.end))) return false;
   if (availability.windows.length === 0) return rangeOverlapsSlot(availability.globalRange, slot);
   if (slot.dayOfMonth === null) return false;
   return availability.windows.some(
@@ -123,7 +132,7 @@ export function planRejections(bands: PlannerBand[], slots: PlannerSlot[]): Reje
   });
 
   const adjacency: number[][] = nodes.map((node) =>
-    slots.flatMap((slot, s) => (canUseSlot(bands[node.band].availability, slot) ? [s] : [])),
+    slots.flatMap((slot, s) => (canUseSlot(bands[node.band].availability, slot, bands[node.band].memberWindows) ? [s] : [])),
   );
   const slotOwner: number[] = slots.map(() => -1); // slot -> node index
   const nodeSlot: number[] = nodes.map(() => -1); // node -> slot
@@ -236,7 +245,7 @@ export function explainRejection(
   const target = bands.findIndex((b) => b.id === bandId);
   if (target === -1) return null;
   const neighbours = (b: number) =>
-    slots.flatMap((slot, s) => (canUseSlot(bands[b].availability, slot) ? [s] : []));
+    slots.flatMap((slot, s) => (canUseSlot(bands[b].availability, slot, bands[b].memberWindows) ? [s] : []));
 
   const eligible = neighbours(target);
   const seenSlots = new Set<number>(eligible);

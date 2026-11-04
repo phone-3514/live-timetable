@@ -13,6 +13,7 @@ import { useCollabStore, useLockedBandOwner } from "../store/useCollabStore";
 import { useToastStore } from "../store/useToastStore";
 import { useMemberReasonNotesFor } from "./applications/MemberReasonNotesLine";
 import { useSingleSlotNamesForBand } from "../store/useApplicationStore";
+import { findMemberConstraintViolations } from "../utils/memberConstraints";
 
 const NO_MEMBERS: string[] = [];
 import type { Band, TimetableSlot } from "../types";
@@ -127,6 +128,10 @@ export function SlotCard({
   const day = useAppStore((s) => s.days.find((d) => d.id === dayId));
   const bands = useAppStore((s) => s.bands);
   const venueHours = useAppStore((s) => s.venueHours);
+  // Re-read when a member's note (and so their constraints) changes.
+  useMemberReasonNotesFor(band?.members ?? NO_MEMBERS);
+  const memberViolations =
+    band && day ? findMemberConstraintViolations(band, day, slot, venueHours) : NO_MEMBERS;
 
   // Another collaborator's nickname if THEY currently have this exact
   // band picked up (see useCollabStore/useLivePresence) — null the vast
@@ -572,7 +577,12 @@ export function SlotCard({
                   ⚙ 前後の枠と共有機材が重複
                 </p>
               )}
-              {band && day && !canPlaceBandInSlot(band, day, slot, venueHours) && (
+              {memberViolations.length > 0 && (
+                <p className="text-xs font-medium text-rose-400">
+                  ⚠ {memberViolations.join("、")}の出演不可時間（理由メモ）に重なっています
+                </p>
+              )}
+              {band && day && memberViolations.length === 0 && !canPlaceBandInSlot(band, day, slot, venueHours) && (
                 <p className="text-xs font-medium text-rose-400">
                   ⚠ 希望日・時間帯の外に配置されています
                 </p>

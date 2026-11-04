@@ -6,6 +6,7 @@ import {
   type TimeRange,
   type VenueHours,
 } from "./parseBands";
+import { findMemberConstraintViolations } from "./memberConstraints";
 import { timeToMinutes } from "./time";
 
 // A null bound in a TimeRange means "unbounded on that side" (e.g. "14時
@@ -83,6 +84,9 @@ export function canPlaceBandInSlot(
   if (desiredRange && !slotOverlapsRange(slotStart, slotEnd, desiredRange)) {
     return false;
   }
+
+  // A member's own 出演不可/可能時間 (from their 理由メモ, see memberConstraints).
+  if (findMemberConstraintViolations(band, day, slot, venue).length > 0) return false;
 
   return true;
 }

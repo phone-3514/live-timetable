@@ -12,6 +12,7 @@ import type {
 import { detectHasKeyboard } from "../utils/parseBands";
 import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { organizerStateStorage } from "../utils/appRoleStorage";
+import { setMemberConstraintRegistry } from "../utils/memberConstraints";
 import { useAppStore } from "./useAppStore";
 
 // How many pending reason notes the last addApplications attached by band
@@ -479,6 +480,18 @@ export const useApplicationStore = create<ApplicationState>()(
     { name: "live-timetable-applications", storage: createJSONStorage(() => organizerStateStorage) },
   ),
 );
+
+// The scheduling checks read each person's 出演不可/可能時間 out of their
+// 理由メモ through a registry (see memberConstraints.ts); keep it in step with
+// the notes — on every edit, restore and rehydrate.
+let syncedMemberNotes: MemberReasonNote[] | undefined;
+function syncMemberConstraints(notes: MemberReasonNote[] | undefined) {
+  if (notes === syncedMemberNotes) return;
+  syncedMemberNotes = notes;
+  setMemberConstraintRegistry(notes ?? []);
+}
+useApplicationStore.subscribe((state) => syncMemberConstraints(state.memberReasonNotes));
+syncMemberConstraints(useApplicationStore.getState().memberReasonNotes);
 
 export type MemberFrameCount = {
   count: number;

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApplicationStore } from "../../store/useApplicationStore";
 import { normalizeMemberName } from "../../utils/normalizeMemberName";
 import { stripAffiliationNoteForDisplay } from "../../utils/parseBands";
+import { describeMemberWindow, parseMemberConstraintText } from "../../utils/memberConstraints";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { ModalPortal } from "../ModalPortal";
 import type { Application, PendingReasonNote } from "../../types";
@@ -318,13 +319,34 @@ export function PendingReasonNotesModal({ onClose }: { onClose: () => void }) {
                     <span className="w-28 shrink-0 break-words pt-2 text-xs font-medium text-sky-200 md:pt-1.5">
                       👤 {m.name}
                     </span>
-                    <textarea
-                      rows={2}
-                      value={m.note}
-                      onChange={(e) => editMemberNote(m.key, e.target.value)}
-                      aria-label={`${m.name}の理由メモ`}
-                      className={fieldClass}
-                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <textarea
+                        rows={2}
+                        value={m.note}
+                        onChange={(e) => editMemberNote(m.key, e.target.value)}
+                        aria-label={`${m.name}の理由メモ`}
+                        className={fieldClass}
+                      />
+                      {(() => {
+                        const parsed = parseMemberConstraintText(m.note);
+                        return (
+                          <div className="space-y-0.5 text-[11px]">
+                            {parsed.windows.length > 0 ? (
+                              <p className="text-emerald-300">
+                                ✓ 配置に反映：{parsed.windows.map(describeMemberWindow).join(" ／ ")}
+                              </p>
+                            ) : (
+                              <p className="text-slate-500">配置には反映されません（日時と「不可」「のみ可」などが読み取れませんでした）</p>
+                            )}
+                            {parsed.unrecognized.length > 0 && (
+                              <p className="text-amber-400">
+                                ⚠ 不可か可能か読み取れない行：{parsed.unrecognized.join(" ／ ")}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <button
                       type="button"
                       onClick={() => setMemberNote(m.name, "")}
