@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { ModalPortal } from "./ModalPortal";
 import { useToastStore } from "../store/useToastStore";
+import { remainingCountsIfRemoved, useApplicationStore } from "../store/useApplicationStore";
+import { RejectedApplicationsList } from "./applications/RejectedApplicationsList";
 import { formatRejectionListText, type RejectionReason } from "../utils/rejectionReasons";
 import type { PlannerBand } from "../utils/rejectionPlanner";
 
@@ -22,6 +24,9 @@ export function RejectedBandsListModal({
   onClose: () => void;
 }) {
   const showToast = useToastStore((s) => s.show);
+  const applications = useApplicationStore((s) => s.applications);
+  const rejectApplication = useApplicationStore((s) => s.rejectApplication);
+  const rejectedCount = useApplicationStore((s) => (s.rejectedApplications ?? []).length);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const categories = useMemo(() => {
@@ -37,6 +42,41 @@ export function RejectedBandsListModal({
     } catch {
       showToast("コピーできませんでした", "error");
     }
+  }
+
+  // Members who would be left with no slot at all if these bands were rejected —
+  // the same warning the 却下 button gives, for the whole batch.
+  function zeroedOutFor(bandIds: string[]): string[] {
+    const rejecting = new Set(bandIds);
+    const remaining = applications.filter((a) => !rejecting.has(a.id));
+    const names = new Set<string>();
+    for (const id of bandIds) {
+      const app = applications.find((a) => a.id === id);
+      if (!app) continue;
+      for (const m of remainingCountsIfRemoved(applications, app)) {
+        const stillPlays = remaining.some((a) => a.members.some((x) => x.name === m.name));
+        if (!stillPlays) names.add(m.name);
+      }
+    }
+    return [...names];
+  }
+
+  function rejectBands(bandIds: string[]) {
+    if (bandIds.length === 0) return;
+    const zeroed = zeroedOutFor(bandIds);
+    const warning =
+      zeroed.length > 0
+        ? `\n\n⚠ 次のメンバーは、ほかに出演枠がなくなります：${zeroed.join("、")}`
+        : "";
+    const names = bandIds.map((id) => items.find((i) => i.band.id === id)?.band.name ?? id).join("、");
+    const placed = bandIds.filter((id) => applications.find((a) => a.id === id)?.approved).length;
+    const placedNote = placed > 0 ? `\n（承認済みの${placed}組は、タイムテーブルの配置からも外れます）` : "";
+    if (!window.confirm(`${bandIds.length}組を却下します（却下済みの一覧から戻せます）。\n${names}${placedNote}${warning}`)) return;
+    for (const id of bandIds) {
+      const reason = items.find((i) => i.band.id === id)?.reason.headline;
+      rejectApplication(id, reason);
+    }
+    showToast(`${bandIds.length}組を却下しました（「却下済み」から戻せます）`, "info");
   }
 
   function toggle(id: string) {
@@ -122,6 +162,13 @@ export function RejectedBandsListModal({
                       >
                         詳しい理由
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => rejectBands([band.id])}
+                        className="min-h-11 rounded bg-rose-700 px-3 font-semibold text-white hover:bg-rose-600 md:min-h-0 md:py-1"
+                      >
+                        このバンドを却下する
+                      </button>
                     </div>
                     {open && (
                       <ul className="space-y-1">
@@ -141,9 +188,26 @@ export function RejectedBandsListModal({
                 );
               })}
             </ul>
+
+            <details className="border-t border-slate-700 pt-3">
+              <summary className="cursor-pointer select-none font-semibold text-slate-400 hover:text-slate-200">
+                🚫 却下済みのバンド（{rejectedCount}組）— 戻すことができます
+              </summary>
+              <div className="mt-2">
+                <RejectedApplicationsList />
+              </div>
+            </details>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-slate-700 px-4 py-2">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-700 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => rejectBands(items.map((i) => i.band.id))}
+              disabled={items.length === 0}
+              className="min-h-11 rounded bg-rose-700 px-4 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-40 md:min-h-0 md:py-1.5"
+            >
+              この一覧をすべて却下する（{items.length}組）
+            </button>
             <button
               type="button"
               onClick={handleCopy}

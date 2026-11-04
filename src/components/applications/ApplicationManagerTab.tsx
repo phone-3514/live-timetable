@@ -8,6 +8,7 @@ import { ApplicationTable } from "./ApplicationTable";
 import { RejectConfirmModal } from "./RejectConfirmModal";
 import { NameResolutionModal } from "./NameResolutionModal";
 import { PendingReasonNotesModal } from "./PendingReasonNotesModal";
+import { RejectedApplicationsModal } from "./RejectedApplicationsList";
 import { findNearDuplicateNames } from "../../utils/nameResolution";
 import type { Application } from "../../types";
 
@@ -17,7 +18,8 @@ export function ApplicationManagerTab() {
   const approveApplication = useApplicationStore((s) => s.approveApplication);
   const unapproveApplication = useApplicationStore((s) => s.unapproveApplication);
   const approveAllPending = useApplicationStore((s) => s.approveAllPending);
-  const removeApplication = useApplicationStore((s) => s.removeApplication);
+  const rejectApplication = useApplicationStore((s) => s.rejectApplication);
+  const rejectedCount = useApplicationStore((s) => (s.rejectedApplications ?? []).length);
   const removeExactDuplicateApplications = useApplicationStore(
     (s) => s.removeExactDuplicateApplications,
   );
@@ -28,6 +30,7 @@ export function ApplicationManagerTab() {
   const [filterText, setFilterText] = useState("");
   const [showNameResolution, setShowNameResolution] = useState(false);
   const [showReasonNotes, setShowReasonNotes] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
   const pendingNoteCount = useApplicationStore(
     (s) => (s.pendingReasonNotes ?? []).filter((n) => !n.attachedTo).length,
   );
@@ -81,7 +84,7 @@ export function ApplicationManagerTab() {
   function handleReset() {
     if (applications.length === 0) return;
     const ok = window.confirm(
-      "エントリー初期化: 貼り付けたテキスト・解析済みの全申し込み・承認済みバンドのタイムテーブルへの反映をすべて削除します。申請に紐づけた理由メモも申請と一緒に消えますが、「申請前の理由メモ」の履歴には残ります。この操作は取り消せません。よろしいですか？",
+      "エントリー初期化: 貼り付けたテキスト・解析済みの全申し込み（却下済みも含む）・承認済みバンドのタイムテーブルへの反映をすべて削除します。申請に紐づけた理由メモも申請と一緒に消えますが、「申請前の理由メモ」の履歴には残ります。この操作は取り消せません。よろしいですか？",
     );
     if (ok) clearAll();
   }
@@ -129,6 +132,14 @@ export function ApplicationManagerTab() {
           className="min-h-9 rounded-full border border-amber-600 bg-amber-950/30 px-3 text-xs font-semibold text-amber-200 hover:bg-amber-900/40"
         >
           📝 申請前の理由メモ{pendingNoteCount > 0 ? `（${pendingNoteCount}件）` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowRejected(true)}
+          title="却下したバンドの一覧。あとから戻せます"
+          className="min-h-9 rounded-full border border-rose-600 bg-rose-950/30 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-900/40"
+        >
+          🚫 却下済み{rejectedCount > 0 ? `（${rejectedCount}件）` : ""}
         </button>
         {nearDuplicateCount > 0 && (
           <button
@@ -215,12 +226,13 @@ export function ApplicationManagerTab() {
           allApplications={applications}
           onCancel={() => setPendingReject(null)}
           onConfirm={() => {
-            removeApplication(pendingReject.id);
+            rejectApplication(pendingReject.id);
             setPendingReject(null);
           }}
         />
       )}
 
+      {showRejected && <RejectedApplicationsModal onClose={() => setShowRejected(false)} />}
       {showReasonNotes && <PendingReasonNotesModal onClose={() => setShowReasonNotes(false)} />}
       {showNameResolution && (
         <NameResolutionModal

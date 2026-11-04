@@ -25,6 +25,8 @@ export type BackupData = {
   applications: Application[];
   /** 申請前の理由メモ。古いバックアップには無い。 */
   pendingReasonNotes?: PendingReasonNote[];
+  /** 却下済みの申請。古いバックアップには無い。 */
+  rejectedApplications?: Application[];
   /** 個人に紐づけた理由メモ。古いバックアップには無い。 */
   memberReasonNotes?: MemberReasonNote[];
   ui: { activeTab: AppTab };
@@ -81,6 +83,7 @@ export function createBackupPayload(): BackupData {
     },
     applications: applicationState.applications,
     pendingReasonNotes: applicationState.pendingReasonNotes,
+    rejectedApplications: applicationState.rejectedApplications,
     memberReasonNotes: applicationState.memberReasonNotes,
     ui: { activeTab: uiState.activeTab },
     simulator: useSimulatorStore.getState().settings,
@@ -143,6 +146,7 @@ export function restoreBackup(data: BackupData): void {
   useApplicationStore.setState({
     applications: data.applications ?? [],
     pendingReasonNotes: data.pendingReasonNotes ?? [],
+    rejectedApplications: data.rejectedApplications ?? [],
     memberReasonNotes: data.memberReasonNotes ?? [],
   });
   useUiStore.setState({ activeTab: data.ui?.activeTab ?? "timetable" });

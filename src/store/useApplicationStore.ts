@@ -77,6 +77,17 @@ type ApplicationState = {
    * "duplicated." Returns how many were actually added, for the caller's
    * own toast message. */
   addApplications: (applications: Application[]) => number;
+  /** 却下済み: rejected applications are moved here (not deleted) so they can be
+   * listed and put back later. Everything that reads `applications` — the list,
+   * member frame counts, the simulator — no longer sees them. */
+  rejectedApplications: Application[];
+  /** Rejects an application: unapproves it (removing its band from the timetable)
+   * and moves it to 却下済み with the reason. */
+  rejectApplication: (id: string, reason?: string) => void;
+  /** Puts a rejected application back on the list (as 未承認). */
+  restoreRejectedApplication: (id: string) => void;
+  /** Permanently removes a rejected application. */
+  deleteRejectedApplication: (id: string) => void;
   approveApplication: (id: string) => void;
   unapproveApplication: (id: string) => void;
   /** Approves every application not already approved, in one batched
@@ -166,6 +177,37 @@ export const useApplicationStore = create<ApplicationState>()(
       applications: [],
       pendingReasonNotes: [],
       memberReasonNotes: [],
+      rejectedApplications: [],
+
+      rejectApplication: (id, reason) => {
+        const app = get().applications.find((a) => a.id === id);
+        if (!app) return;
+        if (app.linkedBandId) {
+          useAppStore.getState().deleteBand(app.linkedBandId);
+        }
+        set((state) => ({
+          applications: state.applications.filter((a) => a.id !== id),
+          rejectedApplications: [
+            { ...app, approved: false, linkedBandId: null, rejectedAt: Date.now(), rejectionReason: reason },
+            ...(state.rejectedApplications ?? []),
+          ],
+        }));
+      },
+
+      restoreRejectedApplication: (id) => {
+        const app = (get().rejectedApplications ?? []).find((a) => a.id === id);
+        if (!app) return;
+        const { rejectedAt: _rejectedAt, rejectionReason: _rejectionReason, ...restored } = app;
+        set((state) => ({
+          rejectedApplications: (state.rejectedApplications ?? []).filter((a) => a.id !== id),
+          applications: [...state.applications, { ...restored, approved: false, linkedBandId: null }],
+        }));
+      },
+
+      deleteRejectedApplication: (id) =>
+        set((state) => ({
+          rejectedApplications: (state.rejectedApplications ?? []).filter((a) => a.id !== id),
+        })),
 
       attachPendingReasonNoteToMember: (noteId, memberName) => {
         const pending = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
@@ -388,7 +430,7 @@ export const useApplicationStore = create<ApplicationState>()(
             useAppStore.getState().deleteBand(app.linkedBandId);
           }
         }
-        set({ applications: [] });
+        set({ applications: [], rejectedApplications: [] });
       },
 
       mergeMemberName: (fromName, toName) => {

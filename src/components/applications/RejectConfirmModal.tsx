@@ -25,7 +25,7 @@ export function RejectConfirmModal({ app, allApplications, onCancel, onConfirm }
     >
       <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-slate-100">
-          「{app.bandName}」を却下（削除）しますか？
+          「{app.bandName}」を却下しますか？（却下済みの一覧から戻せます）
         </h2>
 
         {zeroedOut.length > 0 && (

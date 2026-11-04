@@ -126,6 +126,10 @@ export type Application = {
   parseWarning?: string;
   /** 時間指定の理由メモ(運営が手書き)。承認済みならリンク先 Band にも同じ値が入る。 */
   timeReasonNote?: string;
+  /** Only on an application in the 却下済み list: when it was rejected, and why
+   * (e.g. the simulator's 「枠数が多いため…」). */
+  rejectedAt?: number;
+  rejectionReason?: string;
 };
 
 /** 申請より先に届いた時間指定の理由(LINE など) — 申請が取り込まれたとき、または
