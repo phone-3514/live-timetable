@@ -25,6 +25,8 @@ export type PlannerSlot = {
   dayIndex: number;
   /** Day of month this slot falls on (null = the day has no usable date). */
   dayOfMonth: number | null;
+  /** 0=日 … 6=土 of the day's date (for weekday-based member constraints). */
+  weekday?: number | null;
   start: number;
   end: number;
 };
@@ -111,7 +113,7 @@ export function canUseSlot(
   slot: PlannerSlot,
   memberWindows: MemberWindow[][] = [],
 ): boolean {
-  if (memberWindows.some((windows) => windowsBlock(windows, slot.dayOfMonth, slot.start, slot.end))) return false;
+  if (memberWindows.some((windows) => windowsBlock(windows, slot.dayOfMonth, slot.start, slot.end, 0, slot.weekday ?? null))) return false;
   if (availability.windows.length === 0) return rangeOverlapsSlot(availability.globalRange, slot);
   if (slot.dayOfMonth === null) return false;
   return availability.windows.some(

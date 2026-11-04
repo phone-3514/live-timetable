@@ -9,6 +9,7 @@ import {
 import {
   applyTimeBuffer,
   dayOfMonthOf,
+  weekdayOf,
   findMemberConstraintViolations,
   parseConstraintWindowsCached,
   windowsBlock,
@@ -102,7 +103,7 @@ export function canPlaceBandInSlot(
 
   // The band's own 理由メモ ("20日 10:00~12:00, 21日 不可") read the same way.
   const noteWindows = parseConstraintWindowsCached(band.timeReasonNote);
-  if (noteWindows.length > 0 && windowsBlock(noteWindows, dayOfMonthOf(day), slotStart, slotEnd, buffer)) {
+  if (noteWindows.length > 0 && windowsBlock(noteWindows, dayOfMonthOf(day), slotStart, slotEnd, buffer, weekdayOf(day))) {
     return false;
   }
 

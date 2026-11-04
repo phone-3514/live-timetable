@@ -25,7 +25,7 @@ import {
   computeBandMetrics,
   describePriorityBasis,
 } from "../utils/rejectionPolicy";
-import { getMemberWindows, parseConstraintWindowsCached } from "../utils/memberConstraints";
+import { getMemberWindows, parseConstraintWindowsCached, weekdayOf } from "../utils/memberConstraints";
 import { ModalPortal } from "./ModalPortal";
 import { RejectionReasonDialog } from "./RejectionReasonDialog";
 import type { TimetableDay } from "../types";
@@ -502,7 +502,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
         minutes: null,
       }));
       for (const row of simulateDay(core, p.extras, p.settings).rows) {
-        if (row.kind === "band") slots.push({ dayIndex, dayOfMonth, start: row.start, end: row.end });
+        if (row.kind === "band") slots.push({ dayIndex, dayOfMonth, weekday: weekdayOf(p.day), start: row.start, end: row.end });
       }
     }
 

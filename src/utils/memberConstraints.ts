@@ -44,8 +44,11 @@ export function applyTimeBuffer(range: TimeRange | null, kind: "ng" | "ok", buff
 
 export type MemberWindow = {
   kind: "ng" | "ok";
-  /** Day of month the window is for; null = every day. */
+  /** Day of month the window is for; null = every day (unless `weekday` is set). */
   day: number | null;
+  /** Day of the week (0=日 … 6=土) for "土曜は不可"-style windows; the window
+   * then applies to every timetable day that falls on that weekday. */
+  weekday?: number;
   /** null = the whole day. */
   range: TimeRange | null;
   /** The text this window was read from, for showing back to the organizer. */
@@ -58,9 +61,36 @@ export type ParsedMemberConstraints = {
   unrecognized: string[];
 };
 
-const NEGATIVE_RE = /不可|無理|ＮＧ|NG|ダメ|だめ|出られ(?:ない|ません)|参加できない|参加不可|不参加|難しい|都合が悪|厳しい/i;
-const POSITIVE_RE = /のみ|だけ|限定|可能|ＯＫ|OK|大丈夫|出られ(?:る|ます)|参加できる/i;
-const TIME_HINT_RE = /\d{1,2}\s*(?:[:：]\d{1,2}|時)|午前|午後|夕方|終日|一日中|全日|\d{1,2}\s*日/;
+const NEGATIVE_RE =
+  /不可|無理|ＮＧ|NG|ダメ|だめ|出られ(?:ない|ません)|出れ(?:ない|ません)|参加できな(?:い|いです)|参加できません|参加不可|不参加|欠席|行けな|行けませ|いけな|いけませ|来れな|来れませ|来られな|来られませ|不都合|難しい|都合が悪|厳しい|[×✕✖]/i;
+const POSITIVE_RE =
+  /のみ|だけ|限定|可能|ＯＫ|OK|大丈夫|出られ(?:る|ます)|出れ(?:る|ます)|参加できる|行けます|行ける|来れます|来られます|[○◯〇]/i;
+const TIME_HINT_RE =
+  /\d{1,2}\s*(?:[:：]\d{1,2}|時)|午前|午後|夕方|終日|一日中|全日|両日|毎日|\d{1,2}\s*日|[月火水木金土日]曜|土日/;
+
+const WEEKDAY_NUMBER: Record<string, number> = { 日: 0, 月: 1, 火: 2, 水: 3, 木: 4, 金: 5, 土: 6 };
+
+/** "土曜" / "日曜日" / "土日" → weekday numbers (0=日 … 6=土). */
+function extractWeekdays(text: string): number[] {
+  const found = new Set<number>();
+  for (const m of text.matchAll(/([月火水木金土日])曜日?/g)) found.add(WEEKDAY_NUMBER[m[1]]);
+  if (/土日|土・日|土、日/.test(text)) {
+    found.add(6);
+    found.add(0);
+  }
+  return [...found];
+}
+
+/** "17,18日" / "17・18日" → "17日、18日", so every date of a list is its own
+ * clause. Digits right after a ":" (the minutes of "13:30, 21日") are left alone. */
+function expandDayLists(line: string): string {
+  return line.replace(/(?<![\d:：])(\d{1,2}(?:\s*[,，、・]\s*\d{1,2})+)\s*日/g, (_, list: string) =>
+    list
+      .split(/\s*[,，、・]\s*/)
+      .map((n) => `${n}日`)
+      .join("、"),
+  );
+}
 
 // A clock time, then the ways a bound is written next to one.
 const T = String.raw`\d{1,2}(?:[:：]\d{1,2}|時(?:\d{1,2}分|半)?)`;
@@ -123,7 +153,7 @@ export function parseMemberConstraintText(text: string): ParsedMemberConstraints
   const unrecognized: string[] = [];
 
   for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
+    const trimmed = expandDayLists(line.trim().normalize("NFKC"));
     if (!trimmed || !TIME_HINT_RE.test(trimmed)) continue;
 
     // One ending like "… 不可" often covers every date written before it, so a
@@ -135,9 +165,11 @@ export function parseMemberConstraintText(text: string): ParsedMemberConstraints
     const lineKind: "ng" | "ok" | null = hasNeg && hasPos ? null : hasNeg ? "ng" : hasPos ? "ok" : null;
 
     const clauses = extractDayClauses(trimmed);
-    const units: { days: (number | null)[]; text: string }[] = [];
+    const units: { days: (number | null)[]; weekdays?: number[]; text: string }[] = [];
     if (clauses.length === 0) {
-      units.push({ days: [null], text: trimmed });
+      // No numbered date: "土曜は不可" is a weekday, "両日不可" / a bare time is every day.
+      const weekdays = extractWeekdays(trimmed);
+      units.push(weekdays.length > 0 ? { days: [null], weekdays, text: trimmed } : { days: [null], text: trimmed });
     } else {
       // "20日, 21日 10:00~13:00 不可": a date with nothing after it shares the
       // next clause's times and word.
@@ -159,9 +191,14 @@ export function parseMemberConstraintText(text: string): ParsedMemberConstraints
         unrecognized.push(unit.text.trim());
         continue;
       }
-      for (const day of unit.days) {
-        for (const range of extractAllRanges(unit.text)) {
-          windows.push({ kind, day, range, source: unit.text.trim() });
+      const ranges = extractAllRanges(unit.text);
+      if (unit.weekdays) {
+        for (const weekday of unit.weekdays) {
+          for (const range of ranges) windows.push({ kind, day: null, weekday, range, source: unit.text.trim() });
+        }
+      } else {
+        for (const day of unit.days) {
+          for (const range of ranges) windows.push({ kind, day, range, source: unit.text.trim() });
         }
       }
     }
@@ -218,6 +255,13 @@ export function dayOfMonthOf(day: Pick<TimetableDay, "date">): number | null {
   return Number(day.date.slice(8, 10)) || null;
 }
 
+/** 0=日 … 6=土 for the day's calendar date (null when it has none). */
+export function weekdayOf(day: Pick<TimetableDay, "date">): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day.date ?? "");
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay();
+}
+
 /** Does this person's constraint list keep them out of [start, end) on `dom`?
  * `bufferMinutes` > 0 keeps the slot that far clear of every window's edges. */
 export function windowsBlock(
@@ -226,8 +270,12 @@ export function windowsBlock(
   start: number,
   end: number,
   bufferMinutes = 0,
+  weekday: number | null = null,
 ): boolean {
-  const applies = (w: MemberWindow) => w.day === null || (dom !== null && w.day === dom);
+  const applies = (w: MemberWindow) =>
+    w.weekday !== undefined
+      ? weekday !== null && w.weekday === weekday
+      : w.day === null || (dom !== null && w.day === dom);
   const ng = windows.filter((w) => w.kind === "ng" && applies(w));
   if (ng.some((w) => overlaps(applyTimeBuffer(w.range, "ng", bufferMinutes), start, end))) return true;
   const ok = windows.filter((w) => w.kind === "ok" && applies(w));
@@ -246,7 +294,8 @@ export function findMemberConstraintViolations(
   const start = timeToMinutes(slot.startTime);
   const end = timeToMinutes(slot.endTime);
   const dom = dayOfMonthOf(day);
-  return band.members.filter((name) => windowsBlock(getMemberWindows(name), dom, start, end, bufferMinutes));
+  const weekday = weekdayOf(day);
+  return band.members.filter((name) => windowsBlock(getMemberWindows(name), dom, start, end, bufferMinutes, weekday));
 }
 
 /** Short Japanese description of one window, e.g. "21日 13:00〜 出演不可". */
@@ -255,5 +304,7 @@ export function describeMemberWindow(w: MemberWindow): string {
   const when = w.range
     ? `${w.range.startMinutes !== null ? fmt(w.range.startMinutes) : ""}〜${w.range.endMinutes !== null ? fmt(w.range.endMinutes) : ""}`
     : "終日";
-  return `${w.day !== null ? `${w.day}日 ` : "全日 "}${when} ${w.kind === "ng" ? "出演不可" : "この時間のみ可"}`;
+  const dayLabel =
+    w.weekday !== undefined ? `${"日月火水木金土"[w.weekday]}曜 ` : w.day !== null ? `${w.day}日 ` : "全日 ";
+  return `${dayLabel}${when} ${w.kind === "ng" ? "出演不可" : "この時間のみ可"}`;
 }
