@@ -112,7 +112,6 @@ export function SlotCard({
   // identical reasoning for the same bug on the mobile side.
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const moveSlot = useAppStore((s) => s.moveSlot);
-  const setSlotMargin = useAppStore((s) => s.setSlotMargin);
   const memberNoteEntries = useMemberReasonNotesFor(band?.members ?? NO_MEMBERS);
   const singleSlotNames = useSingleSlotNamesForBand(band?.id);
   const handleMove = (direction: "up" | "down") => {
@@ -324,45 +323,6 @@ export function SlotCard({
             </button>
           )}
         </div>
-        {/* Hidden safety margin after this row: pushes the rows below later but
-            is not shown in the timetable image / copied list. */}
-        <div
-          className="flex items-center gap-0.5 whitespace-nowrap text-[10px] text-slate-500"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {slot.marginAfterMinutes ? (
-            <>
-              <span title="この枠の後ろに空ける余白（画像・コピーには表示されません）">⏳余白</span>
-              <button
-                type="button"
-                onClick={() => setSlotMargin(dayId, slot.id, slot.marginAfterMinutes! - 5)}
-                className="rounded px-1 hover:bg-slate-700 hover:text-slate-200"
-                aria-label="余白を5分減らす"
-              >
-                −
-              </button>
-              <span className="text-amber-300">{slot.marginAfterMinutes}分</span>
-              <button
-                type="button"
-                onClick={() => setSlotMargin(dayId, slot.id, slot.marginAfterMinutes! + 5)}
-                className="rounded px-1 hover:bg-slate-700 hover:text-slate-200"
-                aria-label="余白を5分増やす"
-              >
-                ＋
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSlotMargin(dayId, slot.id, 5)}
-              className="rounded px-1 hover:bg-slate-700 hover:text-slate-200"
-              title="この枠の後ろに、画像に表示されない余白（5分）を足す"
-            >
-              ⏳＋余白
-            </button>
-          )}
-        </div>
       </div>
 
       {isCustom ? (
@@ -447,6 +407,27 @@ export function SlotCard({
             </button>
           </div>
           <span className="custom-slot-muted text-xs">分</span>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateSlotContent(dayId, slot.id, { hidden: !slot.hidden });
+            }}
+            aria-pressed={slot.hidden === true}
+            title={
+              slot.hidden
+                ? "この行はタイムテーブル画像・コピー・公開パンフレットに表示されません（クリックで表示する）"
+                : "クリックすると、この行をタイムテーブル画像・コピー・公開パンフレットに表示しない余白にします"
+            }
+            className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              slot.hidden
+                ? "border-sky-600 bg-sky-950/60 text-sky-300"
+                : "border-slate-600 text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {slot.hidden ? "👁‍🗨 非表示" : "表示中"}
+          </button>
         </div>
       ) : (
         <div

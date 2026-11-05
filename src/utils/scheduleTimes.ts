@@ -1,5 +1,6 @@
 import type { Band, TimetableSettings, TimetableSlot } from "../types";
 import { minutesToTime, timeToMinutes } from "./time";
+import { nextVisibleIndex } from "./slotKinds";
 
 // A clock value has no date component. Keep an override on the occurrence
 // nearest the row's computed reference so 00:10 after a 23:50 row means
@@ -47,17 +48,19 @@ export function recomputeTimes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
-    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
+    // The changeover separates two performances: it is dropped when the next row
+    // that actually shows is a break/gathering row. A hidden 余白 block in between
+    // is skipped over, so the changeover stays and the 余白 adds on top of it.
+    const nextShown = slots[nextVisibleIndex(slots, index)];
+    if (nextShown?.customLabel != null) transitionAfter = 0;
     const baselineStart = baselineCursor;
     const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
     const start = hasOverride
       ? alignTimeToReference(slot.startTimeOverride!, baselineStart)
       : cursor;
     const end = start + duration;
-    // Hidden safety margin after this row (see TimetableSlot.marginAfterMinutes).
-    const margin = Math.max(0, slot.marginAfterMinutes ?? 0);
-    cursor = end + transitionAfter + margin;
-    baselineCursor = baselineStart + duration + transitionAfter + margin;
+    cursor = end + transitionAfter;
+    baselineCursor = baselineStart + duration + transitionAfter;
     return {
       ...slot,
       startTimeOverride: slot.startTimeOverride ?? null,

@@ -119,10 +119,10 @@ function ExtrasEditor({
         <button
           type="button"
           onClick={onAddMargin}
-          title="休憩とは別に、タイムテーブル画像に表示されない余白（5分など）を足します。時刻だけが後ろにずれます"
+          title="休憩とは別に、タイムテーブル画像には表示されない余白の行（5分など）を足します。時刻だけが後ろにずれます"
           className={`${smallButton} border-sky-600 bg-sky-950/40 text-sky-300 hover:bg-sky-900/50`}
         >
-          ⏳ 余白
+          ⏳ 余白（非表示）
         </button>
         <button
           type="button"
@@ -175,21 +175,24 @@ function ExtrasEditor({
                 className={`${fieldClass} w-16`}
               />
               <span className="text-xs text-slate-500">分</span>
-              {extra.hidden && (
-                <span
-                  className="rounded border border-sky-700 px-1.5 py-0.5 text-[10px] text-sky-300"
-                  title="タイムテーブル画像には表示されません（時刻だけがずれます）"
-                >
-                  非表示
-                </span>
-              )}
+              <label
+                className="flex min-h-11 items-center gap-1 text-[11px] text-sky-300 md:min-h-0"
+                title="チェックすると、この行はタイムテーブル画像・コピー・公開パンフレットに表示されません（時刻だけがずれます）"
+              >
+                <input
+                  type="checkbox"
+                  checked={extra.hidden === true}
+                  onChange={(e) => onPatch(extra.id, { hidden: e.target.checked })}
+                />
+                非表示
+              </label>
               <select
                 value={extra.position}
                 onChange={(e) => onPatch(extra.id, { position: e.target.value as SimExtra["position"] })}
                 aria-label={`${dayLabel}の${extra.label}の位置`}
                 className={`${fieldClass} w-24`}
               >
-                {!extra.hidden && <option value="before">開演前</option>}
+                <option value="before">開演前</option>
                 <option value="middle">途中</option>
                 <option value="after">終演後</option>
               </select>
@@ -1227,17 +1230,20 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                         <li
                           key={row.key}
                           className={`flex gap-2 rounded px-1.5 py-0.5 ${
-                            row.kind === "extra"
-                              ? "bg-amber-950/30 text-amber-200"
-                              : row.kind === "margin"
-                                ? "bg-sky-950/30 italic text-sky-300"
-                                : ""
+                            row.kind === "extra" ? "bg-amber-950/30 text-amber-200" : ""
                           }`}
                         >
                           <span className="w-28 shrink-0 font-mono text-slate-400">
                             {formatClock(row.start)}–{formatClock(row.end)}
                           </span>
-                          <span className="min-w-0 break-words">{row.label}</span>
+                          <span className="min-w-0 break-words">
+                            {row.label}
+                            {row.hidden && (
+                              <span className="ml-1.5 rounded border border-sky-700 px-1 text-[10px] text-sky-300">
+                                非表示
+                              </span>
+                            )}
+                          </span>
                         </li>
                       ))}
                       {result.rows.length === 0 && <li className="text-slate-500">項目がありません</li>}

@@ -3,6 +3,7 @@ import type { Band, TimetableDay, TimetableSlot } from "../types";
 import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, LayoutStyle, ShareTheme, ThemeId } from "../utils/shareThemes";
 import type { EventInfo } from "../store/useAppStore";
+import { isHiddenBlock } from "../utils/slotKinds";
 
 // A purely presentational, non-interactive render of a day's timetable,
 // designed to be captured as a single shareable PNG (Discord/LINE/print) —
@@ -34,7 +35,7 @@ const MAX_SETLIST_SONGS = 5;
 // compute the exact same columns from the exact same rule.
 export function getDayColumns(day: TimetableDay, columnCount = 2): TimetableSlot[][] {
   const visibleSlots = day.slots.filter(
-    (s) => s.bandId !== null || s.customLabel !== null,
+    (s) => (s.bandId !== null || s.customLabel !== null) && !isHiddenBlock(s),
   );
   if (visibleSlots.length === 0) return [];
   const perColumn = Math.ceil(visibleSlots.length / Math.max(1, columnCount));

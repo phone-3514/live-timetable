@@ -179,11 +179,13 @@ export type TimetableSlot = {
   delayMinutes?: number;
   startTime: string;
   endTime: string;
-  /** Extra time kept free right after this row (after its changeover) as a
-   * safety margin: it pushes everything below later, but it is not a row, so the
-   * timetable image / copied list / public pamphlet never show it — only the
-   * gap in the times. Not a break (it does not split the day into blocks). */
-  marginAfterMinutes?: number;
+  /** Only for a non-performance row (customLabel set): a 余白 block. It takes
+   * time like 休憩 does and is a row in the editor, but it is left out of
+   * everything generated from the timetable — the share image, the copied list,
+   * the public pamphlet — so those just show the gap in the times. It is not a
+   * break: it does not split the day into blocks, and changeover time is still
+   * kept between the bands on either side of it. */
+  hidden?: boolean;
 };
 
 export type TimetableSettings = {

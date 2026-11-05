@@ -37,9 +37,7 @@ export function planDaySlots(day: TimetableDay, plan: SimulationPlan): PlannedDa
   let removedCustom = 0;
 
   if (plan.extras !== null && plan.replaceCustomSlots) {
-    // The extras list is the whole intended set, so margins from an earlier
-    // apply go too (they live on the rows themselves).
-    const kept = slots.filter((s) => s.customLabel === null).map((s) => ({ ...s, marginAfterMinutes: undefined }));
+    const kept = slots.filter((s) => s.customLabel === null);
     removedCustom = slots.length - kept.length;
     slots = kept;
   }
@@ -82,25 +80,13 @@ export function planDaySlots(day: TimetableDay, plan: SimulationPlan): PlannedDa
 
   let insertedExtras = 0;
   if (plan.extras !== null) {
-    const asSlot = (e: SimExtra) => makeCustomEventSlot(e.label, e.minutes);
-    // A 余白 (hidden extra) is not a row: it becomes marginAfterMinutes on
-    // whichever row was laid out just before it — in the same order the
-    // simulator uses (arrangeItems), so a margin listed after a 休憩 at the same
-    // spot lands after that 休憩, not before it. One ahead of the first row
-    // ("開演前") has nothing to follow and is dropped.
-    const addExtra = (list: TimetableSlot[], e: SimExtra) => {
-      if (!e.hidden) {
-        list.push(asSlot(e));
-      } else if (list.length > 0) {
-        const last = list[list.length - 1];
-        list[list.length - 1] = { ...last, marginAfterMinutes: (last.marginAfterMinutes ?? 0) + e.minutes };
-      }
-    };
+    const asSlot = (e: SimExtra) => makeCustomEventSlot(e.label, e.minutes, e.hidden === true);
+    const before = plan.extras.filter((e) => e.position === "before").map(asSlot);
+    const after = plan.extras.filter((e) => e.position === "after").map(asSlot);
     const middle = plan.extras.filter((e) => e.position === "middle");
     const performanceTotal = slots.filter((s) => s.customLabel === null).length;
 
-    const next: TimetableSlot[] = [];
-    for (const e of plan.extras.filter((x) => x.position === "before")) addExtra(next, e);
+    const next: TimetableSlot[] = [...before];
     let seen = 0;
     for (const slot of slots) {
       next.push(slot);
@@ -108,11 +94,11 @@ export function planDaySlots(day: TimetableDay, plan: SimulationPlan): PlannedDa
       seen++;
       for (const e of middle) {
         // "after the k-th band", with k past the end landing after the last.
-        if (Math.max(1, Math.min(e.afterBandCount, performanceTotal)) === seen) addExtra(next, e);
+        if (Math.max(1, Math.min(e.afterBandCount, performanceTotal)) === seen) next.push(asSlot(e));
       }
     }
-    if (performanceTotal === 0) for (const e of middle) addExtra(next, e);
-    for (const e of plan.extras.filter((x) => x.position === "after")) addExtra(next, e);
+    if (performanceTotal === 0) next.push(...middle.map(asSlot));
+    next.push(...after);
     insertedExtras = plan.extras.length;
     slots = next;
   }

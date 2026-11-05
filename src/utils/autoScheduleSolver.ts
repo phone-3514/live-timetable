@@ -2,6 +2,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import type { VenueHours } from "./parseBands";
 import { canPlaceBandInSlot } from "./scheduleEligibility";
+import { isHiddenBlock } from "./slotKinds";
 import { TIME_RESTRICTION_BUFFER_MINUTES } from "./memberConstraints";
 import { alignTimeToReference, recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
@@ -61,6 +62,7 @@ export function computeScheduleBlocks(slots: TimetableSlot[]): ScheduleBlock[] {
   }
 
   for (const slot of slots) {
+    if (isHiddenBlock(slot)) continue; // 余白 is not a break
     if (slot.customLabel !== null) {
       flush();
       blockIndex++;
@@ -436,9 +438,10 @@ export function validateHardConstraints(slots: TimetableSlot[], context: Schedul
 
   // 2. 同一人物の連続出演禁止 — raw array-adjacent slots only, so a divider
   // row between two performances already breaks adjacency entirely.
-  for (let i = 0; i < slots.length - 1; i++) {
-    const a = slots[i];
-    const b = slots[i + 1];
+  const shownSlots = slots.filter((s) => !isHiddenBlock(s)); // a 余白 between two sets doesn't separate them
+  for (let i = 0; i < shownSlots.length - 1; i++) {
+    const a = shownSlots[i];
+    const b = shownSlots[i + 1];
     if (!a.bandId || !b.bandId) continue;
     const bandA = bandMap.get(a.bandId);
     const bandB = bandMap.get(b.bandId);

@@ -18,6 +18,7 @@ import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import { makeBlankSlot, makeCustomEventSlot } from "../utils/slotFactories";
+import { isHiddenBlock, nextVisibleIndex } from "../utils/slotKinds";
 import { planDaySlots, type SimulationPlan } from "../utils/applySimulationPlan";
 import { dayEndAbsoluteMinutes, deadlineAbsoluteMinutes, getDeadlineStatus } from "../utils/dayDeadline";
 import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
@@ -92,7 +93,7 @@ type AppState = {
 
   addSlot: (dayId: string) => void;
   addSlots: (dayId: string, count: number) => void;
-  addCustomSlot: (dayId: string, label: string, durationMinutes: number) => void;
+  addCustomSlot: (dayId: string, label: string, durationMinutes: number, hidden?: boolean) => void;
   // Inserts the club's standard pre-show/post-show custom slots around
   // whatever's already there: 幹部集合/出演者集合/リハーサル/諸注意 right
   // before the day's first performance slot, and 写真撮影/完全撤収 right
@@ -103,12 +104,10 @@ type AppState = {
     dayId: string,
     slotId: string,
     partial: Partial<
-      Pick<TimetableSlot, "customLabel" | "customDurationMinutes" | "startTimeOverride">
+      Pick<TimetableSlot, "customLabel" | "customDurationMinutes" | "startTimeOverride" | "hidden">
     >,
   ) => void;
   removeSlot: (dayId: string, slotId: string) => void;
-  /** Sets the hidden safety margin after a row (0 / undefined removes it). */
-  setSlotMargin: (dayId: string, slotId: string, minutes: number) => void;
   // Band assignment/unassignment/reordering look up which day a slot
   // belongs to internally, since slot ids are globally unique — this lets
   // a band be dragged directly from one day's timetable into another's.
@@ -284,11 +283,11 @@ export function computeDropPreviewStartTime(
       duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
       transitionAfter = 0;
     }
-    if (day.slots[index + 1]?.customLabel != null) transitionAfter = 0;
+    if (day.slots[nextVisibleIndex(day.slots, index)]?.customLabel != null) transitionAfter = 0;
     const start = slot.startTimeOverride
       ? alignTimeToReference(slot.startTimeOverride, cursor)
       : cursor;
-    cursor = start + duration + transitionAfter + Math.max(0, slot.marginAfterMinutes ?? 0);
+    cursor = start + duration + transitionAfter;
   }
   return minutesToTime(cursor);
 }
@@ -363,8 +362,8 @@ function estimateSlotBoundaryMinutes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
-    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
-    cursor += duration + transitionAfter + Math.max(0, slot.marginAfterMinutes ?? 0);
+    if (slots[nextVisibleIndex(slots, index)]?.customLabel != null) transitionAfter = 0;
+    cursor += duration + transitionAfter;
   }
   return boundaries;
 }
@@ -693,11 +692,11 @@ export const useAppStore = create<AppState>()(
       ]),
     })),
 
-  addCustomSlot: (dayId, label, durationMinutes) =>
+  addCustomSlot: (dayId, label, durationMinutes, hidden) =>
     set((state) => ({
       days: updateDaySlots(state.days, dayId, state.bands, (slots) => [
         ...slots,
-        makeCustomEventSlot(label, durationMinutes),
+        makeCustomEventSlot(label, durationMinutes, hidden === true),
       ]),
     })),
 
@@ -755,15 +754,6 @@ export const useAppStore = create<AppState>()(
     set((state) => ({
       days: updateDaySlots(state.days, dayId, state.bands, (slots) =>
         slots.filter((s) => s.id !== slotId),
-      ),
-    })),
-
-  setSlotMargin: (dayId, slotId, minutes) =>
-    set((state) => ({
-      days: updateDaySlots(state.days, dayId, state.bands, (slots) =>
-        slots.map((s) =>
-          s.id === slotId ? { ...s, marginAfterMinutes: minutes > 0 ? Math.round(minutes) : undefined } : s,
-        ),
       ),
     })),
 
@@ -1231,7 +1221,7 @@ export const useAppStore = create<AppState>()(
       // auto-inserted — an organizer's own break, or one a previous
       // auto-schedule run already added, is left alone.
       for (const day of days) {
-        if (day.slots.some((s) => s.customLabel !== null)) continue;
+        if (day.slots.some((s) => s.customLabel !== null && !s.hidden)) continue;
         const insertIndex = findAutoBreakInsertIndex(day.slots, day.settings, state.bands);
         if (insertIndex === null) continue;
         days = updateDaySlots(days, day.id, state.bands, (slots) => [
@@ -1724,6 +1714,7 @@ function computeSlotBlocks(day: TimetableDay): Map<string, number> {
   const blockBySlotId = new Map<string, number>();
   let block = 0;
   for (const slot of day.slots) {
+    if (isHiddenBlock(slot)) continue; // 余白 is not a break
     if (slot.customLabel !== null) {
       block++;
       continue;
@@ -1745,6 +1736,7 @@ function computeBlockTimeRanges(day: TimetableDay): Map<number, BlockTimeRange> 
   const ranges = new Map<number, BlockTimeRange>();
   let block = 0;
   for (const slot of day.slots) {
+    if (isHiddenBlock(slot)) continue; // 余白 is not a break
     if (slot.customLabel !== null) {
       block++;
       continue;

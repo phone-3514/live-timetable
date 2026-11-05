@@ -201,6 +201,7 @@ export function MobileSlotCard({
         >
           <span className="custom-slot-label min-w-0 flex-1 truncate text-xs font-semibold">
             {slot.customLabel}
+            {slot.hidden && <span className="ml-1.5 rounded border border-sky-700 px-1 text-[10px] text-sky-300">非表示</span>}
           </span>
           <span className="custom-slot-muted shrink-0 font-sans text-[11px] font-medium tabular-nums">{slot.customDurationMinutes ?? 0}分</span>
         </div>

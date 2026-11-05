@@ -24,11 +24,13 @@ export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
   const updateSlotContent = useAppStore((s) => s.updateSlotContent);
   const [label, setLabel] = useState(slot.customLabel ?? "");
   const [minutes, setMinutes] = useState(slot.customDurationMinutes ?? 10);
+  const [hidden, setHidden] = useState(slot.hidden === true);
 
   const handleSave = () => {
     updateSlotContent(dayId, slot.id, {
       customLabel: label.trim() || slot.customLabel,
       customDurationMinutes: Number.isFinite(minutes) && minutes > 0 ? minutes : slot.customDurationMinutes,
+      hidden,
     });
     onClose();
   };
@@ -67,6 +69,10 @@ export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
             onChange={(e) => setMinutes(Number(e.target.value))}
             className="min-h-11 w-24 rounded border border-slate-600 bg-slate-800 px-3 text-sm text-slate-100 outline-none focus:border-indigo-500"
           />
+        </label>
+        <label className="mb-4 flex min-h-11 items-center gap-2 text-xs text-slate-300">
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+          タイムテーブル画像・コピー・公開パンフレットに表示しない（余白）
         </label>
         <div className="flex gap-2">
           <button

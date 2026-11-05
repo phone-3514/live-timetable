@@ -1,6 +1,7 @@
 import type { Band, TimetableDay } from "../types";
 import type { EventInfo } from "../store/useAppStore";
 import type { PublicPamphletDoc } from "./types";
+import { isHiddenBlock } from "../utils/slotKinds";
 
 // The one function responsible for deciding what leaves the private room
 // document and becomes public — see types.ts's PublicBand/PublicDay for
@@ -28,7 +29,8 @@ export function buildPublicPamphletDoc(
       id: d.id,
       label: d.label,
       date: d.date,
-      slots: d.slots.map((s) => ({
+      // 余白 blocks are left out: the public timetable just shows the gap.
+      slots: d.slots.filter((s) => !isHiddenBlock(s)).map((s) => ({
         id: s.id,
         bandId: s.bandId,
         customLabel: s.customLabel,
