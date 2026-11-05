@@ -18,7 +18,7 @@ import { normalizeMemberName } from "../utils/normalizeMemberName";
 import { alignTimeToReference, recomputeTimes } from "../utils/scheduleTimes";
 import { canPlaceBandInSlot } from "../utils/scheduleEligibility";
 import { makeBlankSlot, makeCustomEventSlot } from "../utils/slotFactories";
-import { isHiddenBlock, nextVisibleIndex } from "../utils/slotKinds";
+import { isHiddenBlock } from "../utils/slotKinds";
 import { planDaySlots, type SimulationPlan } from "../utils/applySimulationPlan";
 import { dayEndAbsoluteMinutes, deadlineAbsoluteMinutes, getDeadlineStatus } from "../utils/dayDeadline";
 import { buildSwappedDays, validateBandSwap } from "../utils/bandSwap";
@@ -283,7 +283,7 @@ export function computeDropPreviewStartTime(
       duration = slot.customDurationMinutes ?? day.settings.performanceMinutes;
       transitionAfter = 0;
     }
-    if (day.slots[nextVisibleIndex(day.slots, index)]?.customLabel != null) transitionAfter = 0;
+    if (day.slots[index + 1]?.customLabel != null) transitionAfter = 0;
     const start = slot.startTimeOverride
       ? alignTimeToReference(slot.startTimeOverride, cursor)
       : cursor;
@@ -362,7 +362,7 @@ function estimateSlotBoundaryMinutes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
-    if (slots[nextVisibleIndex(slots, index)]?.customLabel != null) transitionAfter = 0;
+    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
     cursor += duration + transitionAfter;
   }
   return boundaries;

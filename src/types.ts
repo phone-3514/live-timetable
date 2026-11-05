@@ -183,8 +183,8 @@ export type TimetableSlot = {
    * time like 休憩 does and is a row in the editor, but it is left out of
    * everything generated from the timetable — the share image, the copied list,
    * the public pamphlet — so those just show the gap in the times. It is not a
-   * break: it does not split the day into blocks, and changeover time is still
-   * kept between the bands on either side of it. */
+   * break: it does not split the day into blocks. Like any non-performance row it
+   * gets no changeover time before or after it. */
   hidden?: boolean;
 };
 

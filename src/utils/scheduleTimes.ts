@@ -1,6 +1,5 @@
 import type { Band, TimetableSettings, TimetableSlot } from "../types";
 import { minutesToTime, timeToMinutes } from "./time";
-import { nextVisibleIndex } from "./slotKinds";
 
 // A clock value has no date component. Keep an override on the occurrence
 // nearest the row's computed reference so 00:10 after a 23:50 row means
@@ -48,11 +47,10 @@ export function recomputeTimes(
       duration = slot.customDurationMinutes ?? settings.performanceMinutes;
       transitionAfter = 0;
     }
-    // The changeover separates two performances: it is dropped when the next row
-    // that actually shows is a break/gathering row. A hidden 余白 block in between
-    // is skipped over, so the changeover stays and the 余白 adds on top of it.
-    const nextShown = slots[nextVisibleIndex(slots, index)];
-    if (nextShown?.customLabel != null) transitionAfter = 0;
+    // The changeover separates two performances, so no changeover is added
+    // before a non-performance row (休憩・集合・余白…) — and none after one,
+    // since those rows get no changeover of their own.
+    if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
     const baselineStart = baselineCursor;
     const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
     const start = hasOverride
