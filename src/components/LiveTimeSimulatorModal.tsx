@@ -85,6 +85,7 @@ function ExtrasEditor({
   extras,
   canCopyToOtherDays,
   onAdd,
+  onAddMargin,
   onAddStandard,
   onClear,
   onPatch,
@@ -95,6 +96,7 @@ function ExtrasEditor({
   extras: SimExtra[];
   canCopyToOtherDays: boolean;
   onAdd: () => void;
+  onAddMargin: () => void;
   onAddStandard: () => void;
   onClear: () => void;
   onPatch: (id: string, patch: Partial<SimExtra>) => void;
@@ -113,6 +115,14 @@ function ExtrasEditor({
           className={`${smallButton} border-slate-600 text-slate-200 hover:bg-slate-700`}
         >
           + 追加
+        </button>
+        <button
+          type="button"
+          onClick={onAddMargin}
+          title="休憩とは別に、タイムテーブル画像に表示されない余白（5分など）を足します。時刻だけが後ろにずれます"
+          className={`${smallButton} border-sky-600 bg-sky-950/40 text-sky-300 hover:bg-sky-900/50`}
+        >
+          ⏳ 余白
         </button>
         <button
           type="button"
@@ -165,13 +175,21 @@ function ExtrasEditor({
                 className={`${fieldClass} w-16`}
               />
               <span className="text-xs text-slate-500">分</span>
+              {extra.hidden && (
+                <span
+                  className="rounded border border-sky-700 px-1.5 py-0.5 text-[10px] text-sky-300"
+                  title="タイムテーブル画像には表示されません（時刻だけがずれます）"
+                >
+                  非表示
+                </span>
+              )}
               <select
                 value={extra.position}
                 onChange={(e) => onPatch(extra.id, { position: e.target.value as SimExtra["position"] })}
                 aria-label={`${dayLabel}の${extra.label}の位置`}
                 className={`${fieldClass} w-24`}
               >
-                <option value="before">開演前</option>
+                {!extra.hidden && <option value="before">開演前</option>}
                 <option value="middle">途中</option>
                 <option value="after">終演後</option>
               </select>
@@ -1124,6 +1142,19 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                         { id: crypto.randomUUID(), label: "休憩", minutes: 10, position: "middle", afterBandCount: 5 },
                       ])
                     }
+                    onAddMargin={() =>
+                      updateExtras(day.id, (prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID(),
+                          label: "余白",
+                          minutes: 5,
+                          position: "middle",
+                          afterBandCount: 5,
+                          hidden: true,
+                        },
+                      ])
+                    }
                     onAddStandard={() => updateExtras(day.id, (prev) => [...prev, ...newStandardExtras()])}
                     onClear={() => updateExtras(day.id, () => [])}
                     onPatch={(id, patch) =>
@@ -1196,7 +1227,11 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                         <li
                           key={row.key}
                           className={`flex gap-2 rounded px-1.5 py-0.5 ${
-                            row.kind === "extra" ? "bg-amber-950/30 text-amber-200" : ""
+                            row.kind === "extra"
+                              ? "bg-amber-950/30 text-amber-200"
+                              : row.kind === "margin"
+                                ? "bg-sky-950/30 italic text-sky-300"
+                                : ""
                           }`}
                         >
                           <span className="w-28 shrink-0 font-mono text-slate-400">

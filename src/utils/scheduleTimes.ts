@@ -54,8 +54,10 @@ export function recomputeTimes(
       ? alignTimeToReference(slot.startTimeOverride!, baselineStart)
       : cursor;
     const end = start + duration;
-    cursor = end + transitionAfter;
-    baselineCursor = baselineStart + duration + transitionAfter;
+    // Hidden safety margin after this row (see TimetableSlot.marginAfterMinutes).
+    const margin = Math.max(0, slot.marginAfterMinutes ?? 0);
+    cursor = end + transitionAfter + margin;
+    baselineCursor = baselineStart + duration + transitionAfter + margin;
     return {
       ...slot,
       startTimeOverride: slot.startTimeOverride ?? null,

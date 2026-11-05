@@ -26,7 +26,10 @@ export type SimItem =
       /** Per-band changeover override, like Band.customTransitionMinutes. */
       transitionMinutes?: number;
     }
-  | { kind: "extra"; label: string; minutes: number };
+  | { kind: "extra"; label: string; minutes: number }
+  // A hidden safety margin: extra time after the previous row that is not a row
+  // of its own (see TimetableSlot.marginAfterMinutes).
+  | { kind: "margin"; label: string; minutes: number };
 
 export type SimExtra = {
   id: string;
@@ -36,11 +39,14 @@ export type SimExtra = {
    * middle = right after the `afterBandCount`-th band. */
   position: "before" | "after" | "middle";
   afterBandCount: number;
+  /** A 余白: time kept free that the timetable image never shows (it only
+   * shifts the times below). Not a row, and never "before" the first band. */
+  hidden?: boolean;
 };
 
 export type SimRow = {
   key: string;
-  kind: "band" | "extra";
+  kind: "band" | "extra" | "margin";
   label: string;
   /** Absolute minutes from midnight of the first day; may exceed 1440. */
   start: number;
@@ -73,7 +79,10 @@ export const STANDARD_SIM_EXTRAS: Omit<SimExtra, "id">[] = [
 // band (k past the end lands after the last band, ahead of the "after"
 // extras). Same-position extras keep the order they were listed in.
 export function arrangeItems(core: SimItem[], extras: SimExtra[]): SimItem[] {
-  const asItem = (e: SimExtra): SimItem => ({ kind: "extra", label: e.label, minutes: e.minutes });
+  const asItem = (e: SimExtra): SimItem =>
+    e.hidden
+      ? { kind: "margin", label: e.label, minutes: e.minutes }
+      : { kind: "extra", label: e.label, minutes: e.minutes };
   const before = extras.filter((e) => e.position === "before").map(asItem);
   const after = extras.filter((e) => e.position === "after").map(asItem);
   const middle = extras.filter((e) => e.position === "middle");
@@ -103,7 +112,18 @@ function unwrap(minutes: number, floor: number): number {
 export function simulateItems(items: SimItem[], settings: TimetableSettings): SimResult {
   const bands: Band[] = [];
   const slots: TimetableSlot[] = [];
+  // slots[k] came from items[slotItem[k]]; margins[k] is the hidden margin kept
+  // free right after slot k, and leadingMargin any margin ahead of the first row.
+  const slotItem: number[] = [];
+  const margins: number[] = [];
+  let leadingMargin = 0;
   items.forEach((item, i) => {
+    if (item.kind === "margin") {
+      if (slots.length === 0) leadingMargin += item.minutes;
+      else slots[slots.length - 1].marginAfterMinutes = (slots[slots.length - 1].marginAfterMinutes ?? 0) + item.minutes;
+      return;
+    }
+    slotItem.push(i);
     if (item.kind === "band") {
       const id = `sim-band-${i}`;
       bands.push({
@@ -143,15 +163,33 @@ export function simulateItems(items: SimItem[], settings: TimetableSettings): Si
     }
   });
 
-  const computed = recomputeTimes(slots, settings, bands);
+  margins.push(...slots.map((s) => s.marginAfterMinutes ?? 0));
   const startMinutes = timeToMinutes(settings.startTime);
-  let floor = startMinutes;
-  const rows: SimRow[] = computed.map((slot, i) => {
+  // A margin ahead of the first row just starts the first row later.
+  if (leadingMargin > 0 && slots.length > 0) {
+    slots[0].startTimeOverride = minutesToTime(startMinutes + leadingMargin);
+  }
+  const computed = recomputeTimes(slots, settings, bands);
+  let floor = startMinutes + leadingMargin;
+  const rows: SimRow[] = [];
+  if (leadingMargin > 0) {
+    rows.push({ key: "sim-margin-lead", kind: "margin", label: "余白（非表示）", start: startMinutes, end: startMinutes + leadingMargin });
+  }
+  computed.forEach((slot, i) => {
+    const item = items[slotItem[i]];
     const start = unwrap(timeToMinutes(slot.startTime), floor);
     const end = unwrap(timeToMinutes(slot.endTime), start);
     floor = end;
-    const item = items[i];
-    return { key: slot.id, kind: item.kind, label: item.label, start, end };
+    rows.push({ key: slot.id, kind: item.kind === "margin" ? "extra" : item.kind, label: item.label, start, end });
+    const margin = margins[i];
+    if (margin > 0) {
+      // The margin sits just ahead of the next row (after the changeover), or
+      // right after this row when it is the last one.
+      const next = computed[i + 1];
+      const nextStart = next ? unwrap(timeToMinutes(next.startTime), end) : end + margin;
+      rows.push({ key: `${slot.id}-margin`, kind: "margin", label: "余白（非表示）", start: nextStart - margin, end: nextStart });
+      floor = Math.max(floor, nextStart);
+    }
   });
 
   const bandRows = rows.filter((r) => r.kind === "band");

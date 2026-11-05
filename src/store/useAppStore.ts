@@ -107,6 +107,8 @@ type AppState = {
     >,
   ) => void;
   removeSlot: (dayId: string, slotId: string) => void;
+  /** Sets the hidden safety margin after a row (0 / undefined removes it). */
+  setSlotMargin: (dayId: string, slotId: string, minutes: number) => void;
   // Band assignment/unassignment/reordering look up which day a slot
   // belongs to internally, since slot ids are globally unique — this lets
   // a band be dragged directly from one day's timetable into another's.
@@ -286,7 +288,7 @@ export function computeDropPreviewStartTime(
     const start = slot.startTimeOverride
       ? alignTimeToReference(slot.startTimeOverride, cursor)
       : cursor;
-    cursor = start + duration + transitionAfter;
+    cursor = start + duration + transitionAfter + Math.max(0, slot.marginAfterMinutes ?? 0);
   }
   return minutesToTime(cursor);
 }
@@ -362,7 +364,7 @@ function estimateSlotBoundaryMinutes(
       transitionAfter = 0;
     }
     if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
-    cursor += duration + transitionAfter;
+    cursor += duration + transitionAfter + Math.max(0, slot.marginAfterMinutes ?? 0);
   }
   return boundaries;
 }
@@ -753,6 +755,15 @@ export const useAppStore = create<AppState>()(
     set((state) => ({
       days: updateDaySlots(state.days, dayId, state.bands, (slots) =>
         slots.filter((s) => s.id !== slotId),
+      ),
+    })),
+
+  setSlotMargin: (dayId, slotId, minutes) =>
+    set((state) => ({
+      days: updateDaySlots(state.days, dayId, state.bands, (slots) =>
+        slots.map((s) =>
+          s.id === slotId ? { ...s, marginAfterMinutes: minutes > 0 ? Math.round(minutes) : undefined } : s,
+        ),
       ),
     })),
 
