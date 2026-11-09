@@ -5,6 +5,8 @@ import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
 import { useAppStore } from "../store/useAppStore";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { downloadTimetableExcel } from "../utils/timetableExport";
+import { useToastStore } from "../store/useToastStore";
 import { computeSafePixelRatio, dataUrlToFile, downloadFile } from "../utils/shareOrDownload";
 import { ModalPortal } from "./ModalPortal";
 
@@ -34,6 +36,7 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   useLayoutEffect(() => {
     if (previewRef.current) {
@@ -76,6 +79,18 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
       await downloadFile(file);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleExcel = async () => {
+    setExportingExcel(true);
+    try {
+      await downloadTimetableExcel(days, bands, eventInfo);
+    } catch (error) {
+      console.error("[ShareAllDaysPreviewModal] excel export failed", error);
+      useToastStore.getState().show("Excelの出力に失敗しました", "error");
+    } finally {
+      setExportingExcel(false);
     }
   };
 
@@ -213,6 +228,14 @@ export function ShareAllDaysPreviewModal({ onClose }: Props) {
             className="min-h-11 rounded border border-slate-600 px-3 text-sm text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
           >
             閉じる
+          </button>
+          <button
+            onClick={() => void handleExcel()}
+            disabled={exportingExcel}
+            title="画像と同じ内容（時刻・バンド名・SYNC/KEY・セットリスト全曲）を、全日程＋日ごとのシートでExcelに出力します"
+            className="min-h-11 rounded border border-emerald-600 bg-emerald-950/40 px-3 text-sm font-medium text-emerald-300 hover:bg-emerald-900/50 disabled:opacity-50 md:min-h-0 md:py-1.5"
+          >
+            {exportingExcel ? "Excelを生成中…" : "📊 Excelで出力"}
           </button>
           <button
             onClick={handleDownload}
