@@ -13,6 +13,7 @@ import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import { SetlistExportModal } from "./SetlistExportModal";
+import { ClosingCandidatesModal } from "./ClosingCandidatesModal";
 import type { TimetableDay } from "../types";
 import { isHiddenBlock } from "../utils/slotKinds";
 
@@ -63,6 +64,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const [bulkCount, setBulkCount] = useState(5);
   const [showSharePreview, setShowSharePreview] = useState(false);
   const [showSetlistExport, setShowSetlistExport] = useState(false);
+  const [showClosingCandidates, setShowClosingCandidates] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customMinutes, setCustomMinutes] = useState(10);
   // The slot list's whole area is also a drop target (`day:<id>`, handled in
@@ -278,6 +280,13 @@ export function DayPanel({ day, daysCount }: Props) {
         >
           +余白（非表示）
         </button>
+        <button
+          onClick={() => setShowClosingCandidates(true)}
+          title="日時指定などの絶対ハード制約を満たして、この日のトリ（最終枠）に置けるバンドの一覧。メンバーとセットリストも見られます"
+          className="min-h-11 rounded border border-amber-700 px-2 text-amber-300 hover:bg-amber-950/40 md:min-h-0 md:py-1"
+        >
+          🏆 トリ候補
+        </button>
         <details ref={settingsDetailsRef} className="group relative ml-auto shrink-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-indigo-500 bg-indigo-950/50 px-3 font-semibold text-indigo-300 shadow-sm hover:bg-indigo-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:min-h-0 md:py-1.5" aria-label={`${day.label}の設定と出力メニュー`}>
             <span aria-hidden="true">⚙️</span>
@@ -379,6 +388,9 @@ export function DayPanel({ day, daysCount }: Props) {
 
       {showSharePreview && (
         <SharePreviewModal day={day} onClose={() => setShowSharePreview(false)} />
+      )}
+      {showClosingCandidates && (
+        <ClosingCandidatesModal day={day} onClose={() => setShowClosingCandidates(false)} />
       )}
       {showSetlistExport && (
         <SetlistExportModal day={day} onClose={() => setShowSetlistExport(false)} />

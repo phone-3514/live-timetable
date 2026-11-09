@@ -30,7 +30,7 @@ import { PlacedBandDetailModal } from "../PlacedBandDetailModal";
 import { MemberFrameDetailModal } from "./MemberFrameDetailModal";
 import { artistKey } from "../../utils/artistGroups";
 import { EditableTimeReasonNote } from "./EditableTimeReasonNote";
-import { ApplicationEditModal } from "./ApplicationEditModal";
+import { useApplicationEditStore } from "../../store/useApplicationEditStore";
 import { MemberReasonNotesLine } from "./MemberReasonNotesLine";
 
 type SortKey =
@@ -253,14 +253,13 @@ export function EditableDesiredDateTime({
 // does, so a stale reference can't crash this screen.
 // Opens the 申請を編集 dialog for any application, approved or not.
 export function EditApplicationButton({ app, className }: { app: Application; className: string }) {
-  const [open, setOpen] = useState(false);
+  // 開閉は行の state ではなくストアに持つ(行が消えてもダイアログが消えないように)。
+  // ダイアログ本体は申請管理画面の ApplicationEditHost が出す。
+  const open = useApplicationEditStore((s) => s.open);
   return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} className={className} title="バンド名・メンバー・セットリストなど申請の内容を編集">
-        ✎ 申請を編集
-      </button>
-      {open && <ApplicationEditModal app={app} onClose={() => setOpen(false)} />}
-    </>
+    <button type="button" onClick={() => open(app)} className={className} title="バンド名・メンバー・セットリストなど申請の内容を編集">
+      ✎ 申請を編集
+    </button>
   );
 }
 

@@ -5,6 +5,7 @@ import { useToastStore } from "../../store/useToastStore";
 import { ApplicationImportPanel } from "./ApplicationImportPanel";
 import { MemberFrameCounts } from "./MemberFrameCounts";
 import { ApplicationTable } from "./ApplicationTable";
+import { ApplicationEditHost } from "./ApplicationEditModal";
 import { RejectConfirmModal } from "./RejectConfirmModal";
 import { NameResolutionModal } from "./NameResolutionModal";
 import { PendingReasonNotesModal } from "./PendingReasonNotesModal";
@@ -244,6 +245,7 @@ export function ApplicationManagerTab() {
         />
       )}
 
+      <ApplicationEditHost />
       {showArtists && <SameArtistGroupsModal onClose={() => setShowArtists(false)} />}
       {showRejected && <RejectedApplicationsModal onClose={() => setShowRejected(false)} />}
       {showReasonNotes && <PendingReasonNotesModal onClose={() => setShowReasonNotes(false)} />}

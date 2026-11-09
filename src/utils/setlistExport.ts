@@ -18,6 +18,26 @@ function splitSongText(raw: string): SetlistSongEntry {
   return { title: raw.trim(), artist: "" };
 }
 
+// A band's setlist and member list as the setlist document shows them (see
+// the preference order above) — shared with the トリ候補 list so both read the
+// same data.
+export function resolveBandDetail(
+  band: Band,
+  applications: Application[],
+): { songs: SetlistSongEntry[]; members: SetlistMemberEntry[] } {
+  const linkedApp = applications.find((a) => a.linkedBandId === band.id);
+  const songs: SetlistSongEntry[] = linkedApp
+    ? linkedApp.setlist.map((s) => ({ title: s.title, artist: s.artist }))
+    : band.setlist.map(splitSongText);
+  const members: SetlistMemberEntry[] =
+    band.memberDetails && band.memberDetails.length > 0
+      ? band.memberDetails.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
+      : linkedApp
+        ? linkedApp.members.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
+        : band.members.map((name) => ({ name, part: "", grade: "" }));
+  return { songs, members };
+}
+
 // One row per performing band, in performance order, for the printable
 // setlist document (SetlistExportTemplate). Member data preference order:
 // 1) Band.memberDetails — the band's own editable per-member record (see
@@ -44,16 +64,7 @@ export function computeSetlistEntries(
     if (!band) continue;
     order++;
 
-    const linkedApp = applications.find((a) => a.linkedBandId === band.id);
-    const songs: SetlistSongEntry[] = linkedApp
-      ? linkedApp.setlist.map((s) => ({ title: s.title, artist: s.artist }))
-      : band.setlist.map(splitSongText);
-    const members: SetlistMemberEntry[] =
-      band.memberDetails && band.memberDetails.length > 0
-        ? band.memberDetails.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
-        : linkedApp
-          ? linkedApp.members.map((m) => ({ name: m.name, part: m.part, grade: m.grade }))
-          : band.members.map((name) => ({ name, part: "", grade: "" }));
+    const { songs, members } = resolveBandDetail(band, applications);
 
     entries.push({
       order,

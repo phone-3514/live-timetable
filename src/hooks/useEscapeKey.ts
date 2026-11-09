@@ -12,7 +12,10 @@ import { useEffect } from "react";
 export function useEscapeKey(onEscape: () => void) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onEscape();
+      if (e.key !== "Escape") return;
+      // 日本語入力の変換を取り消すEscでは閉じない(入力中の内容ごと消えてしまう)。
+      if (e.isComposing || e.keyCode === 229) return;
+      onEscape();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);

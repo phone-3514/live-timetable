@@ -114,7 +114,7 @@ function resolveDisplayName(personId: string, candidateBands: Band[]): string {
 // この手動入替UI向けに人物名・時刻を補って仕様の例文形式に近づける。
 // 判定ロジック自体(「連続出演かどうか」)は一切再実装せず、
 // validateHardConstraintsが返した結果を整形するだけ。
-function describeWarning(
+export function describeWarning(
   violation: HardConstraintViolation,
   slots: TimetableSlot[],
   bandMap: Map<string, Band>,

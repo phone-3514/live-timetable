@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Application, ApplicationMember } from "../../types";
 import { useApplicationStore } from "../../store/useApplicationStore";
-import { useEscapeKey } from "../../hooks/useEscapeKey";
+import {
+  draftFromApplication,
+  useApplicationEditStore,
+  type ApplicationEditDraft,
+  type MemberDraft,
+} from "../../store/useApplicationEditStore";
 import { hasUnparsedDayHint, hasUnparsedTimeExpression } from "../../utils/parseBands";
 import { splitSetlistEntry } from "../../utils/parseApplications";
 import { ModalPortal } from "../ModalPortal";
@@ -9,36 +14,92 @@ import { ModalPortal } from "../ModalPortal";
 // 申請を編集: fix what the parser got wrong in an application (or add what was
 // missing) without re-importing it. Works for approved applications too — the
 // store pushes the same values into the linked Band.
-
-type MemberDraft = { name: string; part: string; grade: string; frameOrdinal: string };
+//
+// 開閉と書きかけの内容は useApplicationEditStore が持つ(申請一覧の行が消えても
+// 残る — 理由は同ファイルの説明)。このダイアログ自身も、うっかりの閉じ方では
+// 閉じない: 書きかけがあれば確認を挟み、Escは日本語入力の変換中は無視し、背景は
+// 「背景で押して背景で離した」ときだけ閉じる(入力欄で文字をドラッグ選択して背景で
+// 離しただけで閉じてしまうのを防ぐ)。
 
 const fieldClass =
   "min-h-11 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 md:min-h-0 md:py-1.5";
 
-function toDraft(m: ApplicationMember): MemberDraft {
-  return {
-    name: m.name,
-    part: m.part,
-    grade: m.grade,
-    frameOrdinal: m.frameOrdinal != null ? String(m.frameOrdinal) : "",
-  };
+const DISCARD_CONFIRM = "編集中の内容がまだ保存されていません。破棄して閉じますか？";
+
+/** ストアの編集状態を読んでダイアログを出す。申請管理画面に1つだけ置く。 */
+export function ApplicationEditHost() {
+  const editing = useApplicationEditStore((s) => s.editing);
+  const setDraft = useApplicationEditStore((s) => s.setDraft);
+  const close = useApplicationEditStore((s) => s.close);
+  const live = useApplicationStore((s) => (editing ? s.applications.find((a) => a.id === editing.snapshot.id) : undefined));
+  if (!editing) return null;
+  return (
+    <ApplicationEditModal
+      key={editing.snapshot.id}
+      app={live ?? editing.snapshot}
+      snapshot={editing.snapshot}
+      missing={!live}
+      initialDraft={editing.draft}
+      onDraftChange={setDraft}
+      onClose={close}
+    />
+  );
 }
 
-export function ApplicationEditModal({ app, onClose }: { app: Application; onClose: () => void }) {
-  useEscapeKey(onClose);
-  const update = useApplicationStore((s) => s.updateApplication);
+type ModalProps = {
+  app: Application;
+  snapshot: Application;
+  /** 編集中に、この申請が一覧から無くなった(他の人の変更など)。 */
+  missing: boolean;
+  initialDraft: ApplicationEditDraft | null;
+  onDraftChange: (draft: ApplicationEditDraft) => void;
+  onClose: () => void;
+};
 
-  const [bandName, setBandName] = useState(app.bandName);
-  const [applicantName, setApplicantName] = useState(app.applicantName);
-  const [duration, setDuration] = useState(app.durationMinutes != null ? String(app.durationMinutes) : "");
-  const [hasSync, setHasSync] = useState(app.hasSync);
-  const [members, setMembers] = useState<MemberDraft[]>(app.members.map(toDraft));
-  const [setlist, setSetlist] = useState(
-    app.setlist.map((s) => (s.artist ? `${s.title} / ${s.artist}` : s.title)).join("\n"),
-  );
-  const [desired, setDesired] = useState(app.desiredDateTime);
-  const [reasonNote, setReasonNote] = useState(app.timeReasonNote ?? "");
+export function ApplicationEditModal({ app, snapshot, missing, initialDraft, onDraftChange, onClose }: ModalProps) {
+  const update = useApplicationStore((s) => s.updateApplication);
+  const baseline = useMemo(() => draftFromApplication(snapshot), [snapshot]);
+  const initial = initialDraft ?? baseline;
+
+  const [bandName, setBandName] = useState(initial.bandName);
+  const [applicantName, setApplicantName] = useState(initial.applicantName);
+  const [duration, setDuration] = useState(initial.duration);
+  const [hasSync, setHasSync] = useState(initial.hasSync);
+  const [members, setMembers] = useState<MemberDraft[]>(initial.members);
+  const [setlist, setSetlist] = useState(initial.setlist);
+  const [desired, setDesired] = useState(initial.desired);
+  const [reasonNote, setReasonNote] = useState(initial.reasonNote);
   const [error, setError] = useState("");
+
+  const draft = useMemo<ApplicationEditDraft>(
+    () => ({ bandName, applicantName, duration, hasSync, members, setlist, desired, reasonNote }),
+    [bandName, applicantName, duration, hasSync, members, setlist, desired, reasonNote],
+  );
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(baseline), [draft, baseline]);
+
+  // 書きかけをストアに写しておく(行やこの画面が作り直されても続きから再開できる)。
+  useEffect(() => {
+    onDraftChange(draft);
+  }, [draft, onDraftChange]);
+
+  const composingRef = useRef(false);
+  const downOnBackdropRef = useRef(false);
+
+  function requestClose() {
+    if (dirty && !window.confirm(DISCARD_CONFIRM)) return;
+    onClose();
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      // 日本語入力の変換を取り消すためのEscでは閉じない。
+      if (e.isComposing || e.keyCode === 229 || composingRef.current) return;
+      requestClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   const desiredUnparsed = hasUnparsedTimeExpression(desired) || hasUnparsedDayHint(desired);
 
@@ -47,6 +108,10 @@ export function ApplicationEditModal({ app, onClose }: { app: Application; onClo
   }
 
   function handleSave() {
+    if (missing) {
+      setError("この申請は一覧から無くなっているため保存できません（内容はこの画面に残っています）");
+      return;
+    }
     if (!bandName.trim()) {
       setError("バンド名を入力してください");
       return;
@@ -89,7 +154,22 @@ export function ApplicationEditModal({ app, onClose }: { app: Application; onClo
     <ModalPortal>
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-        onClick={onClose}
+        onMouseDown={(e) => {
+          downOnBackdropRef.current = e.target === e.currentTarget;
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget && downOnBackdropRef.current) requestClose();
+          downOnBackdropRef.current = false;
+        }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          // Safari fires compositionend before the Escape keydown that cancelled it.
+          setTimeout(() => {
+            composingRef.current = false;
+          }, 0);
+        }}
       >
         <div
           role="dialog"
@@ -108,7 +188,7 @@ export function ApplicationEditModal({ app, onClose }: { app: Application; onClo
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               aria-label="閉じる"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100 md:h-8 md:w-8"
             >
@@ -230,13 +310,18 @@ export function ApplicationEditModal({ app, onClose }: { app: Application; onClo
               />
             </label>
 
+            {missing && (
+              <p className="rounded border border-amber-600 bg-amber-950/40 px-2 py-1 text-amber-300">
+                ⚠ この申請は一覧から無くなりました（他の人の操作や同期の影響など）。書きかけの内容はこの画面に残してあります。保存はできません。
+              </p>
+            )}
             {error && <p className="text-rose-400">{error}</p>}
           </div>
 
           <div className="flex justify-end gap-2 border-t border-slate-700 px-4 py-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="min-h-11 rounded border border-slate-600 px-4 text-xs text-slate-200 hover:bg-slate-800 md:min-h-0 md:py-1.5"
             >
               キャンセル
