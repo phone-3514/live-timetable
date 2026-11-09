@@ -12,6 +12,7 @@ import {
   type ClosingCandidate,
 } from "../utils/closingCandidates";
 import { resolveBandDetail } from "../utils/setlistExport";
+import { downloadClosingCandidatesExcel } from "../utils/closingCandidatesExport";
 import type { TimetableDay } from "../types";
 
 type Props = {
@@ -27,7 +28,7 @@ const STATUS_STYLE: Record<ClosingCandidate["status"], { label: string; classNam
 
 // 「トリ候補」— 日時指定などの絶対ハード制約を満たしてトリ(その日の最終枠。休憩
 // 前など各ブロックの最後も選べる)に置けるバンドの一覧。各バンドを開くとメンバー
-// とセットリストが見える。見るだけで、配置は変えない。
+// とセットリストが見える。候補の行から、そのままトリに配置もできる。Excelにも出力できる。
 export function ClosingCandidatesModal({ day, onClose }: Props) {
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
@@ -39,6 +40,8 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
   const [slotId, setSlotId] = useState(() => closingSlots.find((s) => s.isFinal)?.slotId ?? "");
   const [query, setQuery] = useState("");
   const [showExcluded, setShowExcluded] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const allApplications = useApplicationStore((s) => s.applications);
 
   useEscapeKey(onClose);
 
@@ -56,6 +59,26 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
   const totalExcluded = candidates.length - totalEligible;
   const selectedSlot = closingSlots.find((s) => s.slotId === slotId);
   const currentBand = bands.find((b) => b.id === selectedSlot?.bandId);
+
+  async function exportExcel() {
+    if (!selectedSlot || exporting) return;
+    setExporting(true);
+    try {
+      await downloadClosingCandidatesExcel({
+        dayLabel: day.label,
+        slotLabel: selectedSlot.label,
+        slotTime: `${selectedSlot.startTime}${selectedSlot.endTime ? `–${selectedSlot.endTime}` : ""}`,
+        currentBandName: currentBand?.name ?? null,
+        candidates,
+        applications: allApplications,
+      });
+    } catch (error) {
+      console.error("[ClosingCandidatesModal] excel export failed", error);
+      useToastStore.getState().show("Excelの出力に失敗しました", "error");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function place(c: ClosingCandidate) {
     if (!selectedSlot || c.swapBlocked) return;
@@ -108,9 +131,20 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
             <p className="py-8 text-center text-xs text-slate-500">この日には演奏枠がありません</p>
           ) : (
             <>
-              <p className="mt-1 text-[11px] text-slate-400">
-                出演可能日・NG時間・希望時間・メンバーの時間指定を満たして、この枠に置けるバンドです（見るだけで、配置は変わりません）。
+              <div className="mt-1 flex items-start justify-between gap-2">
+              <p className="text-[11px] text-slate-400">
+                出演可能日・NG時間・希望時間・メンバーの時間指定を満たして、この枠に置けるバンドです（候補の行から、そのままトリに配置もできます）。
               </p>
+              <button
+                type="button"
+                onClick={() => void exportExcel()}
+                disabled={exporting || candidates.length === 0}
+                title="いま選んでいる枠の候補（置けないバンドも含む全バンド）を、メンバー・セットリスト・理由つきでExcelに出力"
+                className="min-h-11 shrink-0 rounded border border-emerald-600 bg-emerald-950/40 px-2 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900/50 disabled:opacity-40 md:min-h-0 md:py-1"
+              >
+                {exporting ? "出力中…" : "📥 Excel"}
+              </button>
+              </div>
 
               <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2">
                 <select
