@@ -50,3 +50,31 @@ export function groupBandsByArtist(applications: Application[], minBands = 2): A
     .filter((g) => g.entries.length >= minBands)
     .sort((a, b) => b.entries.length - a.entries.length || a.name.localeCompare(b.name, "ja"));
 }
+
+// Band.setlist holds "曲名/アーティスト" strings (see the application store); the
+// artists a band covers, as loose keys. The same artist written two ways that
+// artistKey folds together counts as one.
+const bandArtistCache = new WeakMap<object, Set<string>>();
+
+export function bandArtistKeys(band: { setlist: string[] }): Set<string> {
+  const cached = bandArtistCache.get(band.setlist);
+  if (cached) return cached;
+  const keys = new Set<string>();
+  for (const line of band.setlist) {
+    const match = line.match(/^(.+?)\s*[/／]\s*(.+)$/);
+    if (!match) continue;
+    const key = artistKey(match[2]);
+    if (key) keys.add(key);
+  }
+  bandArtistCache.set(band.setlist, keys);
+  return keys;
+}
+
+/** How many artists two bands both cover (0 = none in common). */
+export function sharedArtistCount(a: { setlist: string[] }, b: { setlist: string[] }): number {
+  const keysA = bandArtistKeys(a);
+  if (keysA.size === 0) return 0;
+  let count = 0;
+  for (const key of bandArtistKeys(b)) if (keysA.has(key)) count++;
+  return count;
+}

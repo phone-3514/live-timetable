@@ -268,6 +268,7 @@ export function AutoScheduleDebugModal({ onClose }: Props) {
                             <ScoreRow label="滑らかさ" value={s.scoreContributions.smoothness} />
                             <ScoreRow label="ブロック終端" value={s.scoreContributions.blockClosing} />
                             <ScoreRow label="低評価出演者補正" value={s.scoreContributions.lowRatedPerformerDistribution} />
+                            <ScoreRow label="同アーティスト連続" value={s.scoreContributions.sameArtistAdjacency} />
                           </div>
                           <div className="mt-1.5 flex justify-end border-t border-slate-700 pt-1.5 text-[11px]">
                             <span className="text-slate-300">

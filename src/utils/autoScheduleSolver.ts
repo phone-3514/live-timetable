@@ -7,6 +7,7 @@ import { TIME_RESTRICTION_BUFFER_MINUTES } from "./memberConstraints";
 import { alignTimeToReference, recomputeTimes } from "./scheduleTimes";
 import { normalizeMemberName } from "./normalizeMemberName";
 import { minutesToTime, timeToMinutes } from "./time";
+import { sharedArtistCount } from "./artistGroups";
 import { getLiveCompositionRating } from "./liveCompositionRating";
 
 // 自動編成アシスト (Auto-Draft Assist) — a small CSP solver run per day.
@@ -908,6 +909,12 @@ export const SCORE_WEIGHTS = {
   smoothness: 0.5,
   blockClosing: 1,
   lowRatedPerformerDistribution: 2,
+  // Per back-to-back pair of bands covering the same artist (a second shared
+  // artist counts again, up to 2). Deliberately not averaged: one adjacency
+  // costs the same however long the day is, and is weighted above the small
+  // per-move rating gains so the search prefers to break a pair up — but a
+  // soft rule, so it still gives way when nothing else fits.
+  sameArtistAdjacency: 0.5,
 };
 
 // Layer 1: ライブ全体の時間軸評価 — how well a band's rating matches its
@@ -1108,6 +1115,28 @@ const lowRatedPerformerDistributionComponent: ScoreComponent = {
   },
 };
 
+// Layer 6: 同じアーティストのコピーを連続させない — bands covering the same
+// artist (read from the setlists) shouldn't play back to back. Only bands
+// within one block count: a break between them already separates the two.
+// Returns a penalty (<= 0) in units of "adjacent pairs".
+export function countSameArtistAdjacencies(slots: TimetableSlot[], context: ScheduleContext): number {
+  const bandMap = new Map(context.allBands.map((b) => [b.id, b]));
+  let total = 0;
+  for (const block of context.blocks) {
+    const entries = getBlockEntries(slots, bandMap, block);
+    for (let i = 0; i + 1 < entries.length; i++) {
+      total += Math.min(2, sharedArtistCount(entries[i].band, entries[i + 1].band));
+    }
+  }
+  return total;
+}
+
+const sameArtistAdjacencyComponent: ScoreComponent = {
+  name: "sameArtistAdjacency",
+  weight: SCORE_WEIGHTS.sameArtistAdjacency,
+  calculate: (slots, context) => -countSameArtistAdjacencies(slots, context),
+};
+
 export const scoreComponents: ScoreComponent[] = [
   globalTimelineComponent,
   finalPhaseComponent,
@@ -1116,6 +1145,7 @@ export const scoreComponents: ScoreComponent[] = [
   smoothnessComponent,
   blockClosingComponent,
   lowRatedPerformerDistributionComponent,
+  sameArtistAdjacencyComponent,
 ];
 
 export type ScheduleScoreBreakdown = {
@@ -1126,6 +1156,8 @@ export type ScheduleScoreBreakdown = {
   smoothnessScore: number;
   blockClosingScore: number;
   lowRatedPerformerDistributionScore: number;
+  /** Always applies (both rating patterns): penalty for back-to-back bands covering the same artist. */
+  sameArtistAdjacencyScore: number;
   /** Only non-zero with the "spread" rating pattern, where it replaces the
    * position-based ascending components above (which are then 0). */
   spreadScore: number;
@@ -1137,7 +1169,7 @@ export type ScheduleScoreBreakdown = {
 // layer or the other." A rating-1 band at a late block's front scores
 // well on blockTimelineScore alone but poorly on globalTimelineScore and
 // finalPhaseScore, and it's the sum that Step 3's local search actually
-// compares. totalScore is always exactly the sum of the other six fields
+// compares. totalScore is always exactly the sum of the other score fields
 // here — nothing is computed independently of this breakdown.
 // "Spread" rating pattern. Per day, over the filled slots in order:
 //   - the last two bands of every block (= before each break, and before the
@@ -1207,6 +1239,8 @@ export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContex
   const blockClosingScore = ascending(blockClosingComponent);
   const lowRatedPerformerDistributionScore =
     lowRatedPerformerDistributionComponent.weight * lowRatedPerformerDistributionComponent.calculate(slots, context);
+  const sameArtistAdjacencyScore =
+    sameArtistAdjacencyComponent.weight * sameArtistAdjacencyComponent.calculate(slots, context);
   const spreadScore = spread ? calculateSpreadScore(slots, context) : 0;
   return {
     globalTimelineScore,
@@ -1216,6 +1250,7 @@ export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContex
     smoothnessScore,
     blockClosingScore,
     lowRatedPerformerDistributionScore,
+    sameArtistAdjacencyScore,
     spreadScore,
     totalScore:
       globalTimelineScore +
@@ -1225,6 +1260,7 @@ export function evaluateSchedule(slots: TimetableSlot[], context: ScheduleContex
       smoothnessScore +
       blockClosingScore +
       lowRatedPerformerDistributionScore +
+      sameArtistAdjacencyScore +
       spreadScore,
   };
 }
@@ -1258,6 +1294,8 @@ export type SchedulingDebugSlot = {
   isFinalPhase: boolean;
   finalPhaseProgress: number;
   performerIds: string[];
+  /** 前後どちらかの出番が、同じアーティストをカバーするバンド(連続している)。 */
+  sameArtistAdjacent: boolean;
   scoreContributions: {
     globalTimeline: number;
     finalPhase: number;
@@ -1266,6 +1304,7 @@ export type SchedulingDebugSlot = {
     smoothness: number;
     blockClosing: number;
     lowRatedPerformerDistribution: number;
+    sameArtistAdjacency: number;
     total: number;
   };
 };
@@ -1353,6 +1392,13 @@ export function buildSchedulingDebugResult(
       const globalPosition = abs ? getGlobalNormalizedPosition(abs.start, eventStartMinutes, eventEndMinutes) : 0;
       const progress = abs ? getFinalPhaseProgress(abs.start, finalPhaseStart, eventEndMinutes) : 0;
       const next = entries[index + 1];
+      const prev = entries[index - 1];
+      // Each adjacent pair's penalty is split between its two bands, so the
+      // per-slot values add up to the day's sameArtistAdjacencyScore.
+      const adjacentShared =
+        (next ? Math.min(2, sharedArtistCount(band, next.band)) : 0) +
+        (prev ? Math.min(2, sharedArtistCount(band, prev.band)) : 0);
+      const sameArtistAdjacency = -(adjacentShared / 2) * SCORE_WEIGHTS.sameArtistAdjacency;
       const performerIds = [...new Set(band.members.map(normalizeMemberName).filter(Boolean))];
 
       const globalTimeline = -calculateGlobalPositionPenalty(globalPosition, rating) * SCORE_WEIGHTS.globalTimeline;
@@ -1388,6 +1434,7 @@ export function buildSchedulingDebugResult(
         isFinalPhase: abs ? abs.start >= finalPhaseStart : false,
         finalPhaseProgress: progress,
         performerIds,
+        sameArtistAdjacent: adjacentShared > 0,
         scoreContributions: {
           globalTimeline,
           finalPhase,
@@ -1396,6 +1443,7 @@ export function buildSchedulingDebugResult(
           smoothness,
           blockClosing,
           lowRatedPerformerDistribution,
+          sameArtistAdjacency,
           total:
             globalTimeline +
             finalPhase +
@@ -1403,7 +1451,8 @@ export function buildSchedulingDebugResult(
             blockTimeline +
             smoothness +
             blockClosing +
-            lowRatedPerformerDistribution,
+            lowRatedPerformerDistribution +
+            sameArtistAdjacency,
         },
       });
     });
@@ -1879,6 +1928,7 @@ export function isPriorityOptimizationTarget(slot: SchedulingDebugSlot): boolean
   return (
     (slot.rating === 5 && !slot.isFinalPhase) ||
     (slot.blockIndex === slot.totalBlockCount - 1 && slot.rating <= 2) ||
+    slot.sameArtistAdjacent ||
     slot.scoreContributions.total <= PRIORITY_NEGATIVE_SCORE_THRESHOLD
   );
 }
@@ -2007,7 +2057,8 @@ export type UnresolvedIssueType =
   | "RATING_FIVE_OUTSIDE_FINAL_PHASE"
   | "LOW_RATING_IN_FINAL_BLOCK"
   | "LOW_RATED_PERFORMER_IN_FINAL_BLOCK"
-  | "RATING_ONE_IN_FINAL_PHASE";
+  | "RATING_ONE_IN_FINAL_PHASE"
+  | "SAME_ARTIST_ADJACENT";
 export type UnresolvedIssueReason =
   | "ALL_EVALUATED_MOVES_INVALID"
   | "NO_IMPROVING_MOVE_FOUND"
@@ -2096,6 +2147,16 @@ function collectUnresolvedIssues(
         bandIds: [slot.bandId],
         reason,
         message: `評価${slot.rating}の${slot.bandName}が最終ブロックに配置されています`,
+      });
+    }
+  }
+  for (const slot of debugResult.slots) {
+    if (slot.sameArtistAdjacent) {
+      issues.push({
+        type: "SAME_ARTIST_ADJACENT",
+        bandIds: [slot.bandId],
+        reason,
+        message: `${slot.bandName}は、同じアーティストをカバーするバンドと連続しています`,
       });
     }
   }
