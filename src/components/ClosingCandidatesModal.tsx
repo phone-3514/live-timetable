@@ -3,6 +3,9 @@ import { ModalPortal } from "./ModalPortal";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useAppStore } from "../store/useAppStore";
 import { useApplicationStore } from "../store/useApplicationStore";
+import { useCollabStore } from "../store/useCollabStore";
+import { setNextHistoryAction } from "../store/useHistoryStore";
+import { useToastStore } from "../store/useToastStore";
 import {
   evaluateClosingCandidates,
   listClosingSlots,
@@ -29,6 +32,8 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
   const days = useAppStore((s) => s.days);
   const bands = useAppStore((s) => s.bands);
   const venueHours = useAppStore((s) => s.venueHours);
+  const assignBandToSlot = useAppStore((s) => s.assignBandToSlot);
+  const swapSlotBands = useAppStore((s) => s.swapSlotBands);
 
   const closingSlots = useMemo(() => listClosingSlots(day), [day]);
   const [slotId, setSlotId] = useState(() => closingSlots.find((s) => s.isFinal)?.slotId ?? "");
@@ -47,8 +52,33 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
     !q || c.band.name.toLowerCase().includes(q) || c.band.members.some((m) => m.toLowerCase().includes(q));
   const eligible = candidates.filter((c) => c.status !== "excluded" && matches(c));
   const excluded = candidates.filter((c) => c.status === "excluded" && matches(c));
+  const totalEligible = candidates.filter((c) => c.status !== "excluded").length;
+  const totalExcluded = candidates.length - totalEligible;
   const selectedSlot = closingSlots.find((s) => s.slotId === slotId);
   const currentBand = bands.find((b) => b.id === selectedSlot?.bandId);
+
+  function place(c: ClosingCandidate) {
+    if (!selectedSlot || c.swapBlocked) return;
+    const swapping = c.placement !== null && currentBand !== undefined;
+    const lines: string[] = [];
+    if (c.warnings.length > 0) lines.push(...c.warnings.map((w) => `・${w}`));
+    if (!swapping && currentBand && !c.isCurrentClosing) lines.push(`・現在のトリの${currentBand.name}は未配置に戻ります`);
+    if (lines.length > 0) {
+      const ok = window.confirm(`${c.band.name}を${selectedSlot.label}に配置します。\n\n${lines.join("\n")}\n\nこのまま配置しますか？`);
+      if (!ok) return;
+    }
+    const actor = useCollabStore.getState().myNickname ?? "この端末";
+    setNextHistoryAction(`${c.band.name}を${day.label}のトリに配置`, actor);
+    if (swapping && c.placement) {
+      // 配置済み同士は入替(時刻は動かさない)。入れ替え先はバンドの現在の枠。
+      const from = days.flatMap((d) => d.slots).find((s) => s.bandId === c.band.id && s.customLabel === null);
+      if (from) swapSlotBands(selectedSlot.slotId, from.id);
+    } else {
+      assignBandToSlot(c.band.id, selectedSlot.slotId);
+    }
+    useToastStore.getState().show(`${c.band.name}を${day.label}のトリに配置しました`, "success");
+    onClose();
+  }
 
   return (
     <ModalPortal>
@@ -105,8 +135,8 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
                 />
               </div>
               <p className="mt-1.5 text-[11px] text-slate-500">
-                現在のこの枠: {currentBand ? currentBand.name : "未配置"}　／　候補 {eligible.length}件
-                {candidates.some((c) => c.status === "excluded") && `（置けない ${candidates.filter((c) => c.status === "excluded").length}件）`}
+                現在のこの枠: {currentBand ? currentBand.name : "未配置"}　／　全{candidates.length}バンド中　候補 {totalEligible}件＋置けない {totalExcluded}件
+                {q && `（検索で候補 ${eligible.length}件・置けない ${excluded.length}件を表示）`}
               </p>
 
               <ul className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
@@ -114,7 +144,7 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
                   <li className="py-6 text-center text-xs text-slate-500">この枠に置けるバンドがありません</li>
                 )}
                 {eligible.map((c) => (
-                  <CandidateRow key={c.band.id} candidate={c} />
+                  <CandidateRow key={c.band.id} candidate={c} onPlace={place} />
                 ))}
 
                 {excluded.length > 0 && (
@@ -138,7 +168,7 @@ export function ClosingCandidatesModal({ day, onClose }: Props) {
   );
 }
 
-function CandidateRow({ candidate: c }: { candidate: ClosingCandidate }) {
+function CandidateRow({ candidate: c, onPlace }: { candidate: ClosingCandidate; onPlace?: (c: ClosingCandidate) => void }) {
   const applications = useApplicationStore((s) => s.applications);
   const style = STATUS_STYLE[c.status];
   const { songs, members } = resolveBandDetail(c.band, applications);
@@ -176,6 +206,19 @@ function CandidateRow({ candidate: c }: { candidate: ClosingCandidate }) {
               {c.band.desiredTime.trim() && <p>希望: {c.band.desiredTime.trim()}</p>}
               {c.band.ngTime.trim() && <p>NG: {c.band.ngTime.trim()}</p>}
               {c.band.timeReasonNote?.trim() && <p>メモ: {c.band.timeReasonNote.trim()}</p>}
+            </div>
+          )}
+          {onPlace && c.status !== "excluded" && !c.isCurrentClosing && (
+            <div>
+              <button
+                type="button"
+                disabled={c.swapBlocked}
+                onClick={() => onPlace(c)}
+                className="min-h-11 w-full rounded border border-amber-600 bg-amber-950/40 px-3 text-xs font-semibold text-amber-200 hover:bg-amber-900/50 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-0 md:py-1.5"
+              >
+                🏆 このバンドをトリに配置{c.placement ? "（現トリと入替）" : ""}
+              </button>
+              {c.swapBlocked && <p className="mt-1 text-amber-300">現トリが入れない枠のため、入替できません</p>}
             </div>
           )}
           <div>

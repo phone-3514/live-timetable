@@ -67,6 +67,9 @@ export type ClosingCandidate = {
   /** いま別の枠に配置済みならその場所 */
   placement: ClosingCandidatePlacement | null;
   isCurrentClosing: boolean;
+  /** 配置済みのバンドをトリに置くと現トリと入れ替えになるが、現トリが相手の枠に
+   * 入れないため入替できない(swapSlotBands が無視する)。 */
+  swapBlocked: boolean;
   rating: number;
 };
 
@@ -148,7 +151,7 @@ export function evaluateClosingCandidates(
     const isCurrentClosing = currentBand?.id === band.id;
     const placement: ClosingCandidatePlacement | null =
       here && !isCurrentClosing ? { dayLabel: here.day.label, startTime: here.slot.startTime } : null;
-    const base = { band, placement, isCurrentClosing, rating: getLiveCompositionRating(band) };
+    const base = { band, placement, isCurrentClosing, swapBlocked: false, rating: getLiveCompositionRating(band) };
 
     if (!canPlaceBandInSlot(band, day, slot, venueHours)) {
       results.push({ ...base, status: "excluded", blockers: explainBlockers(band, day, slot, venueHours), warnings: [] });
@@ -156,6 +159,7 @@ export function evaluateClosingCandidates(
     }
 
     const warnings: string[] = [];
+    let swapBlocked = false;
     if (!canPlaceBandInSlot(band, day, slot, venueHours, { bufferMinutes: TIME_RESTRICTION_BUFFER_MINUTES })) {
       warnings.push(`時間指定から${TIME_RESTRICTION_BUFFER_MINUTES}分の余裕を取ると収まりません（自動振り分けでは入りません）`);
     }
@@ -169,6 +173,7 @@ export function evaluateClosingCandidates(
         nextDays = buildSwappedDays(days, slot.id, here.slot.id);
         changed.add(here.slot.id);
         if (currentBand && !canPlaceBandInSlot(currentBand, here.day, here.slot, venueHours)) {
+          swapBlocked = true;
           warnings.push(
             `入れ替えると現トリの${currentBand.name}が${here.day.label} ${here.slot.startTime || "その枠"}に入れません`,
           );
@@ -196,7 +201,7 @@ export function evaluateClosingCandidates(
       }
     }
 
-    results.push({ ...base, status: warnings.length > 0 ? "warn" : "ok", blockers: [], warnings });
+    results.push({ ...base, swapBlocked, status: warnings.length > 0 ? "warn" : "ok", blockers: [], warnings });
   }
 
   const order = { ok: 0, warn: 1, excluded: 2 } as const;
