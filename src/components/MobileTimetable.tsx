@@ -17,6 +17,7 @@ import { SharePreviewModal } from "./SharePreviewModal";
 import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
 import { LiveTimeSimulatorModal } from "./LiveTimeSimulatorModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
+import { SharedMemberBandsModal } from "./SharedMemberBandsModal";
 import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
 import { useAutoScheduleDebugStore } from "../store/useAutoScheduleDebugStore";
 import { HistoryPanel } from "./HistoryPanel";
@@ -142,6 +143,7 @@ export function MobileTimetable() {
   const futureCount = useHistoryStore((s) => s.future.length);
 
   const [showScheduleReview, setShowScheduleReview] = useState(false);
+  const [showSharedMembers, setShowSharedMembers] = useState(false);
   const [showTimeSimulator, setShowTimeSimulator] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
@@ -341,6 +343,12 @@ export function MobileTimetable() {
               📋 スケジュール確認 {reviewIssueCount > 0 && `(${reviewIssueCount})`}
             </button>
             <button
+              onClick={() => setShowSharedMembers(true)}
+              className="min-h-11 rounded border border-slate-600 px-3 font-medium text-slate-300"
+            >
+              👥 メンバー重複バンド
+            </button>
+            <button
               onClick={() => setShowAutoScheduleDebug(true)}
               className="min-h-11 rounded border border-slate-600 px-3 font-medium text-slate-300"
             >
@@ -382,6 +390,7 @@ export function MobileTimetable() {
       </div>
 
       {showScheduleReview && <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />}
+      {showSharedMembers && <SharedMemberBandsModal onClose={() => setShowSharedMembers(false)} />}
       {showTimeSimulator && <LiveTimeSimulatorModal onClose={() => setShowTimeSimulator(false)} />}
       {showAutoScheduleDebug && (
         <AutoScheduleDebugModal onClose={() => setShowAutoScheduleDebug(false)} />

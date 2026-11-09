@@ -14,6 +14,7 @@ import { DayPanel } from "./DayPanel";
 import { ShareAllDaysPreviewModal } from "./ShareAllDaysPreviewModal";
 import { LiveTimeSimulatorModal } from "./LiveTimeSimulatorModal";
 import { ScheduleReviewModal } from "./ScheduleReviewModal";
+import { SharedMemberBandsModal } from "./SharedMemberBandsModal";
 import { HistoryPanel } from "./HistoryPanel";
 import { FuriganaImportModal } from "./FuriganaImportModal";
 import { AutoScheduleDebugModal } from "./AutoScheduleDebugModal";
@@ -59,6 +60,7 @@ export function DesktopTimetable() {
   const applications = useApplicationStore((s) => s.applications);
   const furiganaByKey = useFuriganaStore((s) => s.furiganaByKey);
   const [showScheduleReview, setShowScheduleReview] = useState(false);
+  const [showSharedMembers, setShowSharedMembers] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showFuriganaImport, setShowFuriganaImport] = useState(false);
   const [showAutoScheduleDebug, setShowAutoScheduleDebug] = useState(false);
@@ -269,6 +271,13 @@ export function DesktopTimetable() {
           )}
         </button>
         <button
+          onClick={() => setShowSharedMembers(true)}
+          className="min-h-11 shrink-0 rounded border border-slate-600 px-3 font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
+          title="メンバーが2人以上重なっているバンドの組を一覧で確認します"
+        >
+          👥 メンバー重複
+        </button>
+        <button
           onClick={() => setShowAutoScheduleDebug(true)}
           className="min-h-11 shrink-0 rounded border border-slate-600 px-3 font-medium text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5"
           title="直近の一括自動配置で、各出演枠がなぜその位置になったかスコア内訳を確認します（管理者専用）"
@@ -338,6 +347,7 @@ export function DesktopTimetable() {
       {showScheduleReview && (
         <ScheduleReviewModal onClose={() => setShowScheduleReview(false)} />
       )}
+      {showSharedMembers && <SharedMemberBandsModal onClose={() => setShowSharedMembers(false)} />}
       {showHistoryPanel && <HistoryPanel onClose={() => setShowHistoryPanel(false)} />}
       {showFuriganaImport && (
         <FuriganaImportModal onClose={() => setShowFuriganaImport(false)} />
