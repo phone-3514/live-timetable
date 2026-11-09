@@ -44,7 +44,6 @@ export async function buildClosingCandidatesXlsx(input: ClosingExportInput): Pro
   sheet.columns = [
     { header: "区分", key: "status", width: 7 },
     { header: "バンド名", key: "band", width: 24 },
-    { header: "ライブ構成評価", key: "rating", width: 9 },
     { header: "現在の配置", key: "placement", width: 20 },
     { header: "演奏時間(分)", key: "minutes", width: 10 },
     { header: "メンバー", key: "members", width: 36 },
@@ -69,7 +68,6 @@ export async function buildClosingCandidatesXlsx(input: ClosingExportInput): Pro
     const row = sheet.addRow({
       status: STATUS_LABEL[c.status],
       band: c.isCurrentClosing ? `${c.band.name}（現在のトリ）` : c.band.name,
-      rating: c.rating,
       placement: c.placement ? `${c.placement.dayLabel} ${c.placement.startTime}` : c.isCurrentClosing ? "（この枠）" : "未配置",
       minutes: c.band.durationMinutes ?? "",
       members: members
