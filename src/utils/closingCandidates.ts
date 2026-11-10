@@ -81,7 +81,7 @@ function bandsWithoutConstraints(band: Band): Band {
   return { ...band, members: [], ngTime: "", desiredTime: "", timeReasonNote: undefined };
 }
 
-function explainBlockers(
+export function explainBlockers(
   band: Band,
   day: TimetableDay,
   slot: TimetableSlot,
