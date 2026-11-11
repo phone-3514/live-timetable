@@ -2596,13 +2596,18 @@ export function placeRemainingBandsRelaxed(
   // this whole search operates over. Independent of `assignment` (day/time
   // eligibility never depends on who else is currently seated), so it's
   // safe and cheap to recompute on every call rather than cache.
-  function eligibleSlotKeys(band: Band): RelaxedSlotKey[] {
+  //
+  // `bufferMinutes` is how far to keep clear of every written time restriction:
+  // the first round of seating requires the full TIME_RESTRICTION_BUFFER_MINUTES
+  // (a strong constraint), and only bands that cannot be seated that way are
+  // retried with 0 — the restriction itself, as written.
+  function eligibleSlotKeys(band: Band, bufferMinutes: number): RelaxedSlotKey[] {
     const keys: RelaxedSlotKey[] = [];
     for (const key of assignment.keys()) {
       const dayId = slotDayId.get(key)!;
       const [, slotId] = key.split("::");
       const day = dayMap.get(dayId);
-      if (day && canPlaceBandInSlot(band, day, slotById(dayId, slotId), venueHours)) {
+      if (day && canPlaceBandInSlot(band, day, slotById(dayId, slotId), venueHours, { bufferMinutes })) {
         keys.push(key);
       }
     }
@@ -2638,17 +2643,27 @@ export function placeRemainingBandsRelaxed(
   // ever mutating `assignment` once a full path (empty seat at the far
   // end) is confirmed — a failed attempt leaves `assignment` untouched, so
   // callers can safely try the next band regardless of this one's outcome.
-  function tryAugment(bandId: string, visited: Set<RelaxedSlotKey>): boolean {
+  function tryAugment(bandId: string, visited: Set<RelaxedSlotKey>, bufferMinutes: number): boolean {
     const band = bandMap.get(bandId);
     if (!band) return false;
-    const candidates = eligibleSlotKeys(band)
+    const candidates = eligibleSlotKeys(band, bufferMinutes)
       .filter((key) => !visited.has(key))
       .map((key) => {
         const occupant = assignment.get(key) ?? null;
         const cost = candidateCost(key, bandId);
-        return { key, occupant, ...cost };
+        // A seat inside the margin is only taken when no seat outside it works
+        // out — also when a displaced incumbent is being moved.
+        const day = dayMap.get(slotDayId.get(key)!)!;
+        const [, slotId] = key.split("::");
+        const insideMargin = canPlaceBandInSlot(band, day, slotById(day.id, slotId), venueHours, {
+          bufferMinutes: TIME_RESTRICTION_BUFFER_MINUTES,
+        })
+          ? 0
+          : 1;
+        return { key, occupant, insideMargin, ...cost };
       })
       .sort((a, b) => {
+        if (a.insideMargin !== b.insideMargin) return a.insideMargin - b.insideMargin;
         const aEmpty = a.occupant === null ? 0 : 1;
         const bEmpty = b.occupant === null ? 0 : 1;
         if (aEmpty !== bEmpty) return aEmpty - bEmpty;
@@ -2658,7 +2673,7 @@ export function placeRemainingBandsRelaxed(
 
     for (const { key, occupant } of candidates) {
       visited.add(key);
-      if (occupant === null || tryAugment(occupant, visited)) {
+      if (occupant === null || tryAugment(occupant, visited, bufferMinutes)) {
         assignment.set(key, bandId);
         return true;
       }
@@ -2666,11 +2681,17 @@ export function placeRemainingBandsRelaxed(
     return false;
   }
 
-  const stillUnplacedBandIds: string[] = [];
+  // Round 1 seats as many bands as possible while keeping the full margin
+  // clear of every time restriction; round 2 retries only the leftovers with
+  // the restriction as written. Round 2 can still move round 1's bands (an
+  // augmenting path), but prefers seats outside the margin for them too.
+  const afterMarginRound: string[] = [];
   for (const bandId of unplacedBandIds) {
-    if (!tryAugment(bandId, new Set())) {
-      stillUnplacedBandIds.push(bandId);
-    }
+    if (!tryAugment(bandId, new Set(), TIME_RESTRICTION_BUFFER_MINUTES)) afterMarginRound.push(bandId);
+  }
+  const stillUnplacedBandIds: string[] = [];
+  for (const bandId of afterMarginRound) {
+    if (!tryAugment(bandId, new Set(), 0)) stillUnplacedBandIds.push(bandId);
   }
 
   // Rebuild every day's slots from the final `assignment`, and collect

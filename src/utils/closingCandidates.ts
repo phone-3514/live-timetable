@@ -86,25 +86,48 @@ export function explainBlockers(
   day: TimetableDay,
   slot: TimetableSlot,
   venueHours: VenueHours,
+  /** 0: 時間指定に反している理由。>0: 指定には収まっているが前後この分数の余裕が
+   * 取れていない理由(「ぎりぎり」の説明)。 */
+  bufferMinutes = 0,
 ): string[] {
   const reasons: string[] = [];
-  if (band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
+  const margin = bufferMinutes > 0;
+  const opts = { bufferMinutes };
+  if (!margin && band.allowedDayIds.length > 0 && !band.allowedDayIds.includes(day.id)) {
     reasons.push(`${day.label}は出演可能日に入っていません`);
     return reasons;
   }
   const bare = bandsWithoutConstraints(band);
-  if (!canPlaceBandInSlot({ ...bare, ngTime: band.ngTime }, day, slot, venueHours)) {
-    reasons.push(`NG時間「${band.ngTime.trim()}」にかかります`);
+  if (!canPlaceBandInSlot({ ...bare, ngTime: band.ngTime }, day, slot, venueHours, opts)) {
+    reasons.push(
+      margin
+        ? `NG時間「${band.ngTime.trim()}」まで${bufferMinutes}分未満です`
+        : `NG時間「${band.ngTime.trim()}」にかかります`,
+    );
   }
-  if (!canPlaceBandInSlot({ ...bare, desiredTime: band.desiredTime }, day, slot, venueHours)) {
-    reasons.push(`希望時間「${band.desiredTime.trim()}」から外れます`);
+  if (!canPlaceBandInSlot({ ...bare, desiredTime: band.desiredTime }, day, slot, venueHours, opts)) {
+    reasons.push(
+      margin
+        ? `希望時間「${band.desiredTime.trim()}」の端から${bufferMinutes}分未満です`
+        : `希望時間「${band.desiredTime.trim()}」から外れます`,
+    );
   }
-  if (!canPlaceBandInSlot({ ...bare, timeReasonNote: band.timeReasonNote }, day, slot, venueHours)) {
-    reasons.push(`バンドの時間指定メモ「${(band.timeReasonNote ?? "").trim()}」に反します`);
+  if (!canPlaceBandInSlot({ ...bare, timeReasonNote: band.timeReasonNote }, day, slot, venueHours, opts)) {
+    reasons.push(
+      margin
+        ? `バンドの時間指定メモ「${(band.timeReasonNote ?? "").trim()}」の端から${bufferMinutes}分未満です`
+        : `バンドの時間指定メモ「${(band.timeReasonNote ?? "").trim()}」に反します`,
+    );
   }
-  const people = findMemberConstraintViolations(band, day, slot, venueHours, 0);
-  if (people.length > 0) reasons.push(`${people.join("・")}の時間指定（出演不可）に反します`);
-  if (reasons.length === 0) reasons.push("時間指定に反します");
+  const people = findMemberConstraintViolations(band, day, slot, venueHours, bufferMinutes);
+  if (people.length > 0) {
+    reasons.push(
+      margin
+        ? `${people.join("・")}の時間指定（出演不可）まで${bufferMinutes}分未満です`
+        : `${people.join("・")}の時間指定（出演不可）に反します`,
+    );
+  }
+  if (reasons.length === 0) reasons.push(margin ? `時間指定まで${bufferMinutes}分未満です` : "時間指定に反します");
   return reasons;
 }
 
