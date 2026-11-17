@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useDndContext, useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
@@ -13,7 +13,9 @@ import { useDismissibleDetails } from "../hooks/useDismissibleDetails";
 import { SlotCard } from "./SlotCard";
 import { SharePreviewModal } from "./SharePreviewModal";
 import { SetlistExportModal } from "./SetlistExportModal";
+import { ChangeoverBar } from "./ChangeoverBar";
 import { ClosingCandidatesModal } from "./ClosingCandidatesModal";
+import { computeChangeovers } from "../utils/changeoverInfo";
 import type { TimetableDay } from "../types";
 import { isHiddenBlock } from "../utils/slotKinds";
 
@@ -81,6 +83,7 @@ export function DayPanel({ day, daysCount }: Props) {
   const settings = day.settings;
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const conflictDetails = getMemberConflictDetails(day, bands);
+  const changeovers = computeChangeovers(day, bands);
   const gearConflicts = getGearConflictSlotIds(day, bands);
   const concentrationDetails = getConcentrationWarningDetails(day, bands, days);
   const deadlineStatus = getDeadlineStatus(day);
@@ -365,19 +368,22 @@ export function DayPanel({ day, daysCount }: Props) {
                 return slots.map((slot, i) => {
                   const band = slot.bandId ? bandMap.get(slot.bandId) : undefined;
                   if (band) order++;
+                  const changeover = changeovers.get(slot.id);
                   return (
-                    <SlotCard
-                      key={slot.id}
-                      dayId={day.id}
-                      slot={slot}
-                      band={band}
-                      index={i}
-                      total={slots.length}
-                      conflicts={conflictDetails.get(slot.id) ?? []}
-                      gearConflict={gearConflicts.has(slot.id)}
-                      concentrationEntries={concentrationDetails.get(slot.id) ?? []}
-                      performanceOrder={band ? order : null}
-                    />
+                    <Fragment key={slot.id}>
+                      {changeover && <ChangeoverBar dayId={day.id} info={changeover} />}
+                      <SlotCard
+                        dayId={day.id}
+                        slot={slot}
+                        band={band}
+                        index={i}
+                        total={slots.length}
+                        conflicts={conflictDetails.get(slot.id) ?? []}
+                        gearConflict={gearConflicts.has(slot.id)}
+                        concentrationEntries={concentrationDetails.get(slot.id) ?? []}
+                        performanceOrder={band ? order : null}
+                      />
+                    </Fragment>
                   );
                 });
               })()}

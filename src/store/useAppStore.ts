@@ -108,6 +108,14 @@ type AppState = {
     >,
   ) => void;
   removeSlot: (dayId: string, slotId: string) => void;
+  /** 余白ブロック(転換時間が付かない)を取り除き、その分を前のバンドの「この後の転換時間」に
+   * 置き換える。間隔は「規定の転換＋余白」になる。 */
+  convertMarginToChangeover: (
+    dayId: string,
+    fromBandId: string,
+    marginSlotIds: string[],
+    changeoverMinutes: number,
+  ) => void;
   // Band assignment/unassignment/reordering look up which day a slot
   // belongs to internally, since slot ids are globally unique — this lets
   // a band be dragged directly from one day's timetable into another's.
@@ -756,6 +764,19 @@ export const useAppStore = create<AppState>()(
         slots.filter((s) => s.id !== slotId),
       ),
     })),
+
+  convertMarginToChangeover: (dayId, fromBandId, marginSlotIds, changeoverMinutes) =>
+    set((state) => {
+      const drop = new Set(marginSlotIds);
+      const bands = state.bands.map((b) =>
+        b.id === fromBandId ? { ...b, customTransitionMinutes: Math.max(0, Math.round(changeoverMinutes)) } : b,
+      );
+      const days = state.days.map((day) => {
+        const slots = day.id === dayId ? day.slots.filter((s) => !drop.has(s.id)) : day.slots;
+        return { ...day, slots: recomputeTimes(slots, day.settings, bands) };
+      });
+      return { bands, days };
+    }),
 
   assignBandToSlot: (bandId, slotId) =>
     set((state) => {
