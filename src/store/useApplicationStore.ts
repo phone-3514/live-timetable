@@ -56,6 +56,8 @@ type ApplicationState = {
   /** Puts an attached note back on the 紐づけ待ち list (its text stays wherever
    * it was already added). */
   unattachPendingReasonNote: (noteId: string) => void;
+  /** 紐づけ済みメモの文章を、紐づけ先(申請・バンド・個人)から取り除く(内部用)。 */
+  withdrawNoteFromTarget: (note: PendingReasonNote) => void;
   /** 個人(メンバー)に紐づけた理由メモ — shown wherever that person appears. */
   memberReasonNotes: MemberReasonNote[];
   /** Moves a pending note onto a person (appended to theirs) instead of a band. */
@@ -171,6 +173,19 @@ function applicationToBand(app: Application): Band {
   };
 }
 
+/** 紐づけたときに本文へ足したメモの文章(attach は "\n" 区切りで追記する)を取り除く。
+ * 紐づけを解除・削除したのに、申請/バンド/個人に同じ文章が残り続けないようにする。 */
+function removeNoteText(text: string, note: string): string {
+  const target = note.trim();
+  if (!target || !text.includes(target)) return text;
+  const withBreak = text.includes(`\n${target}`)
+    ? text.replace(`\n${target}`, "")
+    : text.includes(`${target}\n`)
+      ? text.replace(`${target}\n`, "")
+      : text.replace(target, "");
+  return withBreak.trim();
+}
+
 export const useApplicationStore = create<ApplicationState>()(
   persist(
     (set, get) => ({
@@ -229,12 +244,34 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
       },
 
-      unattachPendingReasonNote: (noteId) =>
+      // 紐づけ先(申請・バンド・個人)に書き込んだメモの文章を取り除く。申請に紐づけた
+      // メモは申請の timeReasonNote(と、承認済みならリンク先バンドの同じ値)へ、個人に
+      // 紐づけたメモはその人の個人メモへ足してあるので、解除・削除のときに一緒に消す。
+      // 紐づけ先がすでに無い(申請の初期化など)ときは何もしない。
+      withdrawNoteFromTarget: (note) => {
+        const target = note.attachedTo;
+        if (!target) return;
+        if (target.kind === "application") {
+          const app = get().applications.find((a) => a.id === target.applicationId);
+          if (!app) return;
+          get().updateApplicationTimeReasonNote(app.id, removeNoteText(app.timeReasonNote ?? "", note.note));
+        } else {
+          const key = normalizeMemberName(target.name);
+          const current = (get().memberReasonNotes ?? []).find((m) => m.key === key);
+          if (!current) return;
+          get().setMemberReasonNote(target.name, removeNoteText(current.note, note.note));
+        }
+      },
+
+      unattachPendingReasonNote: (noteId) => {
+        const note = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
+        if (note) get().withdrawNoteFromTarget(note);
         set((state) => ({
           pendingReasonNotes: (state.pendingReasonNotes ?? []).map((n) =>
             n.id === noteId ? { ...n, attachedTo: undefined, attachedAt: undefined } : n,
           ),
-        })),
+        }));
+      },
 
       editMemberReasonNote: (key, note) =>
         set((state) => ({
@@ -279,10 +316,13 @@ export const useApplicationStore = create<ApplicationState>()(
           ),
         })),
 
-      removePendingReasonNote: (id) =>
+      removePendingReasonNote: (id) => {
+        const note = (get().pendingReasonNotes ?? []).find((n) => n.id === id);
+        if (note) get().withdrawNoteFromTarget(note);
         set((state) => ({
           pendingReasonNotes: (state.pendingReasonNotes ?? []).filter((n) => n.id !== id),
-        })),
+        }));
+      },
 
       attachPendingReasonNote: (noteId, applicationId) => {
         const note = (get().pendingReasonNotes ?? []).find((n) => n.id === noteId);
@@ -448,14 +488,21 @@ export const useApplicationStore = create<ApplicationState>()(
 
       updateApplicationDesiredDateTime: (id, desiredDateTime) => {
         const app = get().applications.find((a) => a.id === id);
-        if (!app || app.desiredDateTime === desiredDateTime) return;
-        set((state) => ({
-          applications: state.applications.map((a) =>
-            a.id === id ? { ...a, desiredDateTime } : a,
-          ),
-        }));
+        if (!app) return;
+        if (app.desiredDateTime !== desiredDateTime) {
+          set((state) => ({
+            applications: state.applications.map((a) =>
+              a.id === id ? { ...a, desiredDateTime } : a,
+            ),
+          }));
+        }
+        // 申請の値が同じでも、リンク先バンドの出演希望日が食い違っていれば揃える。そうしないと、
+        // 申請側を空にしてもバンド側(自動配置が実際に読む値)に古い希望日が残り続ける。
         if (app.linkedBandId) {
-          useAppStore.getState().updateBand(app.linkedBandId, { desiredTime: desiredDateTime });
+          const linked = useAppStore.getState().bands.find((b) => b.id === app.linkedBandId);
+          if (linked && linked.desiredTime !== desiredDateTime) {
+            useAppStore.getState().updateBand(app.linkedBandId, { desiredTime: desiredDateTime });
+          }
         }
       },
 
