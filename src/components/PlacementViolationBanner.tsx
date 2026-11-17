@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { TIME_RESTRICTION_BUFFER_MINUTES } from "../utils/memberConstraints";
 import { findPlacementViolations, type PlacementViolation } from "../utils/placementViolations";
+import { ModalPortal } from "./ModalPortal";
 
 function scrollToBand(bandId: string, color: "rose" | "amber") {
   const el = document.getElementById(`band-slot-${bandId}`);
@@ -16,24 +18,22 @@ function scrollToBand(bandId: string, color: "rose" | "amber") {
 
 const TONE = {
   rose: {
-    box: "border-rose-500 bg-rose-950/80 shadow-rose-950/50",
+    box: "border-rose-500 bg-rose-950/95",
     title: "text-rose-100",
     sub: "text-rose-200/80",
     row: "bg-rose-900/40",
     rowText: "text-rose-50",
     rowSub: "text-rose-200",
     btn: "bg-rose-600 hover:bg-rose-500 text-white",
-    toggle: "border-rose-400/60 text-rose-100 hover:bg-rose-900/60",
   },
   amber: {
-    box: "border-amber-500 bg-amber-950/70 shadow-amber-950/40",
+    box: "border-amber-500 bg-amber-950/95",
     title: "text-amber-100",
     sub: "text-amber-200/80",
     row: "bg-amber-900/30",
     rowText: "text-amber-50",
     rowSub: "text-amber-200",
     btn: "bg-amber-500 hover:bg-amber-400 text-amber-950",
-    toggle: "border-amber-400/60 text-amber-100 hover:bg-amber-900/60",
   },
 } as const;
 
@@ -43,71 +43,70 @@ function Section({
   title,
   note,
   items,
+  onJump,
 }: {
   tone: "rose" | "amber";
   icon: string;
   title: string;
   note: string;
   items: PlacementViolation[];
+  onJump: (v: PlacementViolation) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const t = TONE[tone];
   return (
-    <div role="alert" className={`mb-2 shrink-0 rounded-lg border-2 p-3 shadow-lg ${t.box}`}>
+    <div className={`rounded-lg border-2 p-3 ${t.box}`}>
       <div className="flex items-start gap-2">
-        <span className="text-2xl leading-none" aria-hidden="true">
+        <span className="text-xl leading-none" aria-hidden="true">
           {icon}
         </span>
         <div className="min-w-0 flex-1">
-          <p className={`font-bold ${tone === "rose" ? "text-base" : "text-sm"} ${t.title}`}>{title}</p>
+          <p className={`text-sm font-bold ${t.title}`}>{title}</p>
           <p className={`mt-0.5 text-xs ${t.sub}`}>{note}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className={`shrink-0 rounded border px-2 py-1 text-xs ${t.toggle}`}
-        >
-          {collapsed ? "一覧を開く" : "折りたたむ"}
-        </button>
       </div>
-      {!collapsed && (
-        <ul className="mt-2 max-h-48 space-y-1.5 overflow-y-auto">
-          {items.map((v) => (
-            <li key={v.slotId} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${t.row}`}>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm ${t.rowText}`}>
-                  <span className="font-semibold">{v.bandName}</span>
-                  <span className={`ml-2 text-xs ${t.rowSub}`}>
-                    {v.dayLabel} {v.startTime || "—"}
-                    {v.endTime ? `–${v.endTime}` : ""}
-                  </span>
-                </div>
-                <div className={`text-xs ${t.rowSub}`}>{v.reasons.join(" ／ ")}</div>
+      <ul className="mt-2 space-y-1.5">
+        {items.map((v) => (
+          <li key={v.slotId} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${t.row}`}>
+            <div className="min-w-0 flex-1">
+              <div className={`text-sm ${t.rowText}`}>
+                <span className="font-semibold">{v.bandName}</span>
+                <span className={`ml-2 text-xs ${t.rowSub}`}>
+                  {v.dayLabel} {v.startTime || "—"}
+                  {v.endTime ? `–${v.endTime}` : ""}
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => scrollToBand(v.bandId, tone)}
-                className={`shrink-0 rounded px-2.5 py-1.5 text-xs font-semibold ${t.btn}`}
-              >
-                場所を表示
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+              <div className={`text-xs ${t.rowSub}`}>{v.reasons.join(" ／ ")}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onJump(v)}
+              className={`min-h-9 shrink-0 rounded px-2.5 text-xs font-semibold ${t.btn}`}
+            >
+              場所を表示
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-// 日時指定(出演可能日・NG/希望時間・理由メモ)を後から変えたとき、すでに置いてある
-// 配置が新しい指定と矛盾していないかを常時チェックして、画面上部に大きく警告する。
+// 日時指定(出演可能日・NG/希望時間・理由メモ)を後から変えたとき、すでに置いてある配置が
+// 新しい指定と矛盾していないかを常時チェックする。
 //  - 赤: 指定そのものに反している(今すぐ変更)
 //  - 黄: 指定には収まっているが、前後 TIME_RESTRICTION_BUFFER_MINUTES 分の余裕がない
-// 閉じるボタンは無い — 解消されれば自動で消える。折りたたみだけ可能。
+// 画面を圧迫しないよう、ヘッダー内の小さなバッジにして、押すと下にポップアップで詳細を
+// 開く(レイアウトは押し下げない)。矛盾が新しく増えたときだけ自動で開く。解消されれば
+// バッジごと自動で消える。
 export function PlacementViolationBanner() {
   const bands = useAppStore((s) => s.bands);
   const days = useAppStore((s) => s.days);
   const venueHours = useAppStore((s) => s.venueHours);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const prevViolationCount = useRef<number | null>(null);
 
   const { violations, tight } = useMemo(() => {
     const all = findPlacementViolations(days, bands ?? [], venueHours);
@@ -117,26 +116,135 @@ export function PlacementViolationBanner() {
     };
   }, [days, bands, venueHours]);
 
+  // 赤(矛盾)が新しく増えたときだけ自動で開く。最初の表示では開かない。
+  useEffect(() => {
+    if (prevViolationCount.current !== null && violations.length > prevViolationCount.current) {
+      setOpen(true);
+    }
+    prevViolationCount.current = violations.length;
+  }, [violations.length]);
+
+  // 何も無くなったら閉じておく(次に出たとき開きっぱなしにならないように)。
+  useEffect(() => {
+    if (violations.length === 0 && tight.length === 0) setOpen(false);
+  }, [violations.length, tight.length]);
+
+  const reposition = () => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const width = Math.min(720, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    setPos({ top: rect.bottom + 8, left, width });
+  };
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener("resize", reposition);
+    return () => window.removeEventListener("resize", reposition);
+  }, [open]);
+
+  // ポップアップの外を押したら閉じる。
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEscapeKey(() => {
+    if (open) setOpen(false);
+  });
+
   if (violations.length === 0 && tight.length === 0) return null;
+
+  const hasRed = violations.length > 0;
+  const jump = (v: PlacementViolation) => {
+    setOpen(false);
+    scrollToBand(v.bandId, v.severity === "violation" ? "rose" : "amber");
+  };
+
   return (
     <>
-      {violations.length > 0 && (
-        <Section
-          tone="rose"
-          icon="🚨"
-          title={`日時指定と矛盾している配置が ${violations.length} 件あります。今すぐ変更してください`}
-          note="時間指定を変更した結果、すでに置いたバンドが出演できない日・時間に入っています。解消すると、この警告は自動で消えます。"
-          items={violations}
-        />
-      )}
-      {tight.length > 0 && (
-        <Section
-          tone="amber"
-          icon="⚠️"
-          title={`時間指定の前後${TIME_RESTRICTION_BUFFER_MINUTES}分未満の配置が ${tight.length} 件あります`}
-          note={`指定の範囲には収まっていますが、NG・希望時間の端まで${TIME_RESTRICTION_BUFFER_MINUTES}分以上の余裕がありません。進行が押す・早まると外れる恐れがあります。`}
-          items={tight}
-        />
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="日時指定と矛盾している配置・余裕が足りない配置を確認します"
+        className={`flex min-h-11 shrink-0 items-center gap-2 rounded border px-2.5 text-xs font-bold md:min-h-0 md:py-1.5 ${
+          hasRed
+            ? "border-rose-400 bg-rose-950/70 text-rose-100 hover:bg-rose-900/70"
+            : "border-amber-400 bg-amber-950/60 text-amber-100 hover:bg-amber-900/60"
+        }`}
+      >
+        {violations.length > 0 && (
+          <span className="flex items-center gap-1">
+            <span aria-hidden="true">🚨</span>
+            <span>日時の矛盾</span>
+            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+              {violations.length}
+            </span>
+          </span>
+        )}
+        {tight.length > 0 && (
+          <span className="flex items-center gap-1">
+            <span aria-hidden="true">⚠</span>
+            <span>余裕不足</span>
+            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-amber-950">
+              {tight.length}
+            </span>
+          </span>
+        )}
+      </button>
+      {open && pos && (
+        <ModalPortal>
+          <div
+            ref={popoverRef}
+            role="dialog"
+            aria-label="日時指定の警告"
+            style={{ top: pos.top, left: pos.left, width: pos.width }}
+            className="fixed z-[45] flex max-h-[calc(100vh-96px)] flex-col gap-2 overflow-y-auto rounded-xl border border-slate-600 bg-slate-900 p-2 shadow-2xl shadow-black/60"
+          >
+            <div className="flex items-center justify-between gap-2 px-1">
+              <p className="text-xs font-semibold text-slate-300">日時指定の警告（解消すると自動で消えます）</p>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                title="閉じる"
+                aria-label="閉じる"
+              >
+                ×
+              </button>
+            </div>
+            {violations.length > 0 && (
+              <Section
+                tone="rose"
+                icon="🚨"
+                title={`日時指定と矛盾している配置が ${violations.length} 件あります。今すぐ変更してください`}
+                note="時間指定を変更した結果、すでに置いたバンドが出演できない日・時間に入っています。"
+                items={violations}
+                onJump={jump}
+              />
+            )}
+            {tight.length > 0 && (
+              <Section
+                tone="amber"
+                icon="⚠️"
+                title={`時間指定の前後${TIME_RESTRICTION_BUFFER_MINUTES}分未満の配置が ${tight.length} 件あります`}
+                note={`指定の範囲には収まっていますが、NG・希望時間の端まで${TIME_RESTRICTION_BUFFER_MINUTES}分以上の余裕がありません。進行が押す・早まると外れる恐れがあります。`}
+                items={tight}
+                onJump={jump}
+              />
+            )}
+          </div>
+        </ModalPortal>
       )}
     </>
   );

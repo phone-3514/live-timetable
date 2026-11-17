@@ -20,6 +20,7 @@ import { useDismissibleDetails } from "./hooks/useDismissibleDetails";
 import { useSyncThemeAttribute } from "./hooks/useSyncThemeAttribute";
 import { BandListPanel } from "./components/BandListPanel";
 import { Timetable } from "./components/Timetable";
+import { PlacementViolationBanner } from "./components/PlacementViolationBanner";
 import { DeleteUndoToast } from "./components/DeleteUndoToast";
 import { Toast } from "./components/Toast";
 import { BandDragPreview } from "./components/BandDragPreview";
@@ -416,6 +417,7 @@ function App({ onReturnToEntry }: { onReturnToEntry: () => void }) {
               </Suspense>
             </ErrorBoundary>
           )}
+          {activeTab === "timetable" && <PlacementViolationBanner />}
           <div className="hidden min-w-0 flex-1 md:block" />
           <button type="button" onClick={() => setShowCommandCenter(true)} className="min-h-11 shrink-0 rounded border border-blue-500 bg-blue-600 px-3 text-xs font-black text-white shadow-sm hover:bg-blue-500 md:min-h-0 md:py-1.5">🎛 当日運営を開始</button>
           <button type="button" onClick={onReturnToEntry} className="min-h-11 shrink-0 rounded border border-slate-600 px-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 md:min-h-0 md:py-1.5">↩ エントリー画面へ戻る</button>
