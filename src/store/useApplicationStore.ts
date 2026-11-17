@@ -186,6 +186,38 @@ function removeNoteText(text: string, note: string): string {
   return withBreak.trim();
 }
 
+/** 申請の理由メモ(timeReasonNote)から、紐づけ済みだった申請前メモの文章が無くなったとき、
+ * そのメモを「紐づけ待ち」に戻す。申請情報の編集でメモを消したのに、申請前メモの側が
+ * 「紐づけ済み」のまま残らないようにする。文章が残っている間は紐づけ済みのまま。 */
+function returnMissingNotesToWaiting(applicationId: string, memo: string) {
+  useApplicationStore.setState((state) => {
+    let changed = false;
+    const next = (state.pendingReasonNotes ?? []).map((n) => {
+      if (n.attachedTo?.kind !== "application" || n.attachedTo.applicationId !== applicationId) return n;
+      const text = n.note.trim();
+      if (!text || memo.includes(text)) return n;
+      changed = true;
+      return { ...n, attachedTo: undefined, attachedAt: undefined };
+    });
+    return changed ? { pendingReasonNotes: next } : state;
+  });
+}
+
+/** 個人メモ版: その人の個人メモから、紐づけ済みだった申請前メモの文章が無くなったら紐づけ待ちに戻す。 */
+function returnMissingNotesToWaitingForMember(memberKey: string, memo: string) {
+  useApplicationStore.setState((state) => {
+    let changed = false;
+    const next = (state.pendingReasonNotes ?? []).map((n) => {
+      if (n.attachedTo?.kind !== "member" || normalizeMemberName(n.attachedTo.name) !== memberKey) return n;
+      const text = n.note.trim();
+      if (!text || memo.includes(text)) return n;
+      changed = true;
+      return { ...n, attachedTo: undefined, attachedAt: undefined };
+    });
+    return changed ? { pendingReasonNotes: next } : state;
+  });
+}
+
 export const useApplicationStore = create<ApplicationState>()(
   persist(
     (set, get) => ({
@@ -273,10 +305,12 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
       },
 
-      editMemberReasonNote: (key, note) =>
+      editMemberReasonNote: (key, note) => {
         set((state) => ({
           memberReasonNotes: (state.memberReasonNotes ?? []).map((m) => (m.key === key ? { ...m, note } : m)),
-        })),
+        }));
+        returnMissingNotesToWaitingForMember(key, note);
+      },
 
       setMemberReasonNote: (memberName, note) => {
         const key = normalizeMemberName(memberName);
@@ -290,6 +324,7 @@ export const useApplicationStore = create<ApplicationState>()(
             memberReasonNotes: [...others, { key, name: current?.name ?? memberName.trim(), note: text }],
           };
         });
+        returnMissingNotesToWaitingForMember(key, text);
       },
 
       addPendingReasonNote: ({ senderName, bandName, note }) => {
@@ -535,6 +570,7 @@ export const useApplicationStore = create<ApplicationState>()(
             timeReasonNote: next.timeReasonNote,
           });
         }
+        returnMissingNotesToWaiting(id, next.timeReasonNote ?? "");
       },
 
       updateApplicationTimeReasonNote: (id, note) => {
@@ -549,6 +585,7 @@ export const useApplicationStore = create<ApplicationState>()(
         if (app.linkedBandId) {
           useAppStore.getState().updateBand(app.linkedBandId, { timeReasonNote: next });
         }
+        returnMissingNotesToWaiting(id, next);
       },
 
       syncApplicationFromBand: (applicationId, patch) =>
