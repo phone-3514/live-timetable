@@ -1,5 +1,5 @@
-import type { TimetableDay, TimetableSettings, TimetableSlot } from "../types";
-import type { SimExtra } from "./liveTimeSimulation";
+import type { Band, TimetableDay, TimetableSettings, TimetableSlot } from "../types";
+import { changeoverShortfall, type SimExtra } from "./liveTimeSimulation";
 import { makeBlankSlot, makeCustomEventSlot } from "./slotFactories";
 
 // Turns what the time simulator worked out into edits of a real day. Three
@@ -32,7 +32,9 @@ export type PlannedDay = {
   removedCustom: number;
 };
 
-export function planDaySlots(day: TimetableDay, plan: SimulationPlan): PlannedDay {
+// `bands` (optional): lets a band's own 転換時間の個別設定 count when keeping the
+// changeover between two bands that an extra is inserted between.
+export function planDaySlots(day: TimetableDay, plan: SimulationPlan, bands: Band[] = []): PlannedDay {
   let slots = day.slots;
   let removedCustom = 0;
 
@@ -86,16 +88,29 @@ export function planDaySlots(day: TimetableDay, plan: SimulationPlan): PlannedDa
     const middle = plan.extras.filter((e) => e.position === "middle");
     const performanceTotal = slots.filter((s) => s.customLabel === null).length;
 
+    const settings = plan.settings ? { ...day.settings, ...plan.settings } : day.settings;
+    const bandById = new Map(bands.map((b) => [b.id, b]));
+
     const next: TimetableSlot[] = [...before];
     let seen = 0;
-    for (const slot of slots) {
+    for (let index = 0; index < slots.length; index++) {
+      const slot = slots[index];
       next.push(slot);
       if (slot.customLabel !== null) continue;
       seen++;
-      for (const e of middle) {
-        // "after the k-th band", with k past the end landing after the last.
-        if (Math.max(1, Math.min(e.afterBandCount, performanceTotal)) === seen) next.push(asSlot(e));
+      // "after the k-th band", with k past the end landing after the last.
+      const group = middle.filter((e) => Math.max(1, Math.min(e.afterBandCount, performanceTotal)) === seen);
+      if (group.length === 0) continue;
+      const minutes = group.map((e) => e.minutes);
+      // 余白・休憩の行には転換時間が付かないので、次もバンドの枠のときは、規定の転換時間を
+      // 下回らないよう長さを補正する(シミュレーターの計算と同じ規則)。
+      const following = slots[index + 1];
+      if (following && following.customLabel === null) {
+        const band = slot.bandId ? bandById.get(slot.bandId) : undefined;
+        const shortfall = changeoverShortfall(group, band?.customTransitionMinutes ?? settings.transitionMinutes);
+        if (shortfall) minutes[shortfall.index] += shortfall.add;
       }
+      group.forEach((e, i) => next.push(makeCustomEventSlot(e.label, minutes[i], e.hidden === true)));
     }
     if (performanceTotal === 0) next.push(...middle.map(asSlot));
     next.push(...after);

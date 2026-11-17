@@ -1039,7 +1039,7 @@ export const useAppStore = create<AppState>()(
       if (!plan) return day;
       changed++;
       const settings = plan.settings ? { ...day.settings, ...plan.settings } : day.settings;
-      const planned = planDaySlots(day, plan);
+      const planned = planDaySlots(day, plan, state.bands);
       return { ...day, settings, slots: recomputeTimes(planned.slots, settings, state.bands) };
     });
     if (changed > 0) set({ days });

@@ -26,7 +26,18 @@ export type SimItem =
       /** Per-band changeover override, like Band.customTransitionMinutes. */
       transitionMinutes?: number;
     }
-  | { kind: "extra"; label: string; minutes: number; hidden?: boolean };
+  | {
+      kind: "extra";
+      label: string;
+      minutes: number;
+      hidden?: boolean;
+      /** 利用者が追加項目(SimExtra)として入れた行。バンドとバンドの間に入るときだけ、
+       * 規定の転換時間を下回らないよう長さを補正する(applyChangeoverToExtras)。
+       * 実際のタイムテーブルの行をそのまま写した行には付けない(実物と同じ時刻にするため)。 */
+      planned?: boolean;
+      /** 補正で足した分(分)。タイムラインに「転換◯分を含む」と出すため。 */
+      addedChangeover?: number;
+    };
 
 export type SimExtra = {
   id: string;
@@ -50,6 +61,8 @@ export type SimRow = {
   /** Absolute minutes from midnight of the first day; may exceed 1440. */
   start: number;
   end: number;
+  /** 規定の転換時間を保つために、この行へ足した分(分)。 */
+  addedChangeover?: number;
 };
 
 export type SimResult = {
@@ -78,7 +91,7 @@ export const STANDARD_SIM_EXTRAS: Omit<SimExtra, "id">[] = [
 // band (k past the end lands after the last band, ahead of the "after"
 // extras). Same-position extras keep the order they were listed in.
 export function arrangeItems(core: SimItem[], extras: SimExtra[]): SimItem[] {
-  const asItem = (e: SimExtra): SimItem => ({ kind: "extra", label: e.label, minutes: e.minutes, hidden: e.hidden });
+  const asItem = (e: SimExtra): SimItem => ({ kind: "extra", label: e.label, minutes: e.minutes, hidden: e.hidden, planned: true });
   const before = extras.filter((e) => e.position === "before").map(asItem);
   const after = extras.filter((e) => e.position === "after").map(asItem);
   const middle = extras.filter((e) => e.position === "middle");
@@ -157,7 +170,15 @@ export function simulateItems(items: SimItem[], settings: TimetableSettings): Si
     const end = unwrap(timeToMinutes(slot.endTime), start);
     floor = end;
     const item = items[i];
-    return { key: slot.id, kind: item.kind, label: item.label, start, end, ...(item.kind === "extra" && item.hidden ? { hidden: true } : {}) };
+    return {
+      key: slot.id,
+      kind: item.kind,
+      label: item.label,
+      start,
+      end,
+      ...(item.kind === "extra" && item.hidden ? { hidden: true } : {}),
+      ...(item.kind === "extra" && item.addedChangeover ? { addedChangeover: item.addedChangeover } : {}),
+    };
   });
 
   const bandRows = rows.filter((r) => r.kind === "band");
@@ -170,8 +191,52 @@ export function simulateItems(items: SimItem[], settings: TimetableSettings): Si
   };
 }
 
+/** バンドとバンドの間に入れた追加項目の並び(run)が、規定の転換時間 `changeover` を下回らない
+ * ように、どの行にいくら足すかを返す(足りていれば null)。
+ *  - 表示される項目(休憩・準備など)がある: 転換はその間に済ませるものとして、合計が転換より
+ *    短いときだけ転換時間まで切り上げる(休憩5分・転換10分 → 10分、休憩20分 → 20分のまま)。
+ *  - 余白(非表示)だけ: 余白は「転換に上乗せする余裕」なので、転換時間を足す(余白5分・転換10分 → 15分)。
+ *  - 両方ある: 表示される項目で転換を満たし、余白はその上に上乗せになる。
+ * 余白・休憩の行には転換時間が付かない(recomputeTimes)ため、そのままだと間隔が項目の長さだけに
+ * なり、規定の転換より短くなる。 */
+export function changeoverShortfall(
+  run: { minutes: number; hidden?: boolean }[],
+  changeover: number,
+): { index: number; add: number } | null {
+  if (run.length === 0 || changeover <= 0) return null;
+  const visibleIndex = run.findIndex((e) => !e.hidden);
+  if (visibleIndex === -1) return { index: 0, add: changeover };
+  const visibleTotal = run.reduce((sum, e) => (e.hidden ? sum : sum + e.minutes), 0);
+  const add = changeover - visibleTotal;
+  return add > 0 ? { index: visibleIndex, add } : null;
+}
+
+/** 利用者の追加項目(planned)がバンドとバンドの間に挟まる所だけ、転換時間を保つよう補正する。 */
+export function applyChangeoverToExtras(items: SimItem[], defaultChangeover: number): SimItem[] {
+  const out = [...items];
+  for (let i = 0; i < out.length; i++) {
+    const band = out[i];
+    if (band.kind !== "band") continue;
+    let j = i + 1;
+    while (j < out.length && out[j].kind === "extra") j++;
+    // i の次から j の手前までが、バンド同士の間の追加項目。次もバンドで、間が全部 planned のときだけ。
+    if (j >= out.length || j === i + 1 || out[j].kind !== "band") continue;
+    const run = out.slice(i + 1, j) as Extract<SimItem, { kind: "extra" }>[];
+    if (!run.every((e) => e.planned)) continue;
+    const shortfall = changeoverShortfall(run, band.transitionMinutes ?? defaultChangeover);
+    if (!shortfall) continue;
+    const target = run[shortfall.index];
+    out[i + 1 + shortfall.index] = {
+      ...target,
+      minutes: target.minutes + shortfall.add,
+      addedChangeover: (target.addedChangeover ?? 0) + shortfall.add,
+    };
+  }
+  return out;
+}
+
 export function simulateDay(core: SimItem[], extras: SimExtra[], settings: TimetableSettings): SimResult {
-  return simulateItems(arrangeItems(core, extras), settings);
+  return simulateItems(applyChangeoverToExtras(arrangeItems(core, extras), settings.transitionMinutes), settings);
 }
 
 export type DeadlineBasis = "lastBand" | "final";

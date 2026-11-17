@@ -479,9 +479,9 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
             extras: applyExtras ? p.extras : null,
             replaceCustomSlots: replaceCustom,
           };
-          return { plan, label: p.day.label, planned: planDaySlots(p.day, plan) };
+          return { plan, label: p.day.label, planned: planDaySlots(p.day, plan, bands) };
         }),
-    [plans, excludedApplyDays, slotMode, applySettings, applyExtras, replaceCustom],
+    [plans, excludedApplyDays, slotMode, applySettings, applyExtras, replaceCustom, bands],
   );
   const nothingToApply = !applySettings && !applyExtras && slotMode === "none";
 
@@ -1243,6 +1243,14 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                                 非表示
                               </span>
                             )}
+                            {row.addedChangeover ? (
+                              <span
+                                className="ml-1.5 rounded border border-cyan-700 px-1 text-[10px] text-cyan-300"
+                                title="余白・休憩の行には転換時間が付かないため、規定の転換時間を下回らないよう、この行に足した分です"
+                              >
+                                転換{row.addedChangeover}分を含む
+                              </span>
+                            ) : null}
                           </span>
                         </li>
                       ))}
