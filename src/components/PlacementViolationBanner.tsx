@@ -176,8 +176,8 @@ export function PlacementViolationBanner() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="日時指定と矛盾している配置・余裕が足りない配置を確認します"
-        className={`flex min-h-11 shrink-0 items-center gap-2 rounded border px-2.5 text-xs font-bold md:min-h-0 md:py-1.5 ${
+        title="日時指定と矛盾している配置（矛盾）と、指定の前後20分の余裕が足りない配置（余裕）を確認します"
+        className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded border px-2 text-xs font-bold md:min-h-0 md:py-1.5 ${
           hasRed
             ? "border-rose-400 bg-rose-950/70 text-rose-100 hover:bg-rose-900/70"
             : "border-amber-400 bg-amber-950/60 text-amber-100 hover:bg-amber-900/60"
@@ -186,16 +186,18 @@ export function PlacementViolationBanner() {
         {violations.length > 0 && (
           <span className="flex items-center gap-1">
             <span aria-hidden="true">🚨</span>
-            <span>日時の矛盾</span>
+            <span className="hidden max-md:inline min-[1700px]:inline">矛盾</span>
             <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
               {violations.length}
             </span>
           </span>
         )}
         {tight.length > 0 && (
-          <span className="flex items-center gap-1">
+          // 幅の狭いデスクトップでは、赤があるときは赤だけ表示してツールバーを圧迫しない
+          // (黄色の件数はポップアップを開けば分かる)。
+          <span className={hasRed ? "hidden items-center gap-1 max-md:flex min-[1700px]:flex" : "flex items-center gap-1"}>
             <span aria-hidden="true">⚠</span>
-            <span>余裕不足</span>
+            <span className="hidden max-md:inline min-[1700px]:inline">余裕</span>
             <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-amber-950">
               {tight.length}
             </span>
