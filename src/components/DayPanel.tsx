@@ -188,6 +188,7 @@ export function DayPanel({ day, daysCount }: Props) {
           演奏(分)
           <input
             type="number"
+            step="any"
             min={1}
             value={settings.performanceMinutes}
             onChange={(e) =>
@@ -202,6 +203,7 @@ export function DayPanel({ day, daysCount }: Props) {
           転換(分)
           <input
             type="number"
+            step="any"
             min={0}
             value={settings.transitionMinutes}
             onChange={(e) =>
@@ -328,6 +330,7 @@ export function DayPanel({ day, daysCount }: Props) {
                 />
                 <input
                   type="number"
+                  step="any"
                   min={1}
                   max={999}
                   value={customMinutes}

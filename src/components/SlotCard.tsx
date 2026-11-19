@@ -286,10 +286,11 @@ export function SlotCard({
         </div>
       )}
 
-      <div className="flex w-[5.35rem] shrink-0 flex-col justify-center gap-0.5 font-mono text-xs text-slate-300">
+      <div className={`flex shrink-0 flex-col justify-center gap-0.5 font-mono text-xs text-slate-300 ${(slot.startTimeOverride ?? slot.startTime).length > 5 ? "w-[6.6rem]" : "w-[5.35rem]"}`}>
         <input
           type="time"
           value={slot.startTimeOverride ?? slot.startTime}
+          step={(slot.startTimeOverride ?? slot.startTime).length > 5 ? 1 : undefined}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) =>
@@ -383,6 +384,7 @@ export function SlotCard({
             </button>
             <input
               type="number"
+              step="any"
               min={1}
               className="custom-slot-duration w-10 bg-transparent text-center text-sm font-semibold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               value={slot.customDurationMinutes ?? ""}

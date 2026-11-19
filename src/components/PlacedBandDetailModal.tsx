@@ -290,6 +290,7 @@ export function PlacedBandDetailModal({ band, slot, onClose }: Props) {
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
+                    step="any"
                     min={1}
                     value={editDuration}
                     onChange={(e) => setEditDuration(e.target.value)}

@@ -64,6 +64,7 @@ export function MobileCustomSlotModal({ dayId, slot, onClose }: Props) {
           所要時間（分）
           <input
             type="number"
+            step="any"
             min={1}
             value={minutes}
             onChange={(e) => setMinutes(Number(e.target.value))}

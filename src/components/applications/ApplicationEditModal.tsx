@@ -214,6 +214,7 @@ export function ApplicationEditModal({ app, snapshot, missing, initialDraft, onD
                 <span className="font-semibold text-slate-400">演奏時間（分）</span>
                 <input
                   type="number"
+                  step="any"
                   min={1}
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}

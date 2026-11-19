@@ -168,6 +168,7 @@ function ExtrasEditor({
               />
               <input
                 type="number"
+                step="any"
                 min={0}
                 value={extra.minutes}
                 onChange={(e) => onPatch(extra.id, { minutes: toNumber(e.target.value) })}
@@ -1093,6 +1094,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                       1枠の演奏（分）
                       <input
                         type="number"
+                        step="any"
                         min={1}
                         value={input.performanceMinutes}
                         onChange={(e) => patchDay(day.id, { performanceMinutes: Math.max(1, toNumber(e.target.value)) })}
@@ -1103,6 +1105,7 @@ export function LiveTimeSimulatorModal({ onClose }: { onClose: () => void }) {
                       転換（分）
                       <input
                         type="number"
+                        step="any"
                         min={0}
                         value={input.transitionMinutes}
                         onChange={(e) => patchDay(day.id, { transitionMinutes: toNumber(e.target.value) })}

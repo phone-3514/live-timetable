@@ -99,6 +99,7 @@ export function BandDetailsForm({ band }: Props) {
       <div className="flex gap-2 text-xs">
         <input
           type="number"
+          step="any"
           min={1}
           className="w-20 border-b border-transparent bg-transparent text-indigo-400 outline-none focus:border-slate-500"
           value={band.durationMinutes ?? ""}
@@ -111,6 +112,7 @@ export function BandDetailsForm({ band }: Props) {
         />
         <input
           type="number"
+          step="any"
           min={0}
           className="w-24 border-b border-transparent bg-transparent text-cyan-400 outline-none focus:border-slate-500"
           value={band.customTransitionMinutes ?? ""}

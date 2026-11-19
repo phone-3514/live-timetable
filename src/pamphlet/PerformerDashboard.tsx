@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { StageProgress } from "../store/useProgressStore";
+import { minutesToTime, timeToMinutes } from "../utils/time";
 import type { PublicBand, PublicPamphletDoc, PublicSlot } from "./types";
 
 function subtractMinutes(time: string, minutes: number) {
-  const [hours, mins] = time.split(":").map(Number);
-  const total = (hours * 60 + mins - minutes + 1440) % 1440;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  return minutesToTime(timeToMinutes(time) - minutes);
 }
 
 export function PerformerDashboard({ data, performerName, bands, progress }: {

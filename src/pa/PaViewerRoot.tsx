@@ -49,11 +49,11 @@ function phaseLabel(phase: StagePhase | undefined) {
 }
 
 function dateAtTime(day: TimetableDay, hhmm: string) {
-  const [hours, minutes] = hhmm.split(":").map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const [hours, minutes, seconds = 0] = hhmm.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) return null;
   const base = day.date ? new Date(`${day.date}T00:00:00`) : new Date();
   if (Number.isNaN(base.getTime())) return null;
-  base.setHours(hours, minutes, 0, 0);
+  base.setHours(hours, minutes, seconds, 0);
   return base;
 }
 

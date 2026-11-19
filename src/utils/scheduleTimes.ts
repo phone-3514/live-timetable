@@ -52,7 +52,7 @@ export function recomputeTimes(
     // since those rows get no changeover of their own.
     if (slots[index + 1]?.customLabel != null) transitionAfter = 0;
     const baselineStart = baselineCursor;
-    const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}$/.test(slot.startTimeOverride));
+    const hasOverride = Boolean(slot.startTimeOverride && /^\d{2}:\d{2}(?::\d{2})?$/.test(slot.startTimeOverride));
     const start = hasOverride
       ? alignTimeToReference(slot.startTimeOverride!, baselineStart)
       : cursor;

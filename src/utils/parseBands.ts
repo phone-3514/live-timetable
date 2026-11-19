@@ -585,7 +585,7 @@ export const SYNC_LINE_RE = /^同期(?:演奏|音源)?/;
 // alternation tries left-to-right, backtracking into "演奏" only once
 // "演奏時間"/"出演時間" have already failed at that position), so this
 // never changes what an existing "演奏時間：10分" line parses as.
-export const DURATION_LINE_RE = /^(?:演奏時間|出演時間|演奏)\s*[:：]?\s*(\d+)\s*分/;
+export const DURATION_LINE_RE = /^(?:演奏時間|出演時間|演奏)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*分/;
 // The next band's "submitter — timestamp" header line can fall inside the
 // current band's block range (it appears right before the next バンド名
 // line), so it must be filtered out explicitly rather than assumed absent.

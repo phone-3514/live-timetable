@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { StageProgress } from "../store/useProgressStore";
 import type { PublicPamphletDoc } from "./types";
 import { QrCode } from "../components/QrCode";
+import { timeToMinutes } from "../utils/time";
 
 export function VenueScreen({ data, progress, circleId, onExit }: { data: PublicPamphletDoc; progress: StageProgress | null; circleId: string; onExit: () => void }) {
   const [now, setNow] = useState(Date.now());
@@ -9,8 +10,9 @@ export function VenueScreen({ data, progress, circleId, onExit }: { data: Public
   const rows = useMemo(() => data.days.flatMap((day) => day.slots.map((slot) => ({ day, slot }))), [data]);
   let index = progress?.slotId ? rows.findIndex((row) => row.slot.id === progress.slotId) : -1;
   if (index < 0) {
-    const currentMinutes = new Date(now).getHours() * 60 + new Date(now).getMinutes();
-    index = rows.findIndex(({ slot }) => { const [sh, sm] = slot.startTime.split(":").map(Number); const [eh, em] = slot.endTime.split(":").map(Number); return currentMinutes >= sh * 60 + sm && currentMinutes < eh * 60 + em; });
+    const clock = new Date(now);
+    const currentMinutes = clock.getHours() * 60 + clock.getMinutes() + clock.getSeconds() / 60;
+    index = rows.findIndex(({ slot }) => currentMinutes >= timeToMinutes(slot.startTime) && currentMinutes < timeToMinutes(slot.endTime));
   }
   const current = rows[index];
   const next = rows[index + 1];

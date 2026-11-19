@@ -162,10 +162,11 @@ export function MobileSlotCard({
         </span>
       )}
 
-      <div className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
+      <div className={`flex shrink-0 flex-col gap-0.5 ${(slot.startTimeOverride ?? slot.startTime).length > 5 ? "w-[6.4rem]" : "w-[4.25rem]"}`}>
         <input
           type="time"
           value={slot.startTimeOverride ?? slot.startTime}
+          step={(slot.startTimeOverride ?? slot.startTime).length > 5 ? 1 : undefined}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) =>
