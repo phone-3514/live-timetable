@@ -1,5 +1,6 @@
-// 時刻は "HH:MM"、秒があるときだけ "HH:MM:SS"。演奏時間や転換時間に小数の分(4.5分 など)を
-// 使えるよう、内部の「分」は小数のまま持ち、文字列にするときだけ秒単位に丸める。
+// 時刻は "HH:MM"。演奏時間や転換時間に小数の分(4.5分 など)を使えるよう、内部の「分」は小数の
+// まま持つ(累積した時刻がずれないように)が、時刻の文字列にするときは秒を切り捨てる。
+// 読み込みでは "HH:MM:SS" も受け付ける(古いデータ用)。
 export function timeToMinutes(time: string): number {
   const [h, m, s] = time.split(":").map(Number);
   return h * 60 + m + (Number.isFinite(s) ? s / 60 : 0);
@@ -8,11 +9,8 @@ export function timeToMinutes(time: string): number {
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 export function minutesToTime(total: number): string {
-  // 秒に丸めてから時分秒へ分ける(0.1分のような小数の誤差で 59.999 秒にならないように)。
-  const seconds = Math.round(total * 60);
-  const wrapped = ((seconds % 86400) + 86400) % 86400;
-  const h = Math.floor(wrapped / 3600);
-  const m = Math.floor((wrapped % 3600) / 60);
-  const s = wrapped % 60;
-  return s === 0 ? `${pad2(h)}:${pad2(m)}` : `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+  // いったん秒に丸めてから分未満を切り捨てる(0.1分のような小数の誤差で 1 分ずれないように)。
+  const wholeMinutes = Math.floor(Math.round(total * 60) / 60);
+  const wrapped = ((wholeMinutes % 1440) + 1440) % 1440;
+  return `${pad2(Math.floor(wrapped / 60))}:${pad2(wrapped % 60)}`;
 }

@@ -335,13 +335,10 @@ export function formatClock(absoluteMinutes: number): string {
 
 /** "1時間30分" / "45分". */
 export function formatDuration(minutes: number): string {
-  // 小数の分は秒まで見せる(4.5分 → 「4分30秒」)。整数のときは従来どおり。
-  const totalSeconds = Math.max(0, Math.round(minutes * 60));
-  const total = Math.floor(totalSeconds / 60);
-  const sec = totalSeconds % 60;
+  // 秒は切り捨て(4.5分 → 「4分」)。整数の分のときは従来どおり。
+  const total = Math.max(0, Math.floor(Math.round(minutes * 60) / 60));
   const h = Math.floor(total / 60);
   const m = total % 60;
-  const secPart = sec > 0 ? `${sec}秒` : "";
-  if (h === 0) return `${m}分${secPart}`;
-  return m === 0 && !secPart ? `${h}時間` : `${h}時間${m}分${secPart}`;
+  if (h === 0) return `${m}分`;
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`;
 }
