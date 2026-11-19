@@ -3,6 +3,8 @@
 // per-theme at runtime and applied via inline style — Tailwind's color
 // utilities are static class names, which doesn't fit a data-driven палette
 // switch like this one.
+import { STAGE_ARTWORK, STAGE_BOTTOM_INSET, stageTopInset, type ArtworkLayer } from "./shareArtwork";
+
 export type ThemeId =
   | "standard"
   | "rock"
@@ -20,7 +22,8 @@ export type ThemeId =
   | "metal"
   | "pop"
   | "jazz"
-  | "instruments";
+  | "instruments"
+  | "stage";
 
 type BadgeStyle = { bg: string; border: string; text: string };
 type GlowSpot = { background: string; top?: string; bottom?: string; left?: string; right?: string; size: number };
@@ -56,6 +59,13 @@ export type ShareTheme = {
    * and Setlist exports. Undefined for every theme except "instruments" —
    * every other theme renders exactly as before. */
   watermarkPattern?: string;
+  /** 背景に大きく敷くイラスト(マイク・銀杏の葉・五線譜など)。タイムテーブル画像(1日・全日程)に
+   * だけ重なる。undefined のテーマは従来どおりの見た目。 */
+  artwork?: ArtworkLayer[];
+  /** artwork の下の帯の分として、キャンバスの下に足す余白(px)。 */
+  artworkBottomInset?: number;
+  /** artwork の上のイラスト(マイク)の分として、キャンバスの上に足す余白(px)。絵の拡大率から求める。 */
+  artworkTopInset?: (scale: number) => number;
 };
 
 // Faint line-art guitar/mic/drum-kit/keyboard silhouettes, tiled — the
@@ -577,6 +587,36 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
     breakText: "#3f2d0a",
     footerColor: "#71717a",
     watermarkPattern: INSTRUMENTS_WATERMARK,
+  },
+  stage: {
+    id: "stage",
+    name: "Stage / Mic",
+    subtitle: "マイク・銀杏の葉・五線譜の大きなイラストが欠けずに見えるデザイン",
+    pageBackground: "linear-gradient(to bottom, #fffaf0, #f8efd9)",
+    glowSpots: [],
+    kickerColor: "#e0573a",
+    dayTitleGradient: null,
+    dayTitleColor: "#12356b",
+    dateColor: "#1f4a8a",
+    dividerBackground: "linear-gradient(to right, transparent, #f4734f, transparent)",
+    cardBg: "#fffdf6",
+    cardBorder: "#12356b",
+    cardShadow: "0 2px 0 rgba(18,53,107,0.14)",
+    numberBadgeBackground: "#12356b",
+    numberBadgeText: "#fffaf0",
+    timeColor: "#d9482a",
+    bandNameColor: "#12356b",
+    setlistColor: "#4a5f86",
+    setlistItalic: false,
+    syncBadge: { bg: "#e8f0fb", border: "#9fb8e0", text: "#12356b" },
+    keyBadge: { bg: "#fff0e6", border: "#f4b393", text: "#b4421f" },
+    breakBorder: "#12356b",
+    breakBg: "#f9c3ae",
+    breakText: "#12356b",
+    footerColor: "#5a6f94",
+    artwork: STAGE_ARTWORK,
+    artworkBottomInset: STAGE_BOTTOM_INSET,
+    artworkTopInset: stageTopInset,
   },
 };
 

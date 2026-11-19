@@ -1,3 +1,5 @@
+import { ThemeArtwork } from "./ThemeArtwork";
+import { artworkScale } from "../utils/shareArtwork";
 import type { CSSProperties } from "react";
 import type { Band, TimetableDay, TimetableSlot } from "../types";
 import { LAYOUTS, THEMES } from "../utils/shareThemes";
@@ -417,11 +419,19 @@ export function ShareTimetableTemplate({
     COLUMN_WIDTH * Math.max(columns.length, 1) +
     COLUMN_GAP * Math.max(columns.length - 1, 0);
 
+  const artScale = theme.artwork ? artworkScale(canvasWidth) : 1;
   return (
     <div
-      style={{ width: canvasWidth, background: theme.pageBackground, padding: CANVAS_PADDING }}
+      style={{
+        width: canvasWidth,
+        background: theme.pageBackground,
+        padding: CANVAS_PADDING,
+        paddingTop: CANVAS_PADDING + (theme.artworkTopInset?.(artScale) ?? 0),
+        paddingBottom: CANVAS_PADDING + (theme.artworkBottomInset ?? 0) * artScale,
+      }}
       className="relative overflow-hidden"
     >
+      <ThemeArtwork layers={theme.artwork} scale={artScale} />
       {theme.glowSpots.map((spot, i) => (
         <div
           key={i}
