@@ -58,6 +58,8 @@ export function SetlistExportModal({ day, onClose }: Props) {
   const [themeId, setThemeId] = useState<ThemeId>("standard");
   // Independent from themeId — see shareThemes.ts's LayoutId doc comment.
   const [layoutId, setLayoutId] = useState<LayoutId>("classic");
+  // 時間未確定のまま共有したい、時間を伏せたい場合用。PNG・PDF・プレビュー共通。
+  const [showTime, setShowTime] = useState(true);
 
   const previewAreaRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -81,7 +83,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, applications, entries.length, themeId, layoutId]);
+  }, [day, bands, applications, entries.length, themeId, layoutId, showTime]);
 
   useLayoutEffect(() => {
     const el = previewAreaRef.current;
@@ -116,7 +118,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
     setBusy("png");
     try {
       const dataUrl = await toPng(el, { pixelRatio: 2 });
-      const filename = `setlist-${day.label}-${themeId}.png`;
+      const filename = `setlist-${day.label}-${themeId}${showTime ? "" : "-notime"}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);
     } finally {
@@ -220,7 +222,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
         );
       }
 
-      const filename = `setlist-${day.label}-${themeId}.pdf`;
+      const filename = `setlist-${day.label}-${themeId}${showTime ? "" : "-notime"}.pdf`;
       const file = new File([pdf.output("blob")], filename, { type: "application/pdf" });
       await downloadFile(file);
     } finally {
@@ -308,6 +310,19 @@ export function SetlistExportModal({ day, onClose }: Props) {
           </div>
         </div>
 
+        <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-300 md:min-h-0">
+            <input
+              type="checkbox"
+              checked={showTime}
+              onChange={(e) => setShowTime(e.target.checked)}
+              className="h-4 w-4 accent-emerald-500"
+            />
+            時間を表示する
+            <span className="text-slate-500">（外すと出演順の番号だけになります）</span>
+          </label>
+        </div>
+
         <div
           ref={previewAreaRef}
           className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4"
@@ -340,6 +355,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
                 themeId={themeId}
                 layoutId={layoutId}
                 isSingleDay={isSingleDay}
+                showTime={showTime}
               />
             </div>
           </div>
@@ -393,6 +409,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             themeId={themeId}
             layoutId={layoutId}
             isSingleDay={isSingleDay}
+                showTime={showTime}
           />
         </div>
       </div>
@@ -409,6 +426,7 @@ export function SetlistExportModal({ day, onClose }: Props) {
             themeId={themeId}
             layoutId={layoutId}
             isSingleDay={isSingleDay}
+                showTime={showTime}
           />
         </div>
       </div>

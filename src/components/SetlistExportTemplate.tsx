@@ -36,6 +36,9 @@ type Props = {
    * comment and ShareTimetableTemplate's identical prop. Defaults to
    * "classic" (pre-existing rendering, unchanged). */
   layoutId?: LayoutId;
+  /** false で開始・終了時刻を出さず、出演順の番号だけにする(時間未確定の
+   * 共有用など)。省略時は従来どおり表示。 */
+  showTime?: boolean;
 };
 
 function formatDate(iso: string | null): string | null {
@@ -58,17 +61,20 @@ function SetlistTable({
   entries,
   COLORS,
   layout,
+  showTime,
 }: {
   entries: SetlistBandEntry[];
   COLORS: ReturnType<typeof getSetlistPalette>;
   layout: (typeof LAYOUTS)[LayoutId];
+  showTime: boolean;
 }) {
+  const gridColumns = showTime ? "60px 1fr 1fr" : "30px 1fr 1fr";
   return (
     <div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "60px 1fr 1fr",
+          gridTemplateColumns: gridColumns,
           gap: 10,
           fontSize: 10,
           fontWeight: 700,
@@ -79,7 +85,7 @@ function SetlistTable({
             : { background: COLORS.headerBg, color: COLORS.headerText, borderRadius: 4 }),
         }}
       >
-        <span>時間</span>
+        <span>{showTime ? "時間" : "順"}</span>
         <span>バンド / セットリスト</span>
         <span>メンバー</span>
       </div>
@@ -90,7 +96,7 @@ function SetlistTable({
           data-setlist-row="true"
           style={{
             display: "grid",
-            gridTemplateColumns: "60px 1fr 1fr",
+            gridTemplateColumns: gridColumns,
             gap: 10,
             padding: "7px 8px",
             background: layout.id === "notion" ? "transparent" : i % 2 === 1 ? COLORS.zebra : "transparent",
@@ -139,19 +145,21 @@ function SetlistTable({
                 {String(entry.order).padStart(2, "0")}
               </span>
             )}
-            <div
-              style={{
-                marginTop: 3,
-                fontSize: 10.5,
-                fontWeight: 600,
-                color: COLORS.title,
-                lineHeight: 1.35,
-              }}
-            >
-              {entry.startTime || "-"}
-              <br />
-              <span style={{ color: COLORS.subtitle }}>-{entry.endTime || "-"}</span>
-            </div>
+            {showTime && (
+              <div
+                style={{
+                  marginTop: 3,
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: COLORS.title,
+                  lineHeight: 1.35,
+                }}
+              >
+                {entry.startTime || "-"}
+                <br />
+                <span style={{ color: COLORS.subtitle }}>-{entry.endTime || "-"}</span>
+              </div>
+            )}
           </div>
 
           {/* Band name + setlist column */}
@@ -246,6 +254,7 @@ export function SetlistExportTemplate({
   themeId = "standard",
   isSingleDay,
   layoutId = "classic",
+  showTime = true,
 }: Props) {
   const COLORS = getSetlistPalette(THEMES[themeId]);
   const layout = LAYOUTS[layoutId];
@@ -334,12 +343,12 @@ export function SetlistExportTemplate({
         <div style={{ display: "flex", alignItems: "flex-start", gap: COLUMN_GAP }}>
           {columnGroups.map((group, gi) => (
             <div key={gi} style={{ width: COLUMN_WIDTH, flexShrink: 0 }}>
-              <SetlistTable entries={group} COLORS={COLORS} layout={layout} />
+              <SetlistTable entries={group} COLORS={COLORS} layout={layout} showTime={showTime} />
             </div>
           ))}
         </div>
       ) : (
-        <SetlistTable entries={entries} COLORS={COLORS} layout={layout} />
+        <SetlistTable entries={entries} COLORS={COLORS} layout={layout} showTime={showTime} />
       )}
 
       <footer style={{ marginTop: 16, textAlign: "center", fontSize: 8.5, color: COLORS.kicker }}>
