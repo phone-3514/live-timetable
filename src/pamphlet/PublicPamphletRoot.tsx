@@ -504,15 +504,11 @@ function SlotRow({
           isJustFocused ? "pamphlet-auto-focus-pulse" : ""
         }`}
       >
-        <span>
-          <span className="block text-base font-semibold text-slate-100">
-            {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
-            {label}
-          </span>
-          <span className="block text-sm text-slate-400">
-            {slot.startTime} 〜 {slot.endTime}
-            {(slot.delayMinutes ?? 0) !== 0 && <span className={`ml-2 font-semibold ${(slot.delayMinutes ?? 0) > 0 ? "text-amber-300" : "text-sky-300"}`}>{(slot.delayMinutes ?? 0) > 0 ? `予定より${slot.delayMinutes}分遅れ` : `予定より${Math.abs(slot.delayMinutes ?? 0)}分早い`}</span>}
-          </span>
+        {/* 公開パンフレットのタイムテーブルには、開始・終了の時刻(と遅れの分数)を出さない。
+            進行中の枠は「▶ 出演中！」などの表示でわかる。 */}
+        <span className="block text-base font-semibold text-slate-100">
+          {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
+          {label}
         </span>
         {band && <span className="text-sm text-indigo-300">詳細 ›</span>}
       </button>
@@ -546,14 +542,9 @@ function TransitionRow({
             : "border-[var(--glass-border)] bg-transparent"
         } ${isJustFocused ? "pamphlet-auto-focus-pulse" : ""}`}
       >
-        <span>
-          <span className="block text-sm font-semibold text-slate-300">
-            {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中！</span>}
-            転換
-          </span>
-          <span className="block text-sm text-slate-500">
-            {gap.startTime} 〜 {gap.endTime}
-          </span>
+        <span className="block text-sm font-semibold text-slate-300">
+          {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中！</span>}
+          転換
         </span>
       </div>
     </li>
