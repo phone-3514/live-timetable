@@ -293,7 +293,9 @@ export function SetlistExportModal({ day, onClose }: Props) {
         <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
           <p className="mb-1.5 text-[11px] font-semibold text-slate-500">レイアウト構造</p>
           <div className="flex flex-wrap gap-1.5">
-            {Object.values(LAYOUTS).map((layout) => (
+            {Object.values(LAYOUTS)
+              .filter((layout) => layout.structure === "cards")
+              .map((layout) => (
               <button
                 key={layout.id}
                 onClick={() => setLayoutId(layout.id)}

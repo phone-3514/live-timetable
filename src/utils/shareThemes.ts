@@ -634,12 +634,16 @@ export const THEMES: Record<ThemeId, ShareTheme> = {
 // pre-existing rendering byte-for-byte — this is what makes the new
 // layouts strictly additive rather than a risk to any of the 17
 // existing options.
-export type LayoutId = "classic" | "apple" | "material" | "notion";
+export type LayoutId = "classic" | "apple" | "material" | "notion" | "board";
 
 export type LayoutStyle = {
   id: LayoutId;
   name: string;
   description: string;
+  /** "cards" = 従来のカード/リスト型(セットリスト等も載る)。"board" = 視認性最優先の
+   * 縦長ボード(ShareBoardTemplate: 時刻・番号・バンド名だけを大きく並べる)。
+   * board はタイムテーブル画像専用で、セットリスト出力の選択肢には出さない。 */
+  structure: "cards" | "board";
   /** Corner radius (px) for a band card / list row. */
   cardRadius: number;
   /** 0 = no visible border around each card (relies on cardGap/dividers
@@ -676,6 +680,7 @@ export type LayoutStyle = {
 export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
   classic: {
     id: "classic",
+    structure: "cards",
     name: "クラシック",
     description: "既存のカード型デザイン（すべてのテーマの元々の見た目）",
     cardRadius: 16,
@@ -689,6 +694,7 @@ export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
   },
   apple: {
     id: "apple",
+    structure: "cards",
     name: "Apple",
     description: "iOSのグループリスト風。枠なしで行が連結し、余白広め",
     cardRadius: 18,
@@ -702,6 +708,7 @@ export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
   },
   material: {
     id: "material",
+    structure: "cards",
     name: "Material",
     description: "Googleマテリアル風。エレベーション影のついたカード",
     cardRadius: 12,
@@ -715,6 +722,7 @@ export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
   },
   notion: {
     id: "notion",
+    structure: "cards",
     name: "Notion",
     description: "ドキュメント風。枠や影を排したシンプルな一覧",
     cardRadius: 0,
@@ -725,6 +733,20 @@ export const LAYOUTS: Record<LayoutId, LayoutStyle> = {
     titleAlign: "left",
     titleUseGradient: false,
     headerRuleStyle: "line",
+  },
+  board: {
+    id: "board",
+    structure: "board",
+    name: "ボード（視認性重視）",
+    description: "縦長の一列に、開始時刻・出演順・バンド名だけを大きく表示。セットリストは載せません",
+    cardRadius: 6,
+    cardBorderWidth: 0,
+    cardGap: 4,
+    cardShadowOverride: "none",
+    badgeShape: "none",
+    titleAlign: "center",
+    titleUseGradient: false,
+    headerRuleStyle: "none",
   },
 };
 

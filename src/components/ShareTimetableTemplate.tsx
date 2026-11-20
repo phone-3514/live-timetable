@@ -6,6 +6,7 @@ import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, LayoutStyle, ShareTheme, ThemeId } from "../utils/shareThemes";
 import type { EventInfo } from "../store/useAppStore";
 import { isHiddenBlock } from "../utils/slotKinds";
+import { ShareBoardTemplate } from "./ShareBoardTemplate";
 
 // A purely presentational, non-interactive render of a day's timetable,
 // designed to be captured as a single shareable PNG (Discord/LINE/print) —
@@ -392,6 +393,19 @@ export function ShareTimetableTemplate({
   layoutId = "classic",
   widescreen = false,
 }: Props) {
+  // 構造そのものが違う「ボード」は専用テンプレートに任せる(フックなし)。
+  if (LAYOUTS[layoutId].structure === "board") {
+    return (
+      <ShareBoardTemplate
+        days={[day]}
+        bands={bands}
+        themeId={themeId}
+        eventInfo={eventInfo}
+        layoutId={layoutId}
+        widescreen={widescreen}
+      />
+    );
+  }
   const theme = THEMES[themeId];
   const layout = LAYOUTS[layoutId];
   const headerAlignClass = layout.titleAlign === "left" ? "items-start text-left" : "items-center text-center";

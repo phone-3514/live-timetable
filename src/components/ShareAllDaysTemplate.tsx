@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import type { Band, TimetableDay } from "../types";
 import { LAYOUTS, THEMES } from "../utils/shareThemes";
 import type { LayoutId, ThemeId } from "../utils/shareThemes";
+import { ShareBoardTemplate } from "./ShareBoardTemplate";
 import type { EventInfo } from "../store/useAppStore";
 import {
   CANVAS_PADDING,
@@ -95,6 +96,18 @@ export function ShareAllDaysTemplate({
   layoutId = "classic",
   widescreen = false,
 }: Props) {
+  if (LAYOUTS[layoutId].structure === "board") {
+    return (
+      <ShareBoardTemplate
+        days={days}
+        bands={bands}
+        themeId={themeId}
+        eventInfo={eventInfo}
+        layoutId={layoutId}
+        widescreen={widescreen}
+      />
+    );
+  }
   const theme = THEMES[themeId];
   const layout = LAYOUTS[layoutId];
   const headerAlignClass = layout.titleAlign === "left" ? "items-start text-left" : "items-center text-center";
