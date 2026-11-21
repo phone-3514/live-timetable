@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
-import { PerformingMotion } from "./PerformingMotion";
 import { expectedTimeText } from "./expectedTime";
+import { LiveBadge, LiveSparkles } from "./LiveHighlight";
 import { ThemedBackdrop, ThemedDaySection, themedTitleStyle } from "./ThemedPamphlet";
 import { resolvePamphletDesign } from "./pamphletDesign";
 import { useForcedColorScheme } from "../store/useForcedColorScheme";
@@ -175,12 +175,6 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
     () => resolveEffectiveActiveRow(liveProgress, liveProgressDayRows, activeRow),
     [liveProgress, liveProgressDayRows, activeRow],
   );
-  // 今まさにバンドが演奏している枠があるか(転換・休憩・リハーサルなどのときは false)。
-  // 演奏中だけ、画面の左右に音符・楽器の演出を出す。
-  const isPerformingNow = useMemo(() => {
-    if (!data || !effectiveActiveRow || effectiveActiveRow.kind !== "slot") return false;
-    return data.days.some((d) => d.slots.some((s) => s.id === effectiveActiveRow.id && s.bandId !== null));
-  }, [data, effectiveActiveRow]);
   // Set briefly right after the initial auto-scroll-to-now lands, so the
   // "you are here" row gets a one-time attention pulse on top of its
   // steady "演奏中" highlight — not a permanently-animating element,
@@ -268,7 +262,6 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
       style={design ? { background: "transparent", color: design.theme.bandNameColor } : undefined}
     >
       {design ? <ThemedBackdrop theme={design.theme} mode="page" /> : <PamphletBackground />}
-      {isPerformingNow && <PerformingMotion color={design?.theme.timeColor} />}
 
       <header
         className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-slate-900/70 px-4 py-3 backdrop-blur-xl"
@@ -545,6 +538,8 @@ function SlotRow({
         : /転換/.test(slot.customLabel ?? "")
           ? "転換中！"
           : `${slot.customLabel ?? "イベント"}中！`;
+  // 演奏中(バンドの枠が進行中)だけ豪華なハイライト。リハーサル・休憩などは従来の静止した強調。
+  const isLive = isActive && Boolean(band);
   return (
     <li>
       <button
@@ -553,18 +548,25 @@ function SlotRow({
         disabled={!band}
         onClick={() => band && onSelectBand(band)}
         className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left backdrop-blur-md transition ${
-          isActive
-            ? "border-indigo-400/60 bg-indigo-500/15 ring-2 ring-indigo-400/50"
-            : "border-[var(--glass-border)] bg-[var(--glass-card-bg)]"
+          isLive
+            ? "pamphlet-live-row border-transparent"
+            : isActive
+              ? "border-indigo-400/60 bg-indigo-500/15 ring-2 ring-indigo-400/50"
+              : "border-[var(--glass-border)] bg-[var(--glass-card-bg)]"
         } ${band ? "hover:bg-[var(--glass-card-bg-hover)]" : "cursor-default"} ${
           isJustFocused ? "pamphlet-auto-focus-pulse" : ""
         }`}
       >
         {/* 時刻は「見込み」(当日の時刻補正を反映した現時点の開始–終了)として小さく添える。
             元の予定は運営画面だけに出す。進行中の枠は「▶ 演奏中！」などの表示でわかる。 */}
+        {isLive && <LiveSparkles />}
         <span className="min-w-0">
-          <span className="block text-base font-semibold text-slate-100">
-            {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
+          <span className={`block text-slate-100 ${isLive ? "text-lg font-black" : "text-base font-semibold"}`}>
+            {isLive ? (
+              <LiveBadge label={activeStatus} />
+            ) : (
+              isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>
+            )}
             {label}
           </span>
           {expectedTimeText(slot) && (

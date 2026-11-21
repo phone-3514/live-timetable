@@ -4,6 +4,7 @@ import { getSetlistPalette } from "../utils/shareThemes";
 import type { LayoutStyle, ShareTheme } from "../utils/shareThemes";
 import { buildPamphletRows } from "./transitionGaps";
 import { expectedTimeText } from "./expectedTime";
+import { LiveBadge, LiveSparkles } from "./LiveHighlight";
 import type { PublicBand, PublicDay, PublicPamphletDoc, PublicSlot } from "./types";
 
 // 公開パンフレットを、運営が公開時に選んだデザイン(共有用画像と同じ色テーマ +
@@ -108,6 +109,20 @@ function activeStatusText(slot: PublicSlot, isBand: boolean): string {
   if (/休憩|ブレイク/.test(label)) return "休憩中！";
   if (/転換/.test(label)) return "転換中！";
   return `${label || "イベント"}中！`;
+}
+
+// 演奏中の枠の、テーマに合わせたハイライト(色は単色の timeColor。発光・光の帯・きらめきは
+// index.css の .pamphlet-live-row)。背景はテーマのカード色の上にアクセント色のグラデーションを重ねる。
+function liveRowStyle(theme: ShareTheme): CSSProperties {
+  const accent = theme.timeColor;
+  return {
+    "--live-accent": accent,
+    background: `linear-gradient(90deg, color-mix(in srgb, ${accent} 28%, transparent), color-mix(in srgb, ${accent} 8%, transparent)), ${theme.cardBg}`,
+  } as CSSProperties;
+}
+
+function themedLiveBadge(theme: ShareTheme, label: string) {
+  return <LiveBadge label={label} style={{ background: theme.numberBadgeBackground, color: theme.numberBadgeText }} />;
 }
 
 // 「見込み 14:20–14:23」(当日の時刻補正を反映した現時点の見込み)。名前の下に小さく添える。
@@ -282,14 +297,15 @@ export function ThemedDaySection({
                   id={`pamphlet-slot-${slot.id}`}
                   type="button"
                   onClick={() => onSelectBand(band)}
-                  className={`flex w-full items-stretch overflow-hidden text-left ${pulse}`}
+                  className={`flex w-full items-stretch overflow-hidden text-left ${pulse} ${isActive ? "pamphlet-live-row" : ""}`}
                   style={{
                     minHeight: 64,
                     borderRadius: layout.cardRadius,
                     background: theme.cardBg,
-                    ...activeRing(isActive),
+                    ...(isActive ? liveRowStyle(theme) : {}),
                   }}
                 >
+                  {isActive && <LiveSparkles />}
                   <span
                     className="flex shrink-0 items-center justify-center font-bold"
                     style={{
@@ -307,11 +323,7 @@ export function ThemedDaySection({
                       className="font-bold"
                       style={{ fontSize: 21, lineHeight: 1.2, overflowWrap: "anywhere", color: theme.bandNameColor }}
                     >
-                      {isActive && (
-                        <span className="mr-1.5" style={{ color: accent, fontSize: 14 }}>
-                          ▶ {activeStatusText(slot, true)}
-                        </span>
-                      )}
+                      {isActive && themedLiveBadge(theme, activeStatusText(slot, true))}
                       {band.name}
                     </span>
                     <ExpectedTime slot={slot} theme={theme} />
@@ -330,7 +342,7 @@ export function ThemedDaySection({
                 id={`pamphlet-slot-${slot.id}`}
                 type="button"
                 onClick={() => onSelectBand(band)}
-                className={`flex w-full items-center text-left ${pulse}`}
+                className={`flex w-full items-center text-left ${pulse} ${isActive ? "pamphlet-live-row" : ""}`}
                 style={{
                   minHeight: 60,
                   gap: 14,
@@ -339,10 +351,11 @@ export function ThemedDaySection({
                   borderRadius: layout.cardRadius,
                   border: layout.cardBorderWidth > 0 ? `${layout.cardBorderWidth}px solid ${theme.cardBorder}` : "none",
                   borderBottom: grouped && !isLast ? `1px solid ${theme.cardBorder}` : undefined,
-                  boxShadow: layout.cardShadowOverride ?? theme.cardShadow,
-                  ...(isActive ? activeRing(true) : {}),
+                  // 演奏中は .pamphlet-live-row 側のリング+発光に任せる(インラインの影は付けない)。
+                  ...(isActive ? liveRowStyle(theme) : { boxShadow: layout.cardShadowOverride ?? theme.cardShadow }),
                 }}
               >
+                {isActive && <LiveSparkles />}
                 {layout.badgeShape === "none" ? (
                   <span
                     className="shrink-0 text-center font-mono font-bold"
@@ -366,11 +379,7 @@ export function ThemedDaySection({
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="block font-bold" style={{ fontSize: 18, color: theme.bandNameColor, overflowWrap: "anywhere" }}>
-                    {isActive && (
-                      <span className="mr-1.5" style={{ color: accent, fontSize: 14 }}>
-                        ▶ {activeStatusText(slot, true)}
-                      </span>
-                    )}
+                    {isActive && themedLiveBadge(theme, activeStatusText(slot, true))}
                     {band.name}
                   </span>
                   <ExpectedTime slot={slot} theme={theme} />
