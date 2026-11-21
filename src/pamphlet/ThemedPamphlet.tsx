@@ -3,6 +3,7 @@ import { ThemeArtwork } from "../components/ThemeArtwork";
 import { getSetlistPalette } from "../utils/shareThemes";
 import type { LayoutStyle, ShareTheme } from "../utils/shareThemes";
 import { buildPamphletRows } from "./transitionGaps";
+import { expectedTimeText } from "./expectedTime";
 import type { PublicBand, PublicDay, PublicPamphletDoc, PublicSlot } from "./types";
 
 // 公開パンフレットを、運営が公開時に選んだデザイン(共有用画像と同じ色テーマ +
@@ -107,6 +108,23 @@ function activeStatusText(slot: PublicSlot, isBand: boolean): string {
   if (/休憩|ブレイク/.test(label)) return "休憩中！";
   if (/転換/.test(label)) return "転換中！";
   return `${label || "イベント"}中！`;
+}
+
+// 「見込み 14:20–14:23」(当日の時刻補正を反映した現時点の見込み)。名前の下に小さく添える。
+function ExpectedTime({ slot, theme, align = "left" }: { slot: PublicSlot; theme: ShareTheme; align?: "left" | "center" }) {
+  const text = expectedTimeText(slot);
+  if (!text) return null;
+  return (
+    <span
+      className="block font-mono"
+      style={{ marginTop: 2, fontSize: 12, fontWeight: 600, color: theme.dateColor, textAlign: align }}
+    >
+      <span className="font-sans" style={{ marginRight: 4, fontSize: 10, opacity: 0.8 }}>
+        見込み
+      </span>
+      {text}
+    </span>
+  );
 }
 
 export function ThemedDaySection({
@@ -228,12 +246,12 @@ export function ThemedDaySection({
               <li key={slot.id}>
                 <div
                   id={`pamphlet-slot-${slot.id}`}
-                  className={`flex items-center ${pulse}`}
+                  className={`flex flex-col justify-center ${pulse}`}
                   style={{
                     minHeight: isBoard ? 56 : 52,
-                    gap: 10,
-                    padding: isBoard ? "0 16px 0 88px" : "10px 16px",
-                    justifyContent: isBoard ? "flex-start" : "center",
+                    gap: 0,
+                    padding: isBoard ? "6px 16px 6px 88px" : "8px 16px",
+                    alignItems: isBoard ? "flex-start" : "center",
                     borderRadius: layout.cardRadius,
                     border: isBoard ? "none" : `2px solid ${theme.breakBorder}`,
                     background: theme.breakBg,
@@ -243,12 +261,15 @@ export function ThemedDaySection({
                     ...activeRing(isActive),
                   }}
                 >
-                  {isActive && (
-                    <span className="font-bold" style={{ fontSize: 13 }}>
-                      ▶ {activeStatusText(slot, false)}
-                    </span>
-                  )}
-                  {label}
+                  <span>
+                    {isActive && (
+                      <span className="mr-2 font-bold" style={{ fontSize: 13 }}>
+                        ▶ {activeStatusText(slot, false)}
+                      </span>
+                    )}
+                    {label}
+                  </span>
+                  <ExpectedTime slot={slot} theme={theme} align={isBoard ? "left" : "center"} />
                 </div>
               </li>
             );
@@ -281,7 +302,7 @@ export function ThemedDaySection({
                   >
                     {order}
                   </span>
-                  <span className="flex min-w-0 flex-1 items-center" style={{ padding: "8px 0" }}>
+                  <span className="flex min-w-0 flex-1 flex-col justify-center" style={{ padding: "8px 0" }}>
                     <span
                       className="font-bold"
                       style={{ fontSize: 21, lineHeight: 1.2, overflowWrap: "anywhere", color: theme.bandNameColor }}
@@ -293,6 +314,7 @@ export function ThemedDaySection({
                       )}
                       {band.name}
                     </span>
+                    <ExpectedTime slot={slot} theme={theme} />
                   </span>
                   <span className="flex shrink-0 items-center" style={{ paddingRight: 14, color: accent, fontSize: 14, fontWeight: 600 }}>
                     詳細 ›
@@ -342,13 +364,16 @@ export function ThemedDaySection({
                     {order}
                   </span>
                 )}
-                <span className="min-w-0 flex-1 font-bold" style={{ fontSize: 18, color: theme.bandNameColor, overflowWrap: "anywhere" }}>
-                  {isActive && (
-                    <span className="mr-1.5" style={{ color: accent, fontSize: 14 }}>
-                      ▶ {activeStatusText(slot, true)}
-                    </span>
-                  )}
-                  {band.name}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-bold" style={{ fontSize: 18, color: theme.bandNameColor, overflowWrap: "anywhere" }}>
+                    {isActive && (
+                      <span className="mr-1.5" style={{ color: accent, fontSize: 14 }}>
+                        ▶ {activeStatusText(slot, true)}
+                      </span>
+                    )}
+                    {band.name}
+                  </span>
+                  <ExpectedTime slot={slot} theme={theme} />
                 </span>
                 <span className="shrink-0" style={{ fontSize: 13, fontWeight: 600, color: accent }}>
                   詳細 ›

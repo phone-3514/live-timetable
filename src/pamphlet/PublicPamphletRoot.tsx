@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
 import { PerformingMotion } from "./PerformingMotion";
+import { expectedTimeText } from "./expectedTime";
 import { ThemedBackdrop, ThemedDaySection, themedTitleStyle } from "./ThemedPamphlet";
 import { resolvePamphletDesign } from "./pamphletDesign";
 import { useForcedColorScheme } from "../store/useForcedColorScheme";
@@ -559,11 +560,19 @@ function SlotRow({
           isJustFocused ? "pamphlet-auto-focus-pulse" : ""
         }`}
       >
-        {/* 公開パンフレットのタイムテーブルには、開始・終了の時刻(と遅れの分数)を出さない。
-            進行中の枠は「▶ 演奏中！」などの表示でわかる。 */}
-        <span className="block text-base font-semibold text-slate-100">
-          {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
-          {label}
+        {/* 時刻は「見込み」(当日の時刻補正を反映した現時点の開始–終了)として小さく添える。
+            元の予定は運営画面だけに出す。進行中の枠は「▶ 演奏中！」などの表示でわかる。 */}
+        <span className="min-w-0">
+          <span className="block text-base font-semibold text-slate-100">
+            {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
+            {label}
+          </span>
+          {expectedTimeText(slot) && (
+            <span className="mt-0.5 block font-mono text-xs font-semibold text-slate-400">
+              <span className="mr-1 font-sans text-[10px] text-slate-500">見込み</span>
+              {expectedTimeText(slot)}
+            </span>
+          )}
         </span>
         {band && <span className="text-sm text-indigo-300">詳細 ›</span>}
       </button>
