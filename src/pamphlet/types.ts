@@ -49,4 +49,14 @@ export type PublicPamphletDoc = {
   bands: PublicBand[];
   days: PublicDay[];
   publishedAt: number;
+  /** 公開時に選んだ表示デザイン(共有用画像と同じ色テーマ+レイアウト構造)。
+   * 無い/"simple" のときは従来のシンプルな表示。 */
+  design?: PublicPamphletDesign;
+};
+
+export type PublicPamphletDesign = {
+  /** ShareTheme の id、または従来表示を表す "simple"。 */
+  themeId: string;
+  /** LayoutStyle の id。 */
+  layoutId: string;
 };

@@ -30,6 +30,8 @@ export function SharePreviewModal({ day, onClose }: Props) {
   // projector/big-screen display rather than a phone-shaped share image —
   // see chooseWidescreenColumnCount in ShareTimetableTemplate.tsx.
   const [widescreen, setWidescreen] = useState(false);
+  // 時間未確定のまま共有したい、時間を伏せたい場合用。
+  const [showTime, setShowTime] = useState(true);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [areaSize, setAreaSize] = useState<{ width: number; height: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -45,7 +47,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
         height: previewRef.current.offsetHeight,
       });
     }
-  }, [day, bands, themeId, layoutId, widescreen, eventInfo]);
+  }, [day, bands, themeId, layoutId, widescreen, showTime, eventInfo]);
 
   // The scrollable area's own size (not the modal's, which also holds a
   // header/theme-picker/footer) — scaling by width alone left a tall image
@@ -81,7 +83,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
       const rect = el.getBoundingClientRect();
       const pixelRatio = computeSafePixelRatio(rect.width, rect.height, widescreen ? 3 : 2);
       const dataUrl = await toPng(el, { pixelRatio });
-      const filename = `share-timetable-${day.label}-${themeId}${widescreen ? "-16x9" : ""}.png`;
+      const filename = `share-timetable-${day.label}-${themeId}${widescreen ? "-16x9" : ""}${showTime ? "" : "-notime"}.png`;
       const file = dataUrlToFile(dataUrl, filename, "image/png");
       await downloadFile(file);
     } finally {
@@ -197,6 +199,19 @@ export function SharePreviewModal({ day, onClose }: Props) {
           </div>
         </div>
 
+        <div className="shrink-0 border-b border-slate-700 px-4 py-2.5">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-300 md:min-h-0">
+            <input
+              type="checkbox"
+              checked={showTime}
+              onChange={(e) => setShowTime(e.target.checked)}
+              className="h-4 w-4 accent-indigo-500"
+            />
+            時間を表示する
+            <span className="text-slate-500">（外すと時刻を出さず、出演順の番号だけになります）</span>
+          </label>
+        </div>
+
         <div ref={previewAreaRef} className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 p-4">
           <div
             style={{
@@ -237,6 +252,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
                 eventInfo={eventInfo}
                 isSingleDay={isSingleDay}
                 widescreen={widescreen}
+                showTime={showTime}
               />
             </div>
           </div>
@@ -274,6 +290,7 @@ export function SharePreviewModal({ day, onClose }: Props) {
             eventInfo={eventInfo}
             isSingleDay={isSingleDay}
             widescreen={widescreen}
+                showTime={showTime}
           />
         </div>
       </div>

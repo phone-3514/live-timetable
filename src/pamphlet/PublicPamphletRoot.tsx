@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
+import { ThemedBackdrop, ThemedDaySection, themedTitleStyle } from "./ThemedPamphlet";
+import { resolvePamphletDesign } from "./pamphletDesign";
+import { useForcedColorScheme } from "../store/useForcedColorScheme";
+import { isDarkShareTheme } from "../utils/shareThemes";
+import type { CSSProperties } from "react";
 import { useSyncThemeAttribute } from "../hooks/useSyncThemeAttribute";
 import { usePamphletCache } from "./usePamphletCache";
 import { resolveEffectiveActiveRow, useActiveSlotId } from "./useActiveSlotId";
@@ -128,6 +133,20 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
   const { data, state, cachedAt, refreshing, refresh } = usePamphletCache(roomId);
   const activeRow = useActiveSlotId(data);
   const liveProgress = usePublicProgress(roomId);
+  // 運営が公開時に選んだデザイン(共有用画像と同じテーマ+レイアウト)。無い/"simple" なら
+  // null で、従来のシンプルな表示のまま。
+  const design = useMemo(() => resolvePamphletDesign(data?.design), [data?.design]);
+  const setForcedScheme = useForcedColorScheme((s) => s.setForced);
+  // 検索欄・出演者マイページ・詳細シートなどは slate/ガラス系の配色変数で描かれているので、
+  // 選ばれたテーマの明暗に合わせてライト/ダークを上書きし、浮かないようにする。
+  const designIsDark = design ? isDarkShareTheme(design.theme) : null;
+  useEffect(() => {
+    setForcedScheme(designIsDark === null ? null : designIsDark ? "dark" : "light");
+    return () => setForcedScheme(null);
+  }, [designIsDark, setForcedScheme]);
+  const themedButton: CSSProperties | undefined = design
+    ? { borderColor: design.theme.cardBorder, color: design.theme.dateColor, background: design.theme.cardBg }
+    : undefined;
   const [screenMode, setScreenMode] = useState(() => new URLSearchParams(window.location.search).get("mode") === "screen");
   useEffect(() => {
     const syncModeFromUrl = () => setScreenMode(new URLSearchParams(window.location.search).get("mode") === "screen");
@@ -236,16 +255,25 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
   }} />;
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100">
-      <PamphletBackground />
+    <div
+      className="relative min-h-screen overflow-x-hidden bg-slate-950 pb-8 text-slate-100"
+      style={design ? { background: "transparent", color: design.theme.bandNameColor } : undefined}
+    >
+      {design ? <ThemedBackdrop theme={design.theme} mode="page" /> : <PamphletBackground />}
 
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-slate-900/70 px-4 py-3 backdrop-blur-xl">
+      <header
+        className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-slate-900/70 px-4 py-3 backdrop-blur-xl"
+        style={design ? { borderColor: design.theme.cardBorder, background: design.theme.cardBg } : undefined}
+      >
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-slate-100 md:text-xl">
+          <h1
+            className="text-lg font-bold tracking-tight text-slate-100 md:text-xl"
+            style={design ? themedTitleStyle(design.theme, design.layout) : undefined}
+          >
             {data?.liveName || "タイムテーブル"}
           </h1>
           {(data?.venue || data?.organizationName) && (
-            <p className="mt-0.5 text-sm text-slate-400">
+            <p className="mt-0.5 text-sm text-slate-400" style={design ? { color: design.theme.dateColor } : undefined}>
               {[data?.venue, data?.organizationName].filter(Boolean).join(" ／ ")}
             </p>
           )}
@@ -256,23 +284,28 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
             url.searchParams.set("mode", "screen");
             window.history.pushState(null, "", url.toString());
             setScreenMode(true);
-          }} className="flex min-h-11 items-center rounded-full border border-[var(--glass-border)] px-3 text-sm font-medium text-slate-300 hover:bg-[var(--glass-card-bg-hover)]">会場表示</button>}
+          }} style={themedButton} className="flex min-h-11 items-center rounded-full border border-[var(--glass-border)] px-3 text-sm font-medium text-slate-300 hover:bg-[var(--glass-card-bg-hover)]">会場表示</button>}
           <AccessibilitySettings />
           <button
             type="button"
             onClick={() => void refresh()}
             disabled={refreshing}
             title="最新の公開情報を再取得します"
+            style={themedButton}
             className="flex min-h-11 items-center gap-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--glass-card-bg)] px-3 text-sm font-medium text-slate-300 backdrop-blur-md hover:bg-[var(--glass-card-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {refreshing ? "更新中…" : "🔄 更新"}
           </button>
-          <PamphletThemeToggle />
+          {/* デザイン指定時は配色をテーマに合わせるため、ライト/ダーク切り替えは出さない。 */}
+          {!design && <PamphletThemeToggle />}
         </div>
       </header>
 
       {cachedAt && (
-        <p className="relative px-4 pt-2 text-right text-xs text-slate-500">
+        <p
+          className="relative px-4 pt-2 text-right text-xs text-slate-500"
+          style={design ? { color: design.theme.footerColor } : undefined}
+        >
           最終更新: {new Date(cachedAt).toLocaleString("ja-JP")}
         </p>
       )}
@@ -356,18 +389,33 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
               <PerformerDashboard data={data} performerName={myPerformerName} bands={myBands} progress={liveProgress} />
             )}
 
-            {data.days.map((day) => (
-              <PamphletDaySection
-                key={day.id}
-                day={day}
-                bandsById={bandsById}
-                activeRow={effectiveActiveRow}
-                justAutoFocusedSlotId={justAutoFocusedSlotId}
-                isRelevantSlot={isRelevantSlot}
-                showTransitions={!myPerformerName}
-                onSelectBand={setSelectedBand}
-              />
-            ))}
+            {data.days.map((day) =>
+              design ? (
+                <ThemedDaySection
+                  key={day.id}
+                  day={day}
+                  bandsById={bandsById}
+                  activeRow={effectiveActiveRow}
+                  justAutoFocusedSlotId={justAutoFocusedSlotId}
+                  isRelevantSlot={isRelevantSlot}
+                  showTransitions={!myPerformerName}
+                  onSelectBand={setSelectedBand}
+                  theme={design.theme}
+                  layout={design.layout}
+                />
+              ) : (
+                <PamphletDaySection
+                  key={day.id}
+                  day={day}
+                  bandsById={bandsById}
+                  activeRow={effectiveActiveRow}
+                  justAutoFocusedSlotId={justAutoFocusedSlotId}
+                  isRelevantSlot={isRelevantSlot}
+                  showTransitions={!myPerformerName}
+                  onSelectBand={setSelectedBand}
+                />
+              ),
+            )}
           </>
         )}
       </main>

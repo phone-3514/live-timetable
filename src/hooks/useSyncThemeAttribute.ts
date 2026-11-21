@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useThemeStore } from "../store/useThemeStore";
+import { useForcedColorScheme } from "../store/useForcedColorScheme";
 
 // Keeps <html data-theme="..."> in sync with useThemeStore after the
 // initial load (index.html's own inline script handles BEFORE first
@@ -14,7 +15,10 @@ import { useThemeStore } from "../store/useThemeStore";
 // admin/editing dependency of its own (useThemeStore is a plain,
 // Firebase-free Zustand store).
 export function useSyncThemeAttribute() {
-  const themePreference = useThemeStore((s) => s.theme);
+  const preference = useThemeStore((s) => s.theme);
+  // 公開パンフレットがデザインを選ばれているときだけ入る上書き(通常は null)。
+  const forced = useForcedColorScheme((s) => s.forced);
+  const themePreference = forced ?? preference;
   useEffect(() => {
     if (themePreference === "system") {
       document.documentElement.removeAttribute("data-theme");

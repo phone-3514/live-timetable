@@ -66,12 +66,21 @@ service cloud.firestore {
       allow delete: if true;
 
       function isValidPublicPamphlet(data) {
-        return data.keys().hasOnly(['liveName', 'venue', 'organizationName', 'bands', 'days', 'publishedAt'])
+        return data.keys().hasOnly(['liveName', 'venue', 'organizationName', 'bands', 'days', 'publishedAt', 'design'])
           && data.keys().hasAll(['liveName', 'bands', 'days', 'publishedAt'])
           && data.liveName is string && data.liveName.size() < 200
           && data.bands is list && data.bands.size() < 300
           && data.days is list && data.days.size() < 20
-          && data.publishedAt is int;
+          && data.publishedAt is int
+          && (!('design' in data) || isValidDesign(data.design));
+      }
+
+      // 公開時に選ぶ表示デザイン(共有用画像と同じ色テーマ+レイアウトのID)。
+      function isValidDesign(d) {
+        return d is map
+          && d.keys().hasOnly(['themeId', 'layoutId'])
+          && d.themeId is string && d.themeId.size() < 40
+          && d.layoutId is string && d.layoutId.size() < 40;
       }
     }
 

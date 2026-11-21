@@ -51,6 +51,8 @@ type Props = {
    * to 16:9 individually would make the combined image far wider than
    * that once they're placed side by side. Defaults to false. */
   widescreen?: boolean;
+  /** false で開始・終了時刻を出さない。省略時は表示。 */
+  showTime?: boolean;
 };
 
 // Solves for a single "rows per column" target shared by every day, so all
@@ -95,6 +97,7 @@ export function ShareAllDaysTemplate({
   eventInfo,
   layoutId = "classic",
   widescreen = false,
+  showTime = true,
 }: Props) {
   if (LAYOUTS[layoutId].structure === "board") {
     return (
@@ -105,6 +108,7 @@ export function ShareAllDaysTemplate({
         eventInfo={eventInfo}
         layoutId={layoutId}
         widescreen={widescreen}
+        showTime={showTime}
       />
     );
   }
@@ -249,7 +253,7 @@ export function ShareAllDaysTemplate({
                   </span>
                 )}
               </div>
-              <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} />
+              <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} showTime={showTime} />
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import type { Band, TimetableDay } from "../types";
 import type { EventInfo } from "../store/useAppStore";
-import type { PublicPamphletDoc } from "./types";
+import type { PublicPamphletDesign, PublicPamphletDoc } from "./types";
 import { isHiddenBlock } from "../utils/slotKinds";
 
 // The one function responsible for deciding what leaves the private room
@@ -13,6 +13,9 @@ export function buildPublicPamphletDoc(
   eventInfo: EventInfo,
   bands: Band[],
   days: TimetableDay[],
+  // 渡したときだけ design を載せる。省略(=運営側にまだ選択の記録がない)なら載せず、
+  // 公開側(merge 書き込み)に既に入っているデザインを消さない。
+  design?: PublicPamphletDesign | null,
 ): PublicPamphletDoc {
   return {
     liveName: eventInfo.liveName,
@@ -41,5 +44,6 @@ export function buildPublicPamphletDoc(
       })),
     })),
     publishedAt: Date.now(),
+    ...(design ? { design } : {}),
   };
 }

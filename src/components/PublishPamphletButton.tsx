@@ -4,6 +4,9 @@ import { useAppStore } from "../store/useAppStore";
 import { useToastStore } from "../store/useToastStore";
 import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
 import { ensureViewerCode } from "../utils/viewerCodes";
+import { PublishPamphletDialog } from "./PublishPamphletDialog";
+import { SIMPLE_DESIGN, readStoredPamphletDesign, storePamphletDesign } from "../pamphlet/pamphletDesign";
+import type { PublicPamphletDesign } from "../pamphlet/types";
 import {
   cancelScheduledPublicPamphletPublish,
   publishPublicPamphletNow,
@@ -56,9 +59,10 @@ export function PublishPamphletButton({ roomId }: Props) {
   const [publishing, setPublishing] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(() => readPublishedUrl(roomId));
   const [copied, setCopied] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const showToast = useToastStore((s) => s.show);
 
-  async function handlePublish() {
+  async function handlePublish(design: PublicPamphletDesign) {
     if (!db) {
       showToast("Firestoreが利用できません", "error");
       return;
@@ -67,14 +71,35 @@ export function PublishPamphletButton({ roomId }: Props) {
     cancelScheduledPublicPamphletPublish(roomId);
     try {
       const viewerCode = await ensureViewerCode(roomId);
-      await publishPublicPamphletNow(roomId, () => {
-        const { eventInfo, bands, days } = useAppStore.getState();
-        return buildPublicPamphletDoc(eventInfo, bands, days);
-      });
+      // design はFirestoreルールの許可項目。ルール未更新の環境では permission-denied に
+      // なるので、その場合はデザイン抜きで公開し直して、反映されない旨を伝える。
+      let designApplied = true;
+      try {
+        await publishPublicPamphletNow(roomId, () => {
+          const { eventInfo, bands, days } = useAppStore.getState();
+          return buildPublicPamphletDoc(eventInfo, bands, days, design);
+        });
+      } catch (err) {
+        if ((err as { code?: string })?.code !== "permission-denied") throw err;
+        designApplied = false;
+        await publishPublicPamphletNow(roomId, () => {
+          const { eventInfo, bands, days } = useAppStore.getState();
+          return buildPublicPamphletDoc(eventInfo, bands, days);
+        });
+      }
+      storePamphletDesign(roomId, design);
       const url = `${window.location.origin}${import.meta.env.BASE_URL}${viewerCode}/public`;
       storePublishedUrl(roomId, url);
       setPublishedUrl(url);
-      showToast("パンフレットを公開しました", "success");
+      setDialogOpen(false);
+      if (designApplied) {
+        showToast("パンフレットを公開しました", "success");
+      } else {
+        showToast(
+          "公開しましたが、デザインは反映されていません。Firestoreのルール(firestore.rules)を更新してから、もう一度公開してください",
+          "error",
+        );
+      }
     } catch (err) {
       console.error("[PublishPamphletButton] publish failed:", err);
       showToast("パンフレットの公開に失敗しました", "error");
@@ -98,9 +123,9 @@ export function PublishPamphletButton({ roomId }: Props) {
     <div className="flex w-full flex-wrap items-center gap-1.5">
       <button
         type="button"
-        onClick={handlePublish}
+        onClick={() => setDialogOpen(true)}
         disabled={publishing}
-        title="現在のタイムテーブルを、編集権限のない誰でも閲覧できる公開パンフレットとして公開します"
+        title="表示デザインを選んで、現在のタイムテーブルを、編集権限のない誰でも閲覧できる公開パンフレットとして公開します"
         className="min-h-11 shrink-0 rounded border border-emerald-600 px-2.5 text-xs font-medium text-emerald-300 hover:bg-emerald-950/40 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:py-1"
       >
         {publishing ? "公開中…" : publishedUrl ? "🌐 再公開" : "🌐 パンフレットを公開"}
@@ -125,6 +150,16 @@ export function PublishPamphletButton({ roomId }: Props) {
             {copied ? "✓ コピー済み" : "📋 コピー"}
           </button>
         </div>
+      )}
+
+      {dialogOpen && (
+        <PublishPamphletDialog
+          initial={readStoredPamphletDesign(roomId) ?? SIMPLE_DESIGN}
+          publishing={publishing}
+          isRepublish={publishedUrl !== null}
+          onClose={() => setDialogOpen(false)}
+          onConfirm={(design) => void handlePublish(design)}
+        />
       )}
     </div>
   );

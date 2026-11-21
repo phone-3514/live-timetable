@@ -11,7 +11,7 @@ function enqueueWrite(roomId: string, createDocument: () => PublicPamphletDoc): 
   const previous = writeChains.get(roomId) ?? Promise.resolve();
   const next = previous
     .catch(() => undefined)
-    .then(() => setDoc(doc(firestore, "publicPamphlets", roomId), createDocument()));
+    .then(() => setDoc(doc(firestore, "publicPamphlets", roomId), createDocument(), { merge: true }));
   writeChains.set(roomId, next);
   void next.then(
     () => { if (writeChains.get(roomId) === next) writeChains.delete(roomId); },

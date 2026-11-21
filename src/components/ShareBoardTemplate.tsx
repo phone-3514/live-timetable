@@ -26,6 +26,9 @@ const NAME_PAD = 16;
 const NAME_MAX_FONT = 34;
 const NAME_MIN_FONT = 20;
 const NAME_AVAIL = COL_W - TIME_W - NUM_W - NAME_PAD;
+// 時間を出さないときは、時刻ブロックの代わりに同じ色の番号ブロックを置く。
+const NUM_BLOCK_W = 84;
+const NAME_AVAIL_NO_TIME = COL_W - NUM_BLOCK_W - NAME_PAD - 12;
 const TARGET_ASPECT = 16 / 9;
 const HEADER_H = 150;
 const FOOTER_H = 70;
@@ -116,12 +119,14 @@ function BoardRow({
   bandName,
   theme,
   radius,
+  showTime,
 }: {
   row: Row;
   order: number | null;
   bandName: string;
   theme: ShareTheme;
   radius: number;
+  showTime: boolean;
 }) {
   const { slot } = row;
   const isBand = order !== null;
@@ -135,23 +140,40 @@ function BoardRow({
         background: isBand ? theme.cardBg : theme.breakBg,
       }}
     >
-      <div
-        className="flex shrink-0 items-center justify-center font-mono font-bold"
-        style={{
-          width: TIME_W,
-          fontSize: 32,
-          background: theme.numberBadgeBackground,
-          color: theme.numberBadgeText,
-        }}
-      >
-        {slot.startTime.slice(0, 5)}~
-      </div>
-      <div
-        className="flex shrink-0 items-center justify-center font-bold"
-        style={{ width: NUM_W, fontSize: 30, color: theme.timeColor }}
-      >
-        {isBand ? order : ""}
-      </div>
+      {showTime ? (
+        <>
+          <div
+            className="flex shrink-0 items-center justify-center font-mono font-bold"
+            style={{
+              width: TIME_W,
+              fontSize: 32,
+              background: theme.numberBadgeBackground,
+              color: theme.numberBadgeText,
+            }}
+          >
+            {slot.startTime.slice(0, 5)}~
+          </div>
+          <div
+            className="flex shrink-0 items-center justify-center font-bold"
+            style={{ width: NUM_W, fontSize: 30, color: theme.timeColor }}
+          >
+            {isBand ? order : ""}
+          </div>
+        </>
+      ) : (
+        <div
+          className="flex shrink-0 items-center justify-center font-bold"
+          style={{
+            width: NUM_BLOCK_W,
+            fontSize: 34,
+            background: theme.numberBadgeBackground,
+            color: theme.numberBadgeText,
+            marginRight: 12,
+          }}
+        >
+          {isBand ? order : ""}
+        </div>
+      )}
       <div className="flex min-w-0 flex-1 items-center" style={{ paddingRight: NAME_PAD }}>
         <span
           className="font-bold"
@@ -162,7 +184,7 @@ function BoardRow({
             overflow: "hidden",
             lineHeight: 1.12,
             overflowWrap: "anywhere",
-            fontSize: fitFontSize(text, NAME_AVAIL),
+            fontSize: fitFontSize(text, showTime ? NAME_AVAIL : NAME_AVAIL_NO_TIME),
             color: isBand ? theme.bandNameColor : theme.breakText,
           }}
         >
@@ -206,9 +228,10 @@ type Props = {
   eventInfo: EventInfo;
   layoutId: LayoutId;
   widescreen?: boolean;
+  showTime?: boolean;
 };
 
-export function ShareBoardTemplate({ days, bands, themeId, eventInfo, layoutId, widescreen = false }: Props) {
+export function ShareBoardTemplate({ days, bands, themeId, eventInfo, layoutId, widescreen = false, showTime = true }: Props) {
   const theme = THEMES[themeId];
   const layout = LAYOUTS[layoutId];
   const bandName = new Map(bands.map((b) => [b.id, b.name]));
@@ -232,6 +255,7 @@ export function ShareBoardTemplate({ days, bands, themeId, eventInfo, layoutId, 
   // 3日以上や短い日では かえって紛らわしい)。2日なら日の間、1日なら左端。
   const showAxis =
     sections.length > 0 &&
+    showTime &&
     sections.length <= 2 &&
     sections.every((s) => s.columns.length <= 1) &&
     hourMarks(sections[0].rows).length >= 2;
@@ -281,6 +305,7 @@ export function ShareBoardTemplate({ days, bands, themeId, eventInfo, layoutId, 
                     bandName={row.slot.bandId ? (bandName.get(row.slot.bandId) ?? "") : ""}
                     theme={theme}
                     radius={layout.cardRadius}
+                    showTime={showTime}
                   />
                 ))}
               </div>

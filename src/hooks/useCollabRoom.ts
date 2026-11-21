@@ -9,6 +9,7 @@ import { getStageProgress, useProgressStore, type StageProgress } from "../store
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { buildPublicPamphletDoc } from "../pamphlet/buildPublicPamphletDoc";
+import { readStoredPamphletDesign } from "../pamphlet/pamphletDesign";
 import {
   cancelScheduledPublicPamphletPublish,
   schedulePublicPamphletPublish,
@@ -242,7 +243,7 @@ export function useCollabRoom(isAuthenticated: boolean) {
     }
     schedulePublicPamphletPublish(roomId, () => {
       const app = useAppStore.getState();
-      return buildPublicPamphletDoc(app.eventInfo, app.bands, app.days);
+      return buildPublicPamphletDoc(app.eventInfo, app.bands, app.days, readStoredPamphletDesign(roomId));
     });
   }, [roomId]);
 

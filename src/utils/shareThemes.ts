@@ -783,6 +783,12 @@ function isLightHex(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
+/** ページ背景が暗いテーマか(文字色が明るい=暗い背景)。公開パンフレットで、ライト/ダークの
+ * 配色変数をテーマの明暗に合わせるために使う。 */
+export function isDarkShareTheme(theme: ShareTheme): boolean {
+  return isLightHex(theme.bandNameColor);
+}
+
 // Derives the Setlist export's color roles from a ShareTheme instead of
 // maintaining a second, parallel palette per theme — a new theme only ever
 // gets defined once (above) and both exports pick it up automatically,

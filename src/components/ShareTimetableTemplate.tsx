@@ -122,12 +122,14 @@ export function ShareTimetableColumns({
   theme,
   layout,
   columnCount = 2,
+  showTime = true,
 }: {
   day: TimetableDay;
   bands: Band[];
   theme: ShareTheme;
   layout: LayoutStyle;
   columnCount?: number;
+  showTime?: boolean;
 }) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const columns = getDayColumns(day, columnCount);
@@ -209,12 +211,14 @@ export function ShareTimetableColumns({
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
-                      <span
-                        className="shrink-0 font-mono font-semibold"
-                        style={{ fontSize: 19, color: theme.timeColor }}
-                      >
-                        {slot.startTime}-{slot.endTime}
-                      </span>
+                      {showTime && (
+                        <span
+                          className="shrink-0 font-mono font-semibold"
+                          style={{ fontSize: 19, color: theme.timeColor }}
+                        >
+                          {slot.startTime}-{slot.endTime}
+                        </span>
+                      )}
                       <span
                         className="break-words font-bold"
                         style={{ fontSize: 26, color: theme.bandNameColor }}
@@ -336,16 +340,20 @@ export function ShareTimetableColumns({
                   boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
                 }}
               >
-                <span
-                  className="font-mono font-bold"
-                  style={{ fontSize: 17, color: theme.breakText, opacity: 0.75 }}
-                >
-                  {slot.startTime}-{slot.endTime}
-                </span>
-                <span
-                  aria-hidden="true"
-                  style={{ width: 2, height: 22, background: theme.breakText, opacity: 0.25 }}
-                />
+                {showTime && (
+                  <>
+                    <span
+                      className="font-mono font-bold"
+                      style={{ fontSize: 17, color: theme.breakText, opacity: 0.75 }}
+                    >
+                      {slot.startTime}-{slot.endTime}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      style={{ width: 2, height: 22, background: theme.breakText, opacity: 0.25 }}
+                    />
+                  </>
+                )}
                 <span
                   className="font-black tracking-wide"
                   style={{ fontSize: 23, color: theme.breakText }}
@@ -382,6 +390,8 @@ type Props = {
    * a phone-shaped share image. Defaults to false — zero change to every
    * existing callsite. */
   widescreen?: boolean;
+  /** false で開始・終了時刻を出さない(時間未確定の共有用など)。省略時は表示。 */
+  showTime?: boolean;
 };
 
 export function ShareTimetableTemplate({
@@ -392,6 +402,7 @@ export function ShareTimetableTemplate({
   isSingleDay,
   layoutId = "classic",
   widescreen = false,
+  showTime = true,
 }: Props) {
   // 構造そのものが違う「ボード」は専用テンプレートに任せる(フックなし)。
   if (LAYOUTS[layoutId].structure === "board") {
@@ -403,6 +414,7 @@ export function ShareTimetableTemplate({
         eventInfo={eventInfo}
         layoutId={layoutId}
         widescreen={widescreen}
+        showTime={showTime}
       />
     );
   }
@@ -570,7 +582,7 @@ export function ShareTimetableTemplate({
           )}
         </header>
 
-        <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} />
+        <ShareTimetableColumns day={day} bands={bands} theme={theme} layout={layout} columnCount={columnCount} showTime={showTime} />
 
         <footer className="text-center">
           {eventInfo.organizationName && (
