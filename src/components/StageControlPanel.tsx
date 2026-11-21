@@ -58,6 +58,22 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
   const afterNext = selectedDay.slots[selectedIndex + 2];
   const isProgressActive = progress.slotId !== null;
   const currentDelay = current.delayMinutes ?? 0;
+  // 「元々設定されていた」開始・終了時刻 = 進行中の補正(startTimeOverride)をすべて外した
+  // 並びの時刻。「○分遅れ」の基準(delayMinutes)と同じ基準なので、予定と見込みの差=遅れになる。
+  const baseline = recomputeTimes(
+    selectedDay.slots.map((slot) => ({ ...slot, startTimeOverride: null })),
+    selectedDay.settings,
+    bands,
+  );
+  const planAt = (index: number) => {
+    const slot = baseline[index];
+    return slot ? { start: slot.startTime, end: slot.endTime } : null;
+  };
+  const planCurrent = planAt(selectedIndex);
+  const planNext = planAt(selectedIndex + 1);
+  const planLast = planAt(selectedDay.slots.length - 1);
+  const lastSlot = selectedDay.slots.at(-1);
+  const nextDelay = next?.delayMinutes ?? 0;
   const currentDuration = (() => {
     const start = timeToMinutes(current.startTime);
     const end = timeToMinutes(current.endTime);
@@ -226,7 +242,16 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
             <p className="text-[11px] font-bold text-blue-300">CURRENT PERFORMANCE</p>
             <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
               <strong className="min-w-0 truncate text-2xl font-black tracking-tight text-white md:text-3xl">{slotLabel(current, bandNames)}</strong>
-              <span className="shrink-0 font-mono text-sm font-bold text-slate-400">{current.startTime}–{current.endTime}</span>
+              <span className="shrink-0 font-mono text-sm font-bold text-slate-200" title="元々設定されていた開始・終了時刻">
+                <span className="mr-1 font-sans text-[11px] font-semibold text-slate-500">予定</span>
+                {planCurrent?.start ?? current.startTime}–{planCurrent?.end ?? current.endTime}
+              </span>
+              {currentDelay !== 0 && (
+                <span className="shrink-0 font-mono text-sm font-bold text-slate-400" title="補正後の開始・終了の見込み">
+                  <span className="mr-1 font-sans text-[11px] font-semibold text-slate-500">見込み</span>
+                  {current.startTime}–{current.endTime}
+                </span>
+              )}
               <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-black ${currentDelay > 0 ? "bg-rose-950/70 text-rose-300" : currentDelay < 0 ? "bg-sky-950/70 text-sky-300" : "bg-emerald-950/70 text-emerald-300"}`}>{delayLabel(currentDelay)}</span>
             </div>
           </div>
@@ -251,7 +276,22 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Next Performance</p>
                   <h3 id="next-performance-title" className="mt-1 truncate text-lg font-black text-slate-100">{slotLabel(next, bandNames)}</h3>
-                  <p className="mt-1 font-mono text-sm text-blue-300">{next ? `開始予定 ${next.startTime}` : "次の枠はありません"}</p>
+                  <p className="mt-1 font-mono text-sm text-blue-300">
+                    {next ? (
+                      <>
+                        <span className="mr-1 font-sans text-[11px] font-semibold text-slate-500">予定</span>
+                        {planNext?.start ?? next.startTime}–{planNext?.end ?? next.endTime}
+                        {nextDelay !== 0 && (
+                          <span className="ml-2 text-slate-400">
+                            <span className="mr-1 font-sans text-[11px] font-semibold text-slate-500">見込み</span>
+                            {next.startTime}–{next.endTime}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      "次の枠はありません"
+                    )}
+                  </p>
                 </div>
                 <div className="shrink-0 text-right"><p className="text-[10px] font-bold text-slate-500">その次</p><p className="mt-1 max-w-32 truncate text-xs font-semibold text-slate-300">{slotLabel(afterNext, bandNames)}</p></div>
               </div>
@@ -293,7 +333,7 @@ export function StageControlPanel({ commandCenter = false }: { commandCenter?: b
               <dl className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-slate-800 p-2.5"><dt className="text-[10px] font-bold text-slate-500">現在の進み</dt><dd className={`mt-1 text-sm font-black ${currentDelay > 0 ? "text-rose-300" : currentDelay < 0 ? "text-sky-300" : "text-emerald-300"}`}>{delayLabel(currentDelay)}</dd></div>
                 <div className="rounded-lg bg-slate-800 p-2.5"><dt className="text-[10px] font-bold text-slate-500">現在枠の予定時間</dt><dd className="mt-1 text-sm font-black text-slate-200">{currentDuration}分</dd></div>
-                <div className="col-span-2 rounded-lg bg-slate-800 p-2.5"><dt className="text-[10px] font-bold text-slate-500">本日の終演予定</dt><dd className="mt-1 font-mono text-sm font-black text-slate-200">{selectedDay.slots.at(-1)?.endTime ?? "—"}</dd></div>
+                <div className="col-span-2 rounded-lg bg-slate-800 p-2.5"><dt className="text-[10px] font-bold text-slate-500">本日の終演予定</dt><dd className="mt-1 font-mono text-sm font-black text-slate-200">{planLast?.end ?? lastSlot?.endTime ?? "—"}{lastSlot && planLast && lastSlot.endTime !== planLast.end && <span className="ml-2 text-xs font-bold text-slate-400"><span className="mr-1 font-sans text-[10px] font-semibold text-slate-500">見込み</span>{lastSlot.endTime}</span>}</dd></div>
               </dl>
             </section>
 
