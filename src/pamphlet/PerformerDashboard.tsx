@@ -55,7 +55,7 @@ export function PerformerDashboard({ data, performerName, bands, progress }: {
   const liveMessage = isMyRehearsal
     ? "あなたのリハーサル開始です"
     : isMyPerformance
-      ? "あなたの出演中です"
+      ? "あなたの演奏中です"
       : progress?.phase === "transition" && amNext
         ? "転換中です。次の出演に備えて待機してください"
         : amNext

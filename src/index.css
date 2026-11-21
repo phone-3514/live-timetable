@@ -704,6 +704,47 @@ body {
   animation: pamphlet-auto-focus-pulse 1.2s ease-in-out 2;
 }
 
+/* 公開パンフレット: 「演奏中！」のあいだ、タイムテーブルの左右に音符・楽器が漂う
+   (PerformingMotion.tsx)。広い画面ではコンテンツ列(max-w-2xl=672px)のすぐ外側、
+   狭い画面では画面の両端(余白)に小さく出す。基準のスタイルは opacity:0 なので、
+   「モーション軽減」(data-reduce-motion)で animation が実質止まっても見えなくなるだけ。 */
+.perf-motion { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
+.perf-motion-side { position: absolute; top: 0; bottom: 0; width: 18px; font-size: 36px; }
+.perf-motion-left { left: 0; }
+.perf-motion-right { right: 0; }
+/* 広い画面ほど大きく(コンテンツ列の外側の余白に収まる範囲で)。 */
+@media (min-width: 900px) {
+  .perf-motion-side { width: 100px; font-size: 70px; }
+  .perf-motion-left { left: calc(50% - 336px - 112px); }
+  .perf-motion-right { right: auto; left: calc(50% + 336px + 12px); }
+}
+@media (min-width: 1200px) {
+  .perf-motion-side { width: 170px; font-size: 104px; }
+  .perf-motion-left { left: calc(50% - 336px - 182px); }
+  .perf-motion-right { left: calc(50% + 336px + 12px); }
+}
+.perf-item {
+  position: absolute;
+  bottom: -130px;
+  opacity: 0;
+  line-height: 1;
+  color: var(--perf-color, #818cf8);
+  will-change: transform, opacity;
+  animation: perf-rise var(--dur, 10s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+.perf-item-instrument { filter: saturate(0.9); }
+@keyframes perf-rise {
+  0%   { transform: translate(0, 0) rotate(-10deg); opacity: 0; }
+  8%   { opacity: 0.85; }
+  50%  { transform: translate(calc(var(--sway, 10px) * -1), -55vh) rotate(10deg); }
+  92%  { opacity: 0.85; }
+  100% { transform: translate(var(--sway, 10px), -112vh) rotate(-10deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .perf-motion { display: none; }
+}
+
 /* Smooth, consistent interaction feedback app-wide — every existing
    button/link picks this up with no per-component change, matching
    "smooth, high-quality transitions for hover/click/drag" without

@@ -102,7 +102,7 @@ type SectionProps = {
 
 function activeStatusText(slot: PublicSlot, isBand: boolean): string {
   const label = slot.customLabel ?? "";
-  if (isBand) return "出演中！";
+  if (isBand) return "演奏中！";
   if (/リハーサル|リハ/.test(label)) return "リハーサル中！";
   if (/休憩|ブレイク/.test(label)) return "休憩中！";
   if (/転換/.test(label)) return "転換中！";
@@ -189,7 +189,7 @@ export function ThemedDaySection({
               <li key={row.gap.id}>
                 <div
                   id={`pamphlet-slot-${row.gap.id}`}
-                  className={`flex items-center ${justAutoFocusedSlotId === row.gap.id ? "pamphlet-auto-focus-pulse" : ""}`}
+                  className="flex items-center"
                   style={{
                     minHeight: isBoard ? 36 : 40,
                     padding: "6px 16px",

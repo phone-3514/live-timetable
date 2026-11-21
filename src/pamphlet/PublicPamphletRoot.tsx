@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PamphletThemeToggle } from "./PamphletThemeToggle";
+import { PerformingMotion } from "./PerformingMotion";
 import { ThemedBackdrop, ThemedDaySection, themedTitleStyle } from "./ThemedPamphlet";
 import { resolvePamphletDesign } from "./pamphletDesign";
 import { useForcedColorScheme } from "../store/useForcedColorScheme";
@@ -173,9 +174,15 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
     () => resolveEffectiveActiveRow(liveProgress, liveProgressDayRows, activeRow),
     [liveProgress, liveProgressDayRows, activeRow],
   );
+  // 今まさにバンドが演奏している枠があるか(転換・休憩・リハーサルなどのときは false)。
+  // 演奏中だけ、画面の左右に音符・楽器の演出を出す。
+  const isPerformingNow = useMemo(() => {
+    if (!data || !effectiveActiveRow || effectiveActiveRow.kind !== "slot") return false;
+    return data.days.some((d) => d.slots.some((s) => s.id === effectiveActiveRow.id && s.bandId !== null));
+  }, [data, effectiveActiveRow]);
   // Set briefly right after the initial auto-scroll-to-now lands, so the
   // "you are here" row gets a one-time attention pulse on top of its
-  // steady "出演中" highlight — not a permanently-animating element,
+  // steady "演奏中" highlight — not a permanently-animating element,
   // which would be distracting for anyone lingering on the page.
   const [justAutoFocusedSlotId, setJustAutoFocusedSlotId] = useState<string | null>(null);
 
@@ -260,6 +267,7 @@ function ResolvedPublicPamphletRoot({ circleId, roomId }: Props & { roomId: stri
       style={design ? { background: "transparent", color: design.theme.bandNameColor } : undefined}
     >
       {design ? <ThemedBackdrop theme={design.theme} mode="page" /> : <PamphletBackground />}
+      {isPerformingNow && <PerformingMotion color={design?.theme.timeColor} />}
 
       <header
         className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-slate-900/70 px-4 py-3 backdrop-blur-xl"
@@ -496,7 +504,6 @@ function PamphletDaySection({
               key={row.gap.id}
               gap={row.gap}
               isActive={activeRow?.id === row.gap.id}
-              isJustFocused={justAutoFocusedSlotId === row.gap.id}
             />
           ) : (
             <SlotRow
@@ -529,7 +536,7 @@ function SlotRow({
 }) {
   const label = band?.name ?? slot.customLabel ?? "（未定）";
   const activeStatus = band
-    ? "出演中！"
+    ? "演奏中！"
     : /リハーサル|リハ/.test(slot.customLabel ?? "")
       ? "リハーサル中！"
       : /休憩|ブレイク/.test(slot.customLabel ?? "")
@@ -553,7 +560,7 @@ function SlotRow({
         }`}
       >
         {/* 公開パンフレットのタイムテーブルには、開始・終了の時刻(と遅れの分数)を出さない。
-            進行中の枠は「▶ 出演中！」などの表示でわかる。 */}
+            進行中の枠は「▶ 演奏中！」などの表示でわかる。 */}
         <span className="block text-base font-semibold text-slate-100">
           {isActive && <span className="mr-1.5 text-indigo-300">▶ {activeStatus}</span>}
           {label}
@@ -574,11 +581,9 @@ function SlotRow({
 function TransitionRow({
   gap,
   isActive,
-  isJustFocused,
 }: {
   gap: { id: string; startTime: string; endTime: string };
   isActive: boolean;
-  isJustFocused: boolean;
 }) {
   return (
     <li>
@@ -588,7 +593,7 @@ function TransitionRow({
           isActive
             ? "border-amber-400/60 bg-amber-500/15 ring-2 ring-amber-400/50"
             : "border-[var(--glass-border)] bg-transparent"
-        } ${isJustFocused ? "pamphlet-auto-focus-pulse" : ""}`}
+        }`}
       >
         <span className="block text-sm font-semibold text-slate-300">
           {isActive && <span className="mr-1.5 text-amber-300">▶ 転換中！</span>}
